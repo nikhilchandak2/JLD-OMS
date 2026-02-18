@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= htmlspecialchars($title ?? 'JLD Minerals - Order Processing') ?></title>
+    <title><?= htmlspecialchars($title ?? 'JLD Minerals - Operations Management System') ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -426,7 +426,8 @@
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container-fluid">
             <a class="navbar-brand" href="/dashboard">
-                <i class="bi bi-gem text-danger me-2"></i> JLD Minerals
+                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" height="40" class="me-2" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                <span style="display:none;"><i class="bi bi-gem text-danger me-2"></i></span> JLD Minerals
             </a>
             
             <div class="navbar-nav ms-auto">
@@ -465,15 +466,7 @@
                     </li>
                     <?php endif; ?>
                     
-                    <?php if (in_array($user['role'], ['view', 'admin'])): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'reports' ? 'active' : '' ?>" href="/reports">
-                            <i class="bi bi-graph-up"></i> Reports
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    
-                    <!-- GPS/Fuel Tracking Section -->
+                    <!-- Vehicle Tracking Section -->
                     <li class="nav-item mt-3">
                         <small class="text-white-50 text-uppercase px-3">Vehicle Tracking</small>
                     </li>
@@ -512,6 +505,14 @@
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/products') === 0 ? 'active' : '' ?>" href="/admin/products">
                             <i class="bi bi-box"></i> Products
+                        </a>
+                    </li>
+                    <?php endif; ?>
+                    
+                    <?php if (in_array($user['role'], ['view', 'admin'])): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'reports' ? 'active' : '' ?>" href="/reports">
+                            <i class="bi bi-graph-up"></i> Reports
                         </a>
                     </li>
                     <?php endif; ?>

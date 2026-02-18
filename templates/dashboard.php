@@ -5,7 +5,7 @@
             <h1 class="page-title">
                 <i class="bi bi-speedometer2 me-2"></i>Dashboard
             </h1>
-            <p class="page-subtitle">Overview of your order processing operations</p>
+            <p class="page-subtitle">Operations Management System - Overview of orders, vehicle tracking, and operations</p>
         </div>
         <div class="d-flex align-items-center gap-3">
             <div class="d-flex align-items-center">
@@ -177,14 +177,16 @@ async function loadDashboard() {
 
 function updateSummaryCards(summary) {
     const container = document.getElementById('summaryCards');
+    const vehicleStats = summary.vehicle_tracking || {};
+    
     container.innerHTML = `
         <div class="col-md-3">
-            <div class="card bg-primary text-white clickable-card" onclick="window.location.href='/analytics/orders'" style="cursor: pointer;">
+            <div class="card bg-primary text-white clickable-card" onclick="window.location.href='/orders'" style="cursor: pointer;">
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
                         <div>
                             <h6 class="card-title">Total Orders</h6>
-                            <h3>${summary.totals.orders}</h3>
+                            <h3>${summary.totals.orders || 0}</h3>
                             <small class="opacity-75">View all orders</small>
                         </div>
                         <div class="align-self-center">
@@ -195,13 +197,13 @@ function updateSummaryCards(summary) {
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card bg-success text-white clickable-card" onclick="window.location.href='/analytics/dispatches'" style="cursor: pointer;">
+            <div class="card bg-success text-white clickable-card" onclick="window.location.href='/vehicles'" style="cursor: pointer;">
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
                         <div>
-                            <h6 class="card-title">Total Dispatches</h6>
-                            <h3>${summary.totals.dispatches}</h3>
-                            <small class="opacity-75">View all dispatches</small>
+                            <h6 class="card-title">Active Vehicles</h6>
+                            <h3>${vehicleStats.active_vehicles || 0}</h3>
+                            <small class="opacity-75">${vehicleStats.total_vehicles || 0} total vehicles</small>
                         </div>
                         <div class="align-self-center">
                             <i class="bi bi-truck fs-1"></i>
@@ -211,32 +213,32 @@ function updateSummaryCards(summary) {
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card bg-warning text-white clickable-card" onclick="window.location.href='/analytics/pending'" style="cursor: pointer;">
+            <div class="card bg-warning text-white clickable-card" onclick="window.location.href='/trips'" style="cursor: pointer;">
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
                         <div>
-                            <h6 class="card-title">Pending Orders</h6>
-                            <h3>${summary.pending.orders}</h3>
-                            <small class="opacity-75">View pending orders</small>
+                            <h6 class="card-title">Today's Trips</h6>
+                            <h3>${vehicleStats.today_trips || 0}</h3>
+                            <small class="opacity-75">${vehicleStats.total_trips || 0} total trips</small>
                         </div>
                         <div class="align-self-center">
-                            <i class="bi bi-hourglass-split fs-1"></i>
+                            <i class="bi bi-arrow-left-right fs-1"></i>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card bg-info text-white clickable-card" onclick="window.location.href='/analytics/parties'" style="cursor: pointer;">
+            <div class="card bg-info text-white clickable-card" onclick="window.location.href='/reports'" style="cursor: pointer;">
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
                         <div>
-                            <h6 class="card-title">Active Parties</h6>
-                            <h3>${summary.totals.parties}</h3>
-                            <small class="opacity-75">View all parties</small>
+                            <h6 class="card-title">Pending Orders</h6>
+                            <h3>${summary.pending.orders || 0}</h3>
+                            <small class="opacity-75">View reports</small>
                         </div>
                         <div class="align-self-center">
-                            <i class="bi bi-people fs-1"></i>
+                            <i class="bi bi-hourglass-split fs-1"></i>
                         </div>
                     </div>
                 </div>

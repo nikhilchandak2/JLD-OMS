@@ -3,9 +3,10 @@
         <div class="card shadow">
             <div class="card-body p-5">
                 <div class="text-center mb-4">
-                    <i class="bi bi-gem display-4 text-danger"></i>
+                    <img src="/assets/images/jld-logo.png" alt="JLD Minerals" height="80" class="mb-3" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div style="display:none;"><i class="bi bi-gem display-4 text-danger"></i></div>
                     <h2 class="mt-2 text-primary fw-bold">JLD Minerals</h2>
-                    <p class="text-muted">Order Processing System</p>
+                    <p class="text-muted">Operations Management System</p>
                     <p class="text-muted small">Please sign in to continue</p>
                 </div>
 
@@ -38,14 +39,6 @@
                     </div>
                 </form>
 
-                <div class="mt-4 text-center">
-                    <small class="text-muted">
-                        Demo Credentials:<br>
-                        Admin: admin@example.com / Passw0rd!<br>
-                        Entry: entry@example.com / Passw0rd!<br>
-                        View: view@example.com / Passw0rd!
-                    </small>
-                </div>
             </div>
         </div>
     </div>
@@ -91,16 +84,5 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     }
 });
 
-// Auto-fill demo credentials on click
-document.addEventListener('DOMContentLoaded', function() {
-    const demoText = document.querySelector('.text-muted');
-    if (demoText) {
-        demoText.style.cursor = 'pointer';
-        demoText.addEventListener('click', function() {
-            document.getElementById('email').value = 'admin@example.com';
-            document.getElementById('password').value = 'Passw0rd!';
-        });
-    }
-});
 </script>
 

@@ -165,12 +165,25 @@ class DashboardService
             WHERE status IN ('pending', 'partial')
         ")['count'];
         
+        // Vehicle tracking stats
+        $totalVehicles = $this->database->fetch("SELECT COUNT(*) as count FROM vehicles")['count'] ?? 0;
+        $activeVehicles = $this->database->fetch("SELECT COUNT(*) as count FROM vehicles WHERE status = 'active'")['count'] ?? 0;
+        $totalTrips = $this->database->fetch("SELECT COUNT(*) as count FROM vehicle_trips")['count'] ?? 0;
+        $todayTrips = $this->database->fetch("
+            SELECT COUNT(*) as count 
+            FROM vehicle_trips 
+            WHERE DATE(start_time) = CURDATE()
+        ")['count'] ?? 0;
+        
         return [
             'totals' => [
                 'orders' => (int)$totalOrders,
                 'dispatches' => (int)$totalDispatches,
                 'parties' => (int)$totalParties,
-                'products' => (int)$totalProducts
+                'products' => (int)$totalProducts,
+                'vehicles' => (int)$totalVehicles,
+                'active_vehicles' => (int)$activeVehicles,
+                'trips' => (int)$totalTrips
             ],
             'recent_activity' => [
                 'orders_last_7_days' => (int)$recentOrders,
@@ -178,6 +191,12 @@ class DashboardService
             ],
             'pending' => [
                 'orders' => (int)$pendingOrders
+            ],
+            'vehicle_tracking' => [
+                'total_vehicles' => (int)$totalVehicles,
+                'active_vehicles' => (int)$activeVehicles,
+                'total_trips' => (int)$totalTrips,
+                'today_trips' => (int)$todayTrips
             ]
         ];
     }
