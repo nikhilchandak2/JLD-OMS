@@ -122,6 +122,20 @@
             font-size: 1.5rem;
         }
         
+        .navbar-brand img {
+            width: 100%;
+            max-width: 200px;
+            height: auto;
+            max-height: 3rem;
+        }
+        
+        @media (max-width: 768px) {
+            .navbar-brand img {
+                max-width: 150px;
+                max-height: 2.5rem;
+            }
+        }
+        
         .navbar-dark .navbar-nav .nav-link {
             color: var(--jld-primary) !important;
             font-weight: 500;
@@ -425,8 +439,11 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container-fluid">
+            <button class="mobile-menu-toggle" onclick="toggleSidebar()" type="button">
+                <i class="bi bi-list"></i>
+            </button>
             <a class="navbar-brand" href="/dashboard" style="display: flex; align-items: center;">
-                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" style="height: 2rem; max-height: 2rem; width: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <span style="display:none; align-items: center;"><i class="bi bi-gem text-danger me-2"></i> JLD Minerals</span>
             </a>
             
@@ -447,10 +464,14 @@
         </div>
     </nav>
 
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
     <div class="container-fluid">
         <div class="row">
             <!-- Sidebar -->
-            <div class="col-md-2 sidebar p-3">
+            <div class="col-md-2 sidebar p-3" id="sidebar">
+                <div class="sidebar-logo">
+                    <img src="/assets/images/jld-logo.png" alt="JLD Minerals" onerror="this.style.display='none';">
+                </div>
                 <ul class="nav nav-pills flex-column">
                     <li class="nav-item">
                         <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'dashboard' ? 'active' : '' ?>" href="/dashboard">
@@ -549,7 +570,7 @@
             </div>
 
             <!-- Main Content -->
-            <div class="col-md-10 main-content">
+            <div class="col-md-10 main-content" style="margin-left: 250px;">
                 <?= $content ?>
             </div>
         </div>
