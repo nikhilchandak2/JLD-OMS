@@ -324,6 +324,19 @@ class WebController
         ]);
     }
     
+    public function ordersAnalytics(): void
+    {
+        $this->requireAuth();
+        
+        $user = $this->authService->getCurrentUser();
+        
+        $this->renderTemplate('orders-analytics', [
+            'title' => 'Orders & Dispatches Analytics',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+    
     private function renderTemplate(string $template, array $data = []): void
     {
         // Extract data to variables

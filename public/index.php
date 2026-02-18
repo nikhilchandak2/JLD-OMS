@@ -145,6 +145,7 @@ $router->get('/', 'WebController@dashboard');
 $router->get('/login', 'WebController@loginForm');
 $router->get('/dashboard', 'WebController@dashboard');
 $router->get('/orders', 'WebController@orders');
+$router->get('/orders/analytics', 'WebController@ordersAnalytics');
 $router->get('/orders/new', 'WebController@newOrder');
 $router->get('/orders/{id}', 'WebController@orderDetail');
 $router->get('/reports', 'WebController@reports');

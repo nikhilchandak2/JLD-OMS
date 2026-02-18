@@ -458,12 +458,32 @@
                         </a>
                     </li>
                     
+                    <!-- Orders & Dispatches Section -->
+                    <?php if (in_array($user['role'], ['entry', 'admin', 'view'])): ?>
+                    <li class="nav-item mt-3">
+                        <small class="text-white-50 text-uppercase px-3">Orders & Dispatches</small>
+                    </li>
                     <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
                     <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders') === 0 ? 'active' : '' ?>" href="/orders">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders') === 0 && strpos($_SERVER['REQUEST_URI'], '/orders/analytics') === false && strpos($_SERVER['REQUEST_URI'], '/orders/new') === false ? 'active' : '' ?>" href="/orders">
                             <i class="bi bi-clipboard-check"></i> Orders
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array($user['role'], ['entry', 'admin', 'view'])): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders/analytics') === 0 ? 'active' : '' ?>" href="/orders/analytics">
+                            <i class="bi bi-bar-chart"></i> Orders Analytics
+                        </a>
+                    </li>
+                    <?php endif; ?>
+                    <?php if (in_array($user['role'], ['view', 'admin'])): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'reports' ? 'active' : '' ?>" href="/reports">
+                            <i class="bi bi-graph-up"></i> Reports
+                        </a>
+                    </li>
+                    <?php endif; ?>
                     <?php endif; ?>
                     
                     <!-- Vehicle Tracking Section -->
@@ -496,7 +516,11 @@
                         </a>
                     </li>
                     
+                    <!-- Administration Section -->
                     <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
+                    <li class="nav-item mt-3">
+                        <small class="text-white-50 text-uppercase px-3">Administration</small>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/parties') === 0 ? 'active' : '' ?>" href="/admin/parties">
                             <i class="bi bi-building"></i> Parties
@@ -505,14 +529,6 @@
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/products') === 0 ? 'active' : '' ?>" href="/admin/products">
                             <i class="bi bi-box"></i> Products
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    
-                    <?php if (in_array($user['role'], ['view', 'admin'])): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'reports' ? 'active' : '' ?>" href="/reports">
-                            <i class="bi bi-graph-up"></i> Reports
                         </a>
                     </li>
                     <?php endif; ?>
