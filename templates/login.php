@@ -3,7 +3,7 @@
         <div class="card shadow">
             <div class="card-body p-5">
                 <div class="text-center mb-4">
-                    <img src="/assets/images/jld-logo.png" alt="JLD Minerals" height="80" class="mb-3" style="max-width: 200px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="/assets/images/jld-logo.png" alt="JLD Minerals" class="mb-3" style="max-width: 300px; height: auto; max-height: 120px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <div style="display:none; text-align: center;">
                         <i class="bi bi-gem display-4 text-danger"></i>
                         <h2 class="mt-2 text-primary fw-bold">JLD Minerals</h2>
