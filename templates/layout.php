@@ -473,6 +473,36 @@
                     </li>
                     <?php endif; ?>
                     
+                    <!-- GPS/Fuel Tracking Section -->
+                    <li class="nav-item mt-3">
+                        <small class="text-white-50 text-uppercase px-3">Vehicle Tracking</small>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'vehicles' ? 'active' : '' ?>" href="/vehicles">
+                            <i class="bi bi-truck"></i> Vehicles
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'tracking' ? 'active' : '' ?>" href="/tracking">
+                            <i class="bi bi-geo-alt"></i> Live Tracking
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'trips' ? 'active' : '' ?>" href="/trips">
+                            <i class="bi bi-arrow-left-right"></i> Trips
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'geofences' ? 'active' : '' ?>" href="/geofences">
+                            <i class="bi bi-geo-fill"></i> Geofences
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'fuel' ? 'active' : '' ?>" href="/fuel">
+                            <i class="bi bi-fuel-pump"></i> Fuel Management
+                        </a>
+                    </li>
+                    
                     <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/parties') === 0 ? 'active' : '' ?>" href="/admin/parties">
