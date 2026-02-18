@@ -426,7 +426,7 @@
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container-fluid">
             <a class="navbar-brand" href="/dashboard" style="display: flex; align-items: center;">
-                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" style="height: 1.5rem; max-height: 1.5rem; width: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" style="height: 2rem; max-height: 2rem; width: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <span style="display:none; align-items: center;"><i class="bi bi-gem text-danger me-2"></i> JLD Minerals</span>
             </a>
             
