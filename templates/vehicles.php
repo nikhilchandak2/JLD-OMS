@@ -276,7 +276,7 @@ function saveVehicle() {
         method: method,
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-Token': '<?= CsrfMiddleware::getToken() ?>'
+            'X-CSRF-Token': '<?= $csrf_token ?>'
         },
         body: JSON.stringify(data)
     })
@@ -299,7 +299,7 @@ function deleteVehicle(id) {
     fetch(`/api/vehicles/${id}`, {
         method: 'DELETE',
         headers: {
-            'X-CSRF-Token': '<?= CsrfMiddleware::getToken() ?>'
+            'X-CSRF-Token': '<?= $csrf_token ?>'
         }
     })
     .then(r => r.json())

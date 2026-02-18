@@ -215,7 +215,7 @@ function saveGeofence() {
         method: method,
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-Token': '<?= CsrfMiddleware::getToken() ?>'
+            'X-CSRF-Token': '<?= $csrf_token ?>'
         },
         body: JSON.stringify(data)
     })
@@ -238,7 +238,7 @@ function deleteGeofence(id) {
     fetch(`/api/geofences/${id}`, {
         method: 'DELETE',
         headers: {
-            'X-CSRF-Token': '<?= CsrfMiddleware::getToken() ?>'
+            'X-CSRF-Token': '<?= $csrf_token ?>'
         }
     })
     .then(r => r.json())
