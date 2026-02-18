@@ -3,10 +3,12 @@
         <div class="card shadow">
             <div class="card-body p-5">
                 <div class="text-center mb-4">
-                    <img src="/assets/images/jld-logo.png" alt="JLD Minerals" height="80" class="mb-3" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                    <div style="display:none;"><i class="bi bi-gem display-4 text-danger"></i></div>
-                    <h2 class="mt-2 text-primary fw-bold">JLD Minerals</h2>
-                    <p class="text-muted">Operations Management System</p>
+                    <img src="/assets/images/jld-logo.png" alt="JLD Minerals" height="80" class="mb-3" style="max-width: 200px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div style="display:none; text-align: center;">
+                        <i class="bi bi-gem display-4 text-danger"></i>
+                        <h2 class="mt-2 text-primary fw-bold">JLD Minerals</h2>
+                    </div>
+                    <p class="text-muted mt-2">Operations Management System</p>
                     <p class="text-muted small">Please sign in to continue</p>
                 </div>
 
