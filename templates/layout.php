@@ -541,6 +541,50 @@
             }
         }
     </style>
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (sidebar && overlay) {
+                sidebar.classList.toggle('show');
+                overlay.classList.toggle('show');
+            }
+        }
+        
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', function(event) {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.querySelector('.mobile-menu-toggle');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            if (window.innerWidth <= 991 && sidebar && toggle && overlay) {
+                if (!sidebar.contains(event.target) && !toggle.contains(event.target) && sidebar.classList.contains('show')) {
+                    sidebar.classList.remove('show');
+                    overlay.classList.remove('show');
+                }
+            }
+        });
+        
+        // Adjust main content margin on resize
+        window.addEventListener('resize', function() {
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+                if (window.innerWidth > 991) {
+                    mainContent.style.marginLeft = '250px';
+                } else {
+                    mainContent.style.marginLeft = '0';
+                }
+            }
+        });
+        
+        // Set initial margin on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent && window.innerWidth > 991) {
+                mainContent.style.marginLeft = '250px';
+            }
+        });
+    </script>
 </head>
 <body>
     <?php if (isset($user)): ?>
