@@ -795,33 +795,26 @@
 </head>
 <body>
     <?php if (isset($user)): ?>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light">
-        <div class="container-fluid">
-            <button class="mobile-menu-toggle" onclick="toggleSidebar()" type="button">
-                <i class="bi bi-list"></i>
-            </button>
-            <a class="navbar-brand" href="/dashboard" style="display: flex; align-items: center;">
-                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <span style="display:none; align-items: center;"><i class="bi bi-gem text-danger me-2"></i> JLD Minerals</span>
+    <!-- Mobile menu toggle (floating button) -->
+    <button class="mobile-menu-toggle mobile-toggle-fixed" onclick="toggleSidebar()" type="button" aria-label="Toggle menu">
+        <i class="bi bi-list"></i>
+    </button>
+    
+    <!-- User menu (floating button) -->
+    <div class="user-menu-fixed">
+        <div class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                <i class="bi bi-person-circle"></i> <?= htmlspecialchars($user['name']) ?>
             </a>
-            
-            <div class="navbar-nav ms-auto">
-                <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-person-circle"></i> <?= htmlspecialchars($user['name']) ?>
-                    </a>
-                    <ul class="dropdown-menu">
-                        <li><span class="dropdown-item-text">Role: <?= ucfirst($user['role']) ?></span></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="#" onclick="logout()">
-                            <i class="bi bi-box-arrow-right"></i> Logout
-                        </a></li>
-                    </ul>
-                </div>
-            </div>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><span class="dropdown-item-text">Role: <?= ucfirst($user['role']) ?></span></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" onclick="logout()">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a></li>
+            </ul>
         </div>
-    </nav>
+    </div>
 
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
     <div class="container-fluid">
