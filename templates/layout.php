@@ -81,29 +81,6 @@
             background: linear-gradient(135deg, var(--jld-primary) 0%, #1e1a4a 100%);
             min-height: 100vh;
             box-shadow: var(--jld-shadow-lg);
-            position: fixed;
-            left: 0;
-            top: 60px;
-            width: 250px;
-            z-index: 1000;
-            transition: transform 0.3s ease;
-            overflow-y: auto;
-            height: calc(100vh - 60px);
-        }
-        
-        .sidebar-logo {
-            padding: 1rem;
-            text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            margin-bottom: 1rem;
-        }
-        
-        .sidebar-logo img {
-            width: 100%;
-            max-width: 100%;
-            height: auto;
-            max-height: 80px;
-            object-fit: contain;
         }
         
         .sidebar .nav-link {
@@ -146,17 +123,9 @@
         }
         
         .navbar-brand img {
-            width: 100%;
-            max-width: 200px;
-            height: auto;
-            max-height: 3rem;
-        }
-        
-        @media (max-width: 768px) {
-            .navbar-brand img {
-                max-width: 150px;
-                max-height: 2.5rem;
-            }
+            height: 3.5rem;
+            max-height: 3.5rem;
+            width: auto;
         }
         
         .navbar-dark .navbar-nav .nav-link {
@@ -470,11 +439,23 @@
             }
             
             .sidebar {
+                position: fixed;
+                left: 0;
+                top: 60px;
+                width: 280px;
+                z-index: 1000;
                 transform: translateX(-100%);
+                transition: transform 0.3s ease;
+                overflow-y: auto;
+                height: calc(100vh - 60px);
             }
             
             .sidebar.show {
                 transform: translateX(0);
+            }
+            
+            body.sidebar-open {
+                overflow: hidden;
             }
             
             .main-content {
@@ -485,6 +466,11 @@
             .container-fluid {
                 padding-left: 1rem;
                 padding-right: 1rem;
+            }
+            
+            .navbar-brand img {
+                height: 2.5rem;
+                max-height: 2.5rem;
             }
         }
         
@@ -504,7 +490,7 @@
             }
             
             .navbar-brand img {
-                max-width: 120px;
+                height: 2rem;
                 max-height: 2rem;
             }
             
@@ -528,7 +514,7 @@
             }
             
             .navbar-brand img {
-                max-width: 100px;
+                height: 1.75rem;
                 max-height: 1.75rem;
             }
             
@@ -545,9 +531,20 @@
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const overlay = document.getElementById('sidebarOverlay');
+            const body = document.body;
+            
             if (sidebar && overlay) {
-                sidebar.classList.toggle('show');
-                overlay.classList.toggle('show');
+                const isOpen = sidebar.classList.contains('show');
+                
+                if (isOpen) {
+                    sidebar.classList.remove('show');
+                    overlay.classList.remove('show');
+                    body.classList.remove('sidebar-open');
+                } else {
+                    sidebar.classList.add('show');
+                    overlay.classList.add('show');
+                    body.classList.add('sidebar-open');
+                }
             }
         }
         
@@ -561,27 +558,20 @@
                 if (!sidebar.contains(event.target) && !toggle.contains(event.target) && sidebar.classList.contains('show')) {
                     sidebar.classList.remove('show');
                     overlay.classList.remove('show');
+                    document.body.classList.remove('sidebar-open');
                 }
             }
         });
         
-        // Adjust main content margin on resize
+        // Close sidebar on window resize to desktop
         window.addEventListener('resize', function() {
-            const mainContent = document.querySelector('.main-content');
-            if (mainContent) {
-                if (window.innerWidth > 991) {
-                    mainContent.style.marginLeft = '250px';
-                } else {
-                    mainContent.style.marginLeft = '0';
-                }
-            }
-        });
-        
-        // Set initial margin on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            const mainContent = document.querySelector('.main-content');
-            if (mainContent && window.innerWidth > 991) {
-                mainContent.style.marginLeft = '250px';
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            if (window.innerWidth > 991 && sidebar && overlay) {
+                sidebar.classList.remove('show');
+                overlay.classList.remove('show');
+                document.body.classList.remove('sidebar-open');
             }
         });
     </script>
@@ -621,9 +611,6 @@
         <div class="row">
             <!-- Sidebar -->
             <div class="col-md-2 sidebar p-3" id="sidebar">
-                <div class="sidebar-logo">
-                    <img src="/assets/images/jld-logo.png" alt="JLD Minerals" onerror="this.style.display='none';">
-                </div>
                 <ul class="nav nav-pills flex-column">
                     <li class="nav-item">
                         <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'dashboard' ? 'active' : '' ?>" href="/dashboard">
@@ -722,7 +709,7 @@
             </div>
 
             <!-- Main Content -->
-            <div class="col-md-10 main-content" style="margin-left: 250px;">
+            <div class="col-md-10 main-content">
                 <?= $content ?>
             </div>
         </div>
