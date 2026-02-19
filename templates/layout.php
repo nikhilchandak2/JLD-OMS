@@ -768,7 +768,7 @@
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', function(event) {
             const sidebar = document.getElementById('sidebar');
-            const toggle = document.querySelector('.mobile-menu-toggle');
+            const toggle = document.querySelector('.mobile-menu-toggle.mobile-toggle-fixed');
             const overlay = document.getElementById('sidebarOverlay');
             
             if (window.innerWidth <= 991 && sidebar && toggle && overlay) {
