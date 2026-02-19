@@ -420,13 +420,51 @@
             margin-right: 1rem;
         }
         
+        .mobile-toggle-fixed {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1050;
+            background: var(--jld-white);
+            border: 1px solid var(--jld-border);
+            border-radius: 0.5rem;
+            box-shadow: var(--jld-shadow);
+            padding: 0.75rem;
+            min-width: 44px;
+            min-height: 44px;
+        }
+        
+        .user-menu-fixed {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1050;
+            background: var(--jld-white);
+            border: 1px solid var(--jld-border);
+            border-radius: 0.5rem;
+            box-shadow: var(--jld-shadow);
+            padding: 0.5rem 1rem;
+        }
+        
+        .user-menu-fixed .nav-link {
+            color: var(--jld-primary);
+            padding: 0;
+        }
+        
+        @media (min-width: 992px) {
+            .mobile-toggle-fixed,
+            .user-menu-fixed {
+                display: none;
+            }
+        }
+        
         .sidebar-overlay {
             display: none;
             position: fixed;
-            top: 60px;
+            top: 0;
             left: 0;
             width: 100%;
-            height: calc(100vh - 60px);
+            height: 100vh;
             background: rgba(0, 0, 0, 0.5);
             z-index: 999;
         }
@@ -453,24 +491,21 @@
         
         /* Responsive adjustments */
         @media (max-width: 991px) {
-            .mobile-menu-toggle {
+            .mobile-menu-toggle.mobile-toggle-fixed {
                 display: block;
-                min-width: 44px;
-                min-height: 44px;
-                padding: 0.75rem;
             }
             
             .sidebar {
                 position: fixed;
                 left: 0;
-                top: 60px;
+                top: 0;
                 width: 280px;
                 max-width: 85vw;
                 z-index: 1000;
                 transform: translateX(-100%);
                 transition: transform 0.3s ease;
                 overflow-y: auto;
-                height: calc(100vh - 60px);
+                height: 100vh;
                 -webkit-overflow-scrolling: touch;
             }
             
