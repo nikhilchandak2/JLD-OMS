@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title><?= htmlspecialchars($title ?? 'JLD Minerals - Operations Management System') ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
@@ -432,10 +435,29 @@
             display: block;
         }
         
+        /* Mobile-first optimizations */
+        * {
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Touch-friendly targets */
+        .btn, .nav-link, .form-control, .form-select, .card {
+            touch-action: manipulation;
+        }
+        
+        /* Better mobile scrolling */
+        body {
+            -webkit-overflow-scrolling: touch;
+            overflow-x: hidden;
+        }
+        
         /* Responsive adjustments */
         @media (max-width: 991px) {
             .mobile-menu-toggle {
                 display: block;
+                min-width: 44px;
+                min-height: 44px;
+                padding: 0.75rem;
             }
             
             .sidebar {
@@ -443,11 +465,13 @@
                 left: 0;
                 top: 60px;
                 width: 280px;
+                max-width: 85vw;
                 z-index: 1000;
                 transform: translateX(-100%);
                 transition: transform 0.3s ease;
                 overflow-y: auto;
                 height: calc(100vh - 60px);
+                -webkit-overflow-scrolling: touch;
             }
             
             .sidebar.show {
@@ -456,37 +480,86 @@
             
             body.sidebar-open {
                 overflow: hidden;
+                position: fixed;
+                width: 100%;
             }
             
             .main-content {
                 margin-left: 0 !important;
                 width: 100% !important;
+                padding: 0.75rem !important;
             }
             
             .container-fluid {
-                padding-left: 1rem;
-                padding-right: 1rem;
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
             }
             
             .navbar-brand img {
                 height: 2.5rem;
                 max-height: 2.5rem;
             }
+            
+            /* Better card spacing on mobile */
+            .card {
+                margin-bottom: 1rem;
+            }
+            
+            .card-header {
+                padding: 1rem;
+                font-size: 0.95rem;
+            }
+            
+            /* Better table handling */
+            .table-responsive {
+                -webkit-overflow-scrolling: touch;
+                border-radius: 0.5rem;
+            }
+            
+            .table {
+                font-size: 0.875rem;
+            }
+            
+            .table th, .table td {
+                padding: 0.75rem 0.5rem;
+                white-space: nowrap;
+            }
         }
         
         @media (max-width: 768px) {
             .main-content {
-                padding: 1rem;
+                padding: 0.5rem !important;
             }
             
             .page-header {
                 flex-direction: column;
                 align-items: flex-start !important;
+                padding: 1rem 0.5rem;
+            }
+            
+            .page-title {
+                font-size: 1.5rem;
+                margin-bottom: 0.5rem;
+            }
+            
+            .page-subtitle {
+                font-size: 0.875rem;
+                margin-bottom: 1rem;
             }
             
             .page-header .btn {
-                margin-top: 1rem;
+                margin-top: 0.5rem;
                 width: 100%;
+                min-height: 44px;
+                font-size: 1rem;
+            }
+            
+            .navbar {
+                padding: 0.5rem 0.75rem;
+            }
+            
+            .navbar-brand {
+                font-size: 1.25rem;
             }
             
             .navbar-brand img {
@@ -495,22 +568,74 @@
             }
             
             .card-body {
-                padding: 1rem;
+                padding: 1rem 0.75rem;
+            }
+            
+            .card-header {
+                padding: 0.875rem;
+                font-size: 0.9rem;
             }
             
             .table-responsive {
-                font-size: 0.875rem;
+                font-size: 0.8rem;
+                margin: 0 -0.75rem;
+            }
+            
+            .table th, .table td {
+                padding: 0.625rem 0.375rem;
+                font-size: 0.8rem;
             }
             
             .btn {
-                padding: 0.5rem 1rem;
-                font-size: 0.875rem;
+                padding: 0.625rem 1rem;
+                font-size: 0.9rem;
+                min-height: 44px;
+            }
+            
+            .btn-sm {
+                min-height: 36px;
+                padding: 0.5rem 0.75rem;
+            }
+            
+            /* Form optimizations */
+            .form-control, .form-select {
+                font-size: 16px; /* Prevents zoom on iOS */
+                padding: 0.75rem;
+                min-height: 44px;
+            }
+            
+            .form-label {
+                font-size: 0.9rem;
+                margin-bottom: 0.5rem;
+            }
+            
+            /* Better spacing */
+            .mb-4 {
+                margin-bottom: 1.5rem !important;
+            }
+            
+            .mb-3 {
+                margin-bottom: 1rem !important;
+            }
+            
+            /* Modal optimizations */
+            .modal-dialog {
+                margin: 0.5rem;
+            }
+            
+            .modal-content {
+                border-radius: 0.5rem;
+            }
+            
+            .modal-header, .modal-body, .modal-footer {
+                padding: 1rem;
             }
         }
         
         @media (max-width: 576px) {
             .sidebar {
                 width: 100%;
+                max-width: 100%;
             }
             
             .navbar-brand img {
@@ -519,11 +644,68 @@
             }
             
             .page-title {
-                font-size: 1.5rem;
+                font-size: 1.25rem;
             }
             
             .page-subtitle {
-                font-size: 0.875rem;
+                font-size: 0.8rem;
+            }
+            
+            .main-content {
+                padding: 0.5rem !important;
+            }
+            
+            .card-body {
+                padding: 0.75rem 0.5rem;
+            }
+            
+            .card-header {
+                padding: 0.75rem;
+                font-size: 0.85rem;
+            }
+            
+            .table th, .table td {
+                padding: 0.5rem 0.25rem;
+                font-size: 0.75rem;
+            }
+            
+            .btn {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.85rem;
+            }
+            
+            /* Stack columns on very small screens */
+            .row > [class*="col-"] {
+                margin-bottom: 1rem;
+            }
+            
+            /* Better badge sizing */
+            .badge {
+                font-size: 0.75rem;
+                padding: 0.375rem 0.5rem;
+            }
+        }
+        
+        /* Landscape mobile optimizations */
+        @media (max-width: 991px) and (orientation: landscape) {
+            .sidebar {
+                width: 250px;
+            }
+            
+            .navbar {
+                padding: 0.25rem 0.5rem;
+            }
+            
+            .main-content {
+                padding: 0.5rem !important;
+            }
+        }
+        
+        /* Prevent text size adjustment on iOS */
+        @media screen and (max-width: 768px) {
+            html {
+                -webkit-text-size-adjust: 100%;
+                text-size-adjust: 100%;
             }
         }
     </style>
