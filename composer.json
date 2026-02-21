@@ -9,6 +9,7 @@
         "ext-mbstring": "*",
         "vlucas/phpdotenv": "^5.5",
         "phpoffice/phpspreadsheet": "^1.29",
+        "phpoffice/phpword": "^1.2",
         "tecnickcom/tcpdf": "^6.6",
         "phpunit/phpunit": "^10.0"
     },

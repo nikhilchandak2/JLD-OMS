@@ -116,6 +116,11 @@ $router->group('/api', function($router) {
         $router->get('/dispatches', 'DispatchController@index');
         $router->post('/orders/{id}/dispatches', 'DispatchController@create');
         
+        // Document Generation
+        $router->get('/documents/types', 'DocumentController@getTypes');
+        $router->post('/documents/generate', 'DocumentController@generate');
+        $router->get('/documents/download', 'DocumentController@download');
+        
         // Busy Integration
         $router->post('/busy/webhook', 'BusyIntegrationController@receiveInvoiceWebhook');
         $router->post('/busy/sync', 'BusyIntegrationController@syncInvoices');
