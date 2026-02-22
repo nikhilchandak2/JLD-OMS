@@ -60,8 +60,8 @@ let geofenceLayers = [];
 let autoRefreshInterval = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
-const DEFAULT_ZOOM = 15;
-const MIN_ZOOM = 14;
+const DEFAULT_ZOOM = 17;
+const MIN_ZOOM = 16;
 let mapboxStreetLayer, mapboxSatelliteLayer;
 
 function initMap() {
