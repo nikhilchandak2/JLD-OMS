@@ -24,7 +24,7 @@
 <div id="error-container" class="error-message"></div>
 
 <div class="alert alert-light border mb-3 py-2 small">
-    <strong>How updates work:</strong> Data comes from WheelsEye (webhook or cron for automatic updates). Enable <strong>Auto-refresh (15s)</strong> for near real-time map and route updates. The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24 hours). For newer satellite and detailed street maps, set <code>MAPBOX_ACCESS_TOKEN</code> in your server .env (free at <a href="https://account.mapbox.com/" target="_blank" rel="noopener">mapbox.com</a>); Mapbox Street and Mapbox Satellite will then appear in the layer switcher.
+    <strong>How updates work:</strong> Data comes from WheelsEye (webhook or cron for automatic updates). Enable <strong>Auto-refresh (15s)</strong> for near real-time map and route updates. The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24 hours). With <code>MAPBOX_ACCESS_TOKEN</code> set in .env, you get Mapbox layers and routes are <strong>snapped to roads</strong> (the line follows streets instead of cutting straight).
 </div>
 
 <div class="row">
@@ -109,6 +109,27 @@ function loadTracking() {
         });
 }
 
+// Mapbox Map Matching: snap GPS path to roads (max 100 points per request)
+function getMapMatchedPath(pathPoints, token) {
+    if (!pathPoints || pathPoints.length < 2 || !token) return Promise.resolve(null);
+    let points = pathPoints;
+    if (points.length > 100) {
+        const step = Math.ceil(points.length / 100);
+        points = points.filter((_, i) => i % step === 0 || i === points.length - 1);
+    }
+    const coords = points.map(p => p.lng + ',' + p.lat).join(';');
+    const url = 'https://api.mapbox.com/matching/v5/mapbox/driving/' + encodeURIComponent(coords) + '.json?access_token=' + encodeURIComponent(token) + '&geometries=geojson';
+    return fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (data.matchings && data.matchings[0] && data.matchings[0].geometry && data.matchings[0].geometry.coordinates) {
+                return data.matchings[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            }
+            return null;
+        })
+        .catch(() => null);
+}
+
 function syncFromWheelsEye() {
     const btn = document.getElementById('syncBtn');
     const origHtml = btn.innerHTML;
@@ -141,7 +162,7 @@ function syncFromWheelsEye() {
         });
 }
 
-function updateMap(vehicles) {
+async function updateMap(vehicles) {
     // Clear existing path polylines
     Object.values(pathLayers).forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
     pathLayers = {};
@@ -151,10 +172,24 @@ function updateMap(vehicles) {
     
     const allBounds = [];
     
-    vehicles.forEach((vehicle, idx) => {
+    // When Mapbox token is set, snap routes to roads; otherwise draw straight lines
+    const pathPromises = vehicles.map((vehicle, idx) => {
         const pathPoints = vehicle.path_points || [];
-        if (pathPoints.length >= 2) {
-            const latLngs = pathPoints.map(p => [p.lat, p.lng]);
+        if (pathPoints.length < 2) return Promise.resolve({ vehicle, idx, latLngs: null });
+        if (mapboxToken) {
+            return getMapMatchedPath(pathPoints, mapboxToken).then(latLngs => ({ vehicle, idx, latLngs }));
+        }
+        return Promise.resolve({ vehicle, idx, latLngs: pathPoints.map(p => [p.lat, p.lng]) });
+    });
+    
+    const pathResults = await Promise.all(pathPromises);
+    
+    pathResults.forEach(({ vehicle, idx, latLngs }) => {
+        if (!latLngs || latLngs.length < 2) {
+            const pathPoints = vehicle.path_points || [];
+            if (pathPoints.length >= 2) latLngs = pathPoints.map(p => [p.lat, p.lng]);
+        }
+        if (latLngs && latLngs.length >= 2) {
             const color = PATH_COLORS[idx % PATH_COLORS.length];
             const polyline = L.polyline(latLngs, {
                 color: color,
@@ -165,7 +200,9 @@ function updateMap(vehicles) {
             pathLayers[vehicle.id] = polyline;
             latLngs.forEach(ll => allBounds.push(ll));
         }
-        
+    });
+    
+    vehicles.forEach((vehicle, idx) => {
         if (vehicle.latest_tracking && vehicle.latest_tracking.latitude && vehicle.latest_tracking.longitude) {
             const lat = vehicle.latest_tracking.latitude;
             const lng = vehicle.latest_tracking.longitude;

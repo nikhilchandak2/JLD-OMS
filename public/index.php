@@ -15,6 +15,9 @@ use App\Middleware\CsrfMiddleware;
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->load();
 
+// Set timezone (default: India)
+date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'Asia/Kolkata');
+
 // Start session
 session_start();
 
