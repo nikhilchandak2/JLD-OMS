@@ -12,6 +12,10 @@
 
 <div id="error-container" class="error-message"></div>
 
+<div class="alert alert-light border mb-3 py-2 small">
+    <strong>How a trip is counted:</strong> Time starts when the vehicle <strong>enters the Pit</strong> geofence and stops when it <strong>enters the Stockpile</strong> geofence. That is recorded as one trip with start and end timestamps below.
+</div>
+
 <!-- Filters -->
 <div class="card mb-4">
     <div class="card-header">
@@ -72,8 +76,8 @@
                 <thead>
                     <tr>
                         <th>Vehicle</th>
-                        <th>Start Time</th>
-                        <th>End Time</th>
+                        <th>Entered Pit (Start)</th>
+                        <th>Entered Stockpile (End)</th>
                         <th>Source</th>
                         <th>Destination</th>
                         <th>Material</th>

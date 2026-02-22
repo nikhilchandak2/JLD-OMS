@@ -56,6 +56,7 @@ const mapboxToken = <?= json_encode($mapbox_token ?? '') ?>;
 let map;
 let markers = {};
 let pathLayers = {};
+let geofenceLayers = [];
 let autoRefreshInterval = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
@@ -94,19 +95,20 @@ function initMap() {
 }
 
 function loadTracking() {
-    fetch('/api/tracking/live?path_hours=24&path_limit=500', { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                updateMap(data.data);
-                updateVehiclesList(data.data);
-            } else {
-                showError(data.error || 'Failed to load tracking data');
-            }
-        })
-        .catch(e => {
-            showError('Error loading tracking: ' + e.message);
-        });
+    Promise.all([
+        fetch('/api/tracking/live?path_hours=24&path_limit=500', { credentials: 'same-origin' }).then(r => r.json()),
+        fetch('/api/geofences', { credentials: 'same-origin' }).then(r => r.json())
+    ]).then(([trackingRes, geofencesRes]) => {
+        if (trackingRes.success) {
+            const geofences = (geofencesRes.success && geofencesRes.data) ? geofencesRes.data : [];
+            updateMap(trackingRes.data, geofences);
+            updateVehiclesList(trackingRes.data);
+        } else {
+            showError(trackingRes.error || 'Failed to load tracking data');
+        }
+    }).catch(e => {
+        showError('Error loading tracking: ' + e.message);
+    });
 }
 
 // Mapbox Map Matching: snap GPS path to roads (max 100 points per request)
@@ -162,7 +164,11 @@ function syncFromWheelsEye() {
         });
 }
 
-async function updateMap(vehicles) {
+async function updateMap(vehicles, geofences) {
+    geofences = geofences || [];
+    // Clear existing geofence circles
+    geofenceLayers.forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
+    geofenceLayers = [];
     // Clear existing path polylines
     Object.values(pathLayers).forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
     pathLayers = {};
@@ -171,6 +177,27 @@ async function updateMap(vehicles) {
     markers = {};
     
     const allBounds = [];
+    
+    // Draw geofences (active only, from API)
+    geofences.forEach(g => {
+        const lat = Number(g.latitude);
+        const lng = Number(g.longitude);
+        const radius = Number(g.radius_meters) || 100;
+        if (isNaN(lat) || isNaN(lng)) return;
+        const isPit = g.geofence_type === 'pit';
+        const color = isPit ? '#2563eb' : '#059669';
+        const circle = L.circle([lat, lng], {
+            radius: radius,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.12,
+            weight: 2,
+        }).addTo(map);
+        circle.bindPopup('<strong>' + escapeHtml(g.name || 'Geofence') + '</strong><br>' +
+            (g.geofence_type ? escapeHtml(g.geofence_type) : '') + (g.material_type ? ' – ' + escapeHtml(g.material_type) : '') + '<br>Radius: ' + radius + ' m');
+        geofenceLayers.push(circle);
+        allBounds.push([lat, lng]);
+    });
     
     // When Mapbox token is set, snap routes to roads; otherwise draw straight lines
     const pathPromises = vehicles.map((vehicle, idx) => {
@@ -232,7 +259,7 @@ async function updateMap(vehicles) {
     
     if (allBounds.length > 0) {
         const group = L.latLngBounds(allBounds);
-        map.fitBounds(group.pad(0.08));
+        map.fitBounds(group.pad(0.12));
     }
 }
 

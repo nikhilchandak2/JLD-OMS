@@ -18,6 +18,10 @@
 
 <div id="error-container" class="error-message"></div>
 
+<div class="alert alert-light border mb-3 py-2 small">
+    <strong>One trip</strong> = time when vehicle <strong>entered Pit</strong> (start) until it <strong>entered Stockpile</strong> (end).
+</div>
+
 <!-- Statistics -->
 <div class="row mb-4" id="statistics">
     <!-- Will be populated by JavaScript -->
@@ -35,8 +39,8 @@
             <table class="table table-striped" id="tripsTable">
                 <thead>
                     <tr>
-                        <th>Start Time</th>
-                        <th>End Time</th>
+                        <th>Entered Pit (Start)</th>
+                        <th>Entered Stockpile (End)</th>
                         <th>Source</th>
                         <th>Destination</th>
                         <th>Material</th>
