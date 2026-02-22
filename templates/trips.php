@@ -170,7 +170,7 @@ function renderStatistics(stats) {
         <div class="col-md-3">
             <div class="card text-center">
                 <div class="card-body">
-                    <h3 class="text-info">${(stats.total_distance || 0).toFixed(2)}</h3>
+                    <h3 class="text-info">${(Number(stats.total_distance) || 0).toFixed(2)}</h3>
                     <p class="text-muted mb-0">Total Distance (km)</p>
                 </div>
             </div>
@@ -178,7 +178,7 @@ function renderStatistics(stats) {
         <div class="col-md-3">
             <div class="card text-center">
                 <div class="card-body">
-                    <h3 class="text-warning">${(stats.total_fuel_consumed || 0).toFixed(2)}</h3>
+                    <h3 class="text-warning">${(Number(stats.total_fuel_consumed) || 0).toFixed(2)}</h3>
                     <p class="text-muted mb-0">Total Fuel (L)</p>
                 </div>
             </div>
@@ -204,9 +204,9 @@ function renderTrips(trips) {
             <td>${escapeHtml(trip.source_geofence_name || 'N/A')}</td>
             <td>${escapeHtml(trip.destination_geofence_name || 'N/A')}</td>
             <td>${escapeHtml(trip.material_type || '-')}</td>
-            <td>${trip.distance_km ? trip.distance_km.toFixed(2) : '-'}</td>
-            <td>${trip.duration_minutes ? trip.duration_minutes + ' min' : '-'}</td>
-            <td>${trip.fuel_consumed_liters ? trip.fuel_consumed_liters.toFixed(2) : '-'}</td>
+            <td>${trip.distance_km != null && trip.distance_km !== '' ? Number(trip.distance_km).toFixed(2) : '-'}</td>
+            <td>${trip.duration_minutes != null && trip.duration_minutes !== '' ? trip.duration_minutes + ' min' : '-'}</td>
+            <td>${trip.fuel_consumed_liters != null && trip.fuel_consumed_liters !== '' ? Number(trip.fuel_consumed_liters).toFixed(2) : '-'}</td>
             <td><span class="badge bg-${trip.status === 'completed' ? 'success' : trip.status === 'in_progress' ? 'warning' : 'secondary'}">${escapeHtml(trip.status)}</span></td>
         `;
         tbody.appendChild(row);
