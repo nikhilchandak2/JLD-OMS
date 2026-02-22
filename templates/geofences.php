@@ -155,7 +155,7 @@ function renderGeofences() {
             <td><strong>${escapeHtml(g.name)}</strong></td>
             <td><span class="badge bg-${g.geofence_type === 'pit' ? 'primary' : 'info'}">${escapeHtml(g.geofence_type)}</span></td>
             <td>${escapeHtml(g.material_type || '-')}</td>
-            <td>${g.latitude.toFixed(6)}, ${g.longitude.toFixed(6)}</td>
+            <td>${g.latitude != null && g.longitude != null ? (Number(g.latitude).toFixed(6) + ', ' + Number(g.longitude).toFixed(6)) : '-'}</td>
             <td>${g.radius_meters}m</td>
             <td><span class="badge bg-${g.is_active ? 'success' : 'secondary'}">${g.is_active ? 'Active' : 'Inactive'}</span></td>
             <td>
