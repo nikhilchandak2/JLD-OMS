@@ -60,38 +60,34 @@ let geofenceLayers = [];
 let autoRefreshInterval = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
-let streetLayer, satelliteLayer;
+const DEFAULT_ZOOM = 15;
+const MIN_ZOOM = 14;
+let mapboxStreetLayer, mapboxSatelliteLayer;
 
 function initMap() {
-    map = L.map('map').setView([23.0225, 72.5714], 13); // Default to Gujarat, India
+    map = L.map('map', { zoomControl: true }).setView([23.0225, 72.5714], DEFAULT_ZOOM);
 
-    streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap',
-        maxZoom: 19
-    });
-
-    satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '© Esri',
-        maxZoom: 19
-    });
-
-    const baseLayers = {
-        'Street (OSM)': streetLayer,
-        'Satellite (ESRI)': satelliteLayer
-    };
     if (mapboxToken) {
-        baseLayers['Mapbox Street'] = L.tileLayer(
+        mapboxStreetLayer = L.tileLayer(
             'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=' + mapboxToken,
             { attribution: '© Mapbox', maxZoom: 22 }
         );
-        baseLayers['Mapbox Satellite'] = L.tileLayer(
+        mapboxSatelliteLayer = L.tileLayer(
             'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}?access_token=' + mapboxToken,
             { attribution: '© Mapbox', maxZoom: 22 }
         );
+        mapboxStreetLayer.addTo(map);
+        L.control.layers(
+            { 'Mapbox Street': mapboxStreetLayer, 'Mapbox Satellite': mapboxSatelliteLayer },
+            null,
+            { position: 'topright' }
+        ).addTo(map);
+    } else {
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+            maxZoom: 19
+        }).addTo(map);
     }
-
-    streetLayer.addTo(map);
-    L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
 }
 
 function loadTracking() {
@@ -276,8 +272,14 @@ async function updateMap(vehicles, geofences) {
     });
     
     if (allBounds.length > 0) {
-        const group = L.latLngBounds(allBounds);
-        map.fitBounds(group.pad(0.12));
+        const bounds = L.latLngBounds(allBounds);
+        const center = bounds.getCenter();
+        if (allBounds.length === 1 || bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 0.01) {
+            map.setView(center, DEFAULT_ZOOM);
+        } else {
+            map.fitBounds(bounds.pad(0.15));
+            if (map.getZoom() < MIN_ZOOM) map.setZoom(MIN_ZOOM);
+        }
     }
 }
 
