@@ -52,13 +52,27 @@ let map;
 let markers = {};
 let autoRefreshInterval = null;
 
+let streetLayer, satelliteLayer;
+
 function initMap() {
     map = L.map('map').setView([23.0225, 72.5714], 13); // Default to Gujarat, India
-    
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
+
+    streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
         maxZoom: 19
-    }).addTo(map);
+    });
+
+    satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '© Esri',
+        maxZoom: 19
+    });
+
+    streetLayer.addTo(map);
+    L.control.layers(
+        { 'Street': streetLayer, 'Satellite': satelliteLayer },
+        null,
+        { position: 'topright' }
+    ).addTo(map);
 }
 
 function loadTracking() {
