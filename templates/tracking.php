@@ -24,7 +24,7 @@
 <div id="error-container" class="error-message"></div>
 
 <div class="alert alert-light border mb-3 py-2 small">
-    <strong>How updates work:</strong> Data comes from WheelsEye (webhook or cron for automatic updates). Enable <strong>Auto-refresh (15s)</strong> for near real-time map and route updates. The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24 hours). With <code>MAPBOX_ACCESS_TOKEN</code> set in .env, you get Mapbox layers and routes are <strong>snapped to roads</strong> (the line follows streets instead of cutting straight).
+    <strong>How updates work:</strong> With <strong>Auto-refresh (15s)</strong> on, the page pulls fresh data from WheelsEye every 15 seconds and updates the map (no need to click Sync). The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24h). With <code>MAPBOX_ACCESS_TOKEN</code> in .env you get Mapbox layers and routes <strong>snapped to roads</strong>.
 </div>
 
 <div class="row">
@@ -161,6 +161,24 @@ function syncFromWheelsEye() {
         .finally(() => {
             btn.disabled = false;
             btn.innerHTML = origHtml;
+        });
+}
+
+// Quiet sync (no alert, no button change) – used by auto-refresh every 15s to pull fresh data from WheelsEye
+function syncFromWheelsEyeQuiet() {
+    return fetch('/api/tracking/sync', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' }
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) showError(data.message || data.error || 'Sync failed');
+            return data;
+        })
+        .catch(e => {
+            showError('Sync failed: ' + e.message);
+            return { success: false };
         });
 }
 
@@ -331,11 +349,16 @@ function getStatusBadgeColor(status) {
     }
 }
 
+function doAutoRefreshCycle() {
+    syncFromWheelsEyeQuiet().then(() => loadTracking());
+}
+
 function toggleAutoRefresh() {
     const enabled = document.getElementById('autoRefresh').checked;
     
     if (enabled) {
-        autoRefreshInterval = setInterval(loadTracking, 15000); // 15 seconds real-time
+        doAutoRefreshCycle(); // run once immediately
+        autoRefreshInterval = setInterval(doAutoRefreshCycle, 15000); // then every 15s: sync from WheelsEye then refresh map
     } else {
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);
