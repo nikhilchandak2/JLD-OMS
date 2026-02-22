@@ -82,7 +82,11 @@ function syncFromWheelsEye() {
     const origHtml = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Syncing...';
-    fetch('/api/tracking/sync', { method: 'POST', credentials: 'same-origin' })
+    fetch('/api/tracking/sync', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' }
+    })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
