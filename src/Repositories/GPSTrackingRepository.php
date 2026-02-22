@@ -105,4 +105,26 @@ class GPSTrackingRepository
             return new GPSTrackingData($row);
         }, $results);
     }
+
+    /**
+     * Get recent path points for a vehicle (oldest first) for drawing route polyline.
+     * @param int $vehicleId
+     * @param int $hours Last N hours of data
+     * @param int $limit Max points to return
+     * @return GPSTrackingData[]
+     */
+    public function getRecentPathForVehicle(int $vehicleId, int $hours = 24, int $limit = 1000): array
+    {
+        $since = date('Y-m-d H:i:s', time() - ($hours * 3600));
+        $sql = "
+            SELECT * FROM gps_tracking_data
+            WHERE vehicle_id = ? AND timestamp >= ?
+            ORDER BY timestamp ASC
+            LIMIT ?
+        ";
+        $results = $this->database->fetchAll($sql, [$vehicleId, $since, $limit]);
+        return array_map(function($row) {
+            return new GPSTrackingData($row);
+        }, $results);
+    }
 }

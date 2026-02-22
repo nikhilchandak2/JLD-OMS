@@ -15,13 +15,17 @@
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
             <label class="ms-3">
-                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"> Auto-refresh (30s)
+                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"> Auto-refresh (15s)
             </label>
         </div>
     </div>
 </div>
 
 <div id="error-container" class="error-message"></div>
+
+<div class="alert alert-light border mb-3 py-2 small">
+    <strong>How updates work:</strong> Data comes from WheelsEye (webhook or cron for automatic updates). Enable <strong>Auto-refresh (15s)</strong> for near real-time map and route updates. The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24 hours).
+</div>
 
 <div class="row">
     <div class="col-md-9">
@@ -50,7 +54,9 @@
 <script>
 let map;
 let markers = {};
+let pathLayers = {};
 let autoRefreshInterval = null;
+const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
 let streetLayer, satelliteLayer;
 
@@ -76,7 +82,7 @@ function initMap() {
 }
 
 function loadTracking() {
-    fetch('/api/tracking/live', { credentials: 'same-origin' })
+    fetch('/api/tracking/live?path_hours=24&path_limit=500', { credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
@@ -124,19 +130,39 @@ function syncFromWheelsEye() {
 }
 
 function updateMap(vehicles) {
+    // Clear existing path polylines
+    Object.values(pathLayers).forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
+    pathLayers = {};
     // Clear existing markers
     Object.values(markers).forEach(marker => map.removeLayer(marker));
     markers = {};
     
-    vehicles.forEach(vehicle => {
+    const allBounds = [];
+    
+    vehicles.forEach((vehicle, idx) => {
+        const pathPoints = vehicle.path_points || [];
+        if (pathPoints.length >= 2) {
+            const latLngs = pathPoints.map(p => [p.lat, p.lng]);
+            const color = PATH_COLORS[idx % PATH_COLORS.length];
+            const polyline = L.polyline(latLngs, {
+                color: color,
+                weight: 4,
+                opacity: 0.8,
+            }).addTo(map);
+            polyline.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – route (last 24h)');
+            pathLayers[vehicle.id] = polyline;
+            latLngs.forEach(ll => allBounds.push(ll));
+        }
+        
         if (vehicle.latest_tracking && vehicle.latest_tracking.latitude && vehicle.latest_tracking.longitude) {
             const lat = vehicle.latest_tracking.latitude;
             const lng = vehicle.latest_tracking.longitude;
+            const color = PATH_COLORS[idx % PATH_COLORS.length];
             
             const icon = L.divIcon({
                 className: 'vehicle-marker',
-                html: `<div style="background: ${getStatusColor(vehicle.status)}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-                iconSize: [20, 20]
+                html: `<div style="background: ${color}; width: 22px; height: 22px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
+                iconSize: [22, 22]
             });
             
             const marker = L.marker([lat, lng], { icon }).addTo(map);
@@ -151,13 +177,13 @@ function updateMap(vehicles) {
             marker.bindPopup(popup);
             
             markers[vehicle.id] = marker;
+            allBounds.push([lat, lng]);
         }
     });
     
-    // Fit map to show all markers
-    if (Object.keys(markers).length > 0) {
-        const group = new L.featureGroup(Object.values(markers));
-        map.fitBounds(group.getBounds().pad(0.1));
+    if (allBounds.length > 0) {
+        const group = L.latLngBounds(allBounds);
+        map.fitBounds(group.pad(0.08));
     }
 }
 
@@ -233,7 +259,7 @@ function toggleAutoRefresh() {
     const enabled = document.getElementById('autoRefresh').checked;
     
     if (enabled) {
-        autoRefreshInterval = setInterval(loadTracking, 30000); // 30 seconds
+        autoRefreshInterval = setInterval(loadTracking, 15000); // 15 seconds real-time
     } else {
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);

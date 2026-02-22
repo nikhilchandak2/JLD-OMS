@@ -60,14 +60,18 @@ The link is a **pull API**: it returns current GPS position for all vehicles on 
 - Sync matches each API vehicle to an OMS vehicle by **vehicle number** (e.g. `RJ07GD5241`) or by **GPS device IMEI** (e.g. `866992050999441`).
 - If a vehicle appears in the API but not in OMS, add it in Vehicles with the same **Vehicle number** (and optionally the same **GPS Device IMEI**), then run sync again.
 
-### Optional: automate with cron
+### Optional: automate with cron (no need to click Sync)
 
-To refresh locations every 5 minutes (example with cron, using a secret sync key or logged-in session):
+1. In your `.env` on the server, set a secret:  
+   `TRACKING_SYNC_KEY=your-random-secret-string`
+2. Call the sync URL every few minutes (e.g. every 5 min). No login needed when the key is correct:
 
 ```bash
-# Example: every 5 min (use a script that passes auth or a dedicated sync secret)
-*/5 * * * * curl -s -b "session_cookie_or_use_sync_token" https://oms.jldminerals.com/api/tracking/sync
+# Every 5 minutes (replace YOUR_SECRET with the value of TRACKING_SYNC_KEY)
+*/5 * * * * curl -s "https://oms.jldminerals.com/api/tracking/sync?key=YOUR_SECRET"
 ```
+
+Then the portal will have fresh locations without you clicking Sync. Turn on **Auto-refresh (30s)** on the Live Tracking page to refresh the map from the latest saved data.
 
 ---
 

@@ -39,17 +39,28 @@ class TrackingController
             $vehicles = $this->vehicleRepository->findAll(['status' => 'active']);
             $latestTracking = $this->gpsTrackingRepository->getLatestForAllVehicles();
             
-            // Create a map of vehicle_id => latest tracking
             $trackingMap = [];
             foreach ($latestTracking as $tracking) {
                 $trackingMap[$tracking->vehicleId] = $tracking->toArray();
             }
             
-            // Combine vehicles with their latest tracking data
+            $pathHours = isset($_GET['path_hours']) ? (int)$_GET['path_hours'] : 24;
+            $pathLimit = isset($_GET['path_limit']) ? min((int)$_GET['path_limit'], 2000) : 500;
+            $pathHours = max(1, min(168, $pathHours)); // 1h to 7 days
+            
             $result = [];
             foreach ($vehicles as $vehicle) {
                 $vehicleData = $vehicle->toArray();
                 $vehicleData['latest_tracking'] = $trackingMap[$vehicle->id] ?? null;
+                $vehicleData['path_points'] = [];
+                $pathPoints = $this->gpsTrackingRepository->getRecentPathForVehicle($vehicle->id, $pathHours, $pathLimit);
+                foreach ($pathPoints as $p) {
+                    $vehicleData['path_points'][] = [
+                        'lat' => (float)$p->latitude,
+                        'lng' => (float)$p->longitude,
+                        'timestamp' => $p->timestamp,
+                    ];
+                }
                 $result[] = $vehicleData;
             }
             
@@ -112,13 +123,18 @@ class TrackingController
     /**
      * Sync current locations from WheelsEye vendor API into the database.
      * GET or POST /api/tracking/sync
+     * Auth: logged-in user, OR valid TRACKING_SYNC_KEY (for cron: GET /api/tracking/sync?key=your-secret)
      */
     public function syncFromWheelsEye(): void
     {
         header('Content-Type: application/json');
 
+        $syncKey = $_GET['key'] ?? $_SERVER['HTTP_X_SYNC_KEY'] ?? null;
+        $validSyncKey = $_ENV['TRACKING_SYNC_KEY'] ?? null;
+        $allowedByKey = $validSyncKey !== null && $validSyncKey !== '' && hash_equals((string)$validSyncKey, (string)$syncKey);
         $user = $this->authService->getCurrentUser();
-        if (!$user) {
+
+        if (!$allowedByKey && !$user) {
             http_response_code(401);
             echo json_encode(['error' => 'Unauthorized']);
             return;
