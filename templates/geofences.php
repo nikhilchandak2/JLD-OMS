@@ -13,6 +13,9 @@
     </div>
 </div>
 
+<div class="alert alert-light border mb-3 py-2 small">
+    <strong>How geofences work:</strong> Geofences are <strong>portal-only</strong> and do not sync to WheelsEye. As soon as a vehicle's position is received (via WheelsEye webhook or Sync from WheelsEye), the portal checks if it entered or left a geofence and records entry/exit events. No need to configure anything on the device.
+</div>
 <div id="error-container" class="error-message"></div>
 <div id="success-container" class="success-message"></div>
 

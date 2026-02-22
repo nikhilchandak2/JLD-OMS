@@ -24,7 +24,7 @@
 <div id="error-container" class="error-message"></div>
 
 <div class="alert alert-light border mb-3 py-2 small">
-    <strong>How updates work:</strong> Data comes from WheelsEye (webhook or cron for automatic updates). Enable <strong>Auto-refresh (15s)</strong> for near real-time map and route updates. The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24 hours).
+    <strong>How updates work:</strong> Data comes from WheelsEye (webhook or cron for automatic updates). Enable <strong>Auto-refresh (15s)</strong> for near real-time map and route updates. The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24 hours). For newer satellite and detailed street maps, set <code>MAPBOX_ACCESS_TOKEN</code> in your server .env (free at <a href="https://account.mapbox.com/" target="_blank" rel="noopener">mapbox.com</a>); Mapbox Street and Mapbox Satellite will then appear in the layer switcher.
 </div>
 
 <div class="row">
@@ -52,6 +52,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+const mapboxToken = <?= json_encode($mapbox_token ?? '') ?>;
 let map;
 let markers = {};
 let pathLayers = {};
@@ -73,12 +74,23 @@ function initMap() {
         maxZoom: 19
     });
 
+    const baseLayers = {
+        'Street (OSM)': streetLayer,
+        'Satellite (ESRI)': satelliteLayer
+    };
+    if (mapboxToken) {
+        baseLayers['Mapbox Street'] = L.tileLayer(
+            'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=' + mapboxToken,
+            { attribution: '© Mapbox', maxZoom: 22 }
+        );
+        baseLayers['Mapbox Satellite'] = L.tileLayer(
+            'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}?access_token=' + mapboxToken,
+            { attribution: '© Mapbox', maxZoom: 22 }
+        );
+    }
+
     streetLayer.addTo(map);
-    L.control.layers(
-        { 'Street': streetLayer, 'Satellite': satelliteLayer },
-        null,
-        { position: 'topright' }
-    ).addTo(map);
+    L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
 }
 
 function loadTracking() {

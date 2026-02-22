@@ -253,7 +253,8 @@ class WebController
         $this->renderTemplate('tracking', [
             'title' => 'Live Tracking',
             'user' => $user,
-            'csrf_token' => CsrfMiddleware::getToken()
+            'csrf_token' => CsrfMiddleware::getToken(),
+            'mapbox_token' => $_ENV['MAPBOX_ACCESS_TOKEN'] ?? '',
         ]);
     }
     

@@ -6,10 +6,12 @@ use App\Models\GPSTrackingData;
 use App\Repositories\VehicleRepository;
 use App\Repositories\GPSDeviceRepository;
 use App\Repositories\GPSTrackingRepository;
+use App\Services\TripDetectionService;
 
 /**
  * Fetches current vehicle locations from WheelsEye API (vendor pull API)
  * and saves them into gps_tracking_data for the dashboard.
+ * Also triggers geofence entry/exit and trip detection (same as webhook).
  */
 class WheelsEyeApiService
 {
@@ -19,12 +21,14 @@ class WheelsEyeApiService
     private VehicleRepository $vehicleRepository;
     private GPSDeviceRepository $gpsDeviceRepository;
     private GPSTrackingRepository $gpsTrackingRepository;
+    private TripDetectionService $tripDetectionService;
 
     public function __construct()
     {
         $this->vehicleRepository = new VehicleRepository();
         $this->gpsDeviceRepository = new GPSDeviceRepository();
         $this->gpsTrackingRepository = new GPSTrackingRepository();
+        $this->tripDetectionService = new TripDetectionService();
     }
 
     /**
@@ -108,6 +112,7 @@ class WheelsEyeApiService
             ]);
 
             $this->gpsTrackingRepository->create($tracking);
+            $this->tripDetectionService->processTrackingData($vehicle->id, $tracking);
             $synced++;
         }
 
