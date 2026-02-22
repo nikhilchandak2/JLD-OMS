@@ -53,6 +53,9 @@
                 <button class="btn btn-primary" onclick="loadTrips()">
                     <i class="bi bi-search me-1"></i> Filter
                 </button>
+                <label class="ms-3">
+                    <input type="checkbox" id="autoRefreshTrips" onchange="toggleTripsAutoRefresh()"> Auto-refresh (15s)
+                </label>
             </div>
         </div>
     </div>
@@ -96,6 +99,21 @@
 </div>
 
 <script>
+let tripsAutoRefreshInterval = null;
+
+function toggleTripsAutoRefresh() {
+    const enabled = document.getElementById('autoRefreshTrips').checked;
+    if (enabled) {
+        loadTrips();
+        tripsAutoRefreshInterval = setInterval(loadTrips, 15000);
+    } else {
+        if (tripsAutoRefreshInterval) {
+            clearInterval(tripsAutoRefreshInterval);
+            tripsAutoRefreshInterval = null;
+        }
+    }
+}
+
 function loadTrips() {
     document.getElementById('loading').style.display = 'flex';
     

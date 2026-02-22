@@ -57,12 +57,13 @@ class TripController
             
             if (!empty($_GET['start_date'])) {
                 $sql .= " AND t.start_time >= ?";
-                $params[] = $_GET['start_date'];
+                $params[] = strlen($_GET['start_date']) <= 10 ? $_GET['start_date'] . ' 00:00:00' : $_GET['start_date'];
             }
             
             if (!empty($_GET['end_date'])) {
                 $sql .= " AND t.start_time <= ?";
-                $params[] = $_GET['end_date'];
+                $endDate = $_GET['end_date'];
+                $params[] = strlen($endDate) <= 10 ? $endDate . ' 23:59:59' : $endDate;
             }
             
             if (!empty($_GET['material_type'])) {
@@ -198,10 +199,26 @@ class TripController
     {
         $whereClause = "WHERE 1=1";
         $statParams = [];
-        
-        if (!empty($params[0])) {
+        $i = 0;
+        if (!empty($params[$i])) {
             $whereClause .= " AND vehicle_id = ?";
-            $statParams[] = $params[0];
+            $statParams[] = $params[$i++];
+        }
+        if (!empty($params[$i])) {
+            $whereClause .= " AND start_time >= ?";
+            $statParams[] = $params[$i++];
+        }
+        if (!empty($params[$i])) {
+            $whereClause .= " AND start_time <= ?";
+            $statParams[] = $params[$i++];
+        }
+        if (!empty($params[$i])) {
+            $whereClause .= " AND material_type = ?";
+            $statParams[] = $params[$i++];
+        }
+        if (!empty($params[$i])) {
+            $whereClause .= " AND status = ?";
+            $statParams[] = $params[$i++];
         }
         
         $sql = "
