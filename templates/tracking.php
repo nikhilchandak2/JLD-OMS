@@ -8,6 +8,9 @@
             <p class="page-subtitle">Real-time vehicle location tracking</p>
         </div>
         <div>
+            <button class="btn btn-outline-primary me-2" id="syncBtn" onclick="syncFromWheelsEye()" title="Fetch current locations from WheelsEye API">
+                <i class="bi bi-cloud-download me-1"></i> Sync from WheelsEye
+            </button>
             <button class="btn btn-primary" onclick="loadTracking()">
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
@@ -59,7 +62,7 @@ function initMap() {
 }
 
 function loadTracking() {
-    fetch('/api/tracking/live')
+    fetch('/api/tracking/live', { credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
@@ -71,6 +74,34 @@ function loadTracking() {
         })
         .catch(e => {
             showError('Error loading tracking: ' + e.message);
+        });
+}
+
+function syncFromWheelsEye() {
+    const btn = document.getElementById('syncBtn');
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Syncing...';
+    fetch('/api/tracking/sync', { method: 'POST', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showError(''); // clear any previous error
+                const msg = data.synced > 0
+                    ? 'Synced ' + data.synced + ' vehicle(s). Refreshing map.'
+                    : (data.message || 'Sync completed. No new locations matched.');
+                if (data.synced > 0) loadTracking();
+                alert(msg + (data.errors && data.errors.length ? '\n\nNotes: ' + data.errors.join('; ') : ''));
+            } else {
+                showError(data.message || data.error || 'Sync failed');
+            }
+        })
+        .catch(e => {
+            showError('Sync failed: ' + e.message);
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
         });
 }
 
@@ -116,30 +147,45 @@ function updateVehiclesList(vehicles) {
     const container = document.getElementById('vehiclesList');
     
     if (vehicles.length === 0) {
-        container.innerHTML = '<div class="text-center text-muted">No vehicles found</div>';
+        container.innerHTML = '<div class="text-center text-muted">No vehicles found. Add vehicles in the Vehicles page.</div>';
         return;
     }
     
-    container.innerHTML = vehicles.map(v => {
-        const hasLocation = v.latest_tracking && v.latest_tracking.latitude;
-        return `
-            <div class="mb-3 p-2 border rounded" style="cursor: pointer;" onclick="focusVehicle(${v.id})">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <strong>${escapeHtml(v.vehicle_number)}</strong>
-                        <span class="badge bg-${getStatusBadgeColor(v.status)} ms-2">${escapeHtml(v.status)}</span>
-                    </div>
-                </div>
-                <div class="text-muted small mt-1">
-                    ${hasLocation ? 
-                        `<i class="bi bi-geo-alt"></i> ${v.latest_tracking.speed ? v.latest_tracking.speed + ' km/h' : 'Stationary'}<br>
-                         <small>${new Date(v.latest_tracking.timestamp).toLocaleString()}</small>` :
-                        '<span class="text-muted">No location data</span>'
-                    }
+    const withLocation = vehicles.filter(v => v.latest_tracking && v.latest_tracking.latitude);
+    if (withLocation.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-info small mb-3">
+                <strong>No location data yet.</strong><br>
+                Click <strong>Sync from WheelsEye</strong> above to fetch current GPS positions.<br>
+                <small>Ensure the vehicle is <strong>Active</strong> and its <strong>Vehicle number</strong> in OMS matches WheelsEye (e.g. RJ07GD5241).</small>
+            </div>
+            ${vehicles.map(v => vehicleListItem(v)).join('')}
+        `;
+        return;
+    }
+    
+    container.innerHTML = vehicles.map(v => vehicleListItem(v)).join('');
+}
+
+function vehicleListItem(v) {
+    const hasLocation = v.latest_tracking && v.latest_tracking.latitude;
+    return `
+        <div class="mb-3 p-2 border rounded" style="cursor: pointer;" onclick="focusVehicle(${v.id})">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <strong>${escapeHtml(v.vehicle_number)}</strong>
+                    <span class="badge bg-${getStatusBadgeColor(v.status)} ms-2">${escapeHtml(v.status)}</span>
                 </div>
             </div>
-        `;
-    }).join('');
+            <div class="text-muted small mt-1">
+                ${hasLocation ?
+                    `<i class="bi bi-geo-alt"></i> ${v.latest_tracking.speed ? v.latest_tracking.speed + ' km/h' : 'Stationary'}<br>
+                     <small>${new Date(v.latest_tracking.timestamp).toLocaleString()}</small>` :
+                    '<span class="text-muted">No location data</span>'
+                }
+            </div>
+        </div>
+    `;
 }
 
 function focusVehicle(id) {

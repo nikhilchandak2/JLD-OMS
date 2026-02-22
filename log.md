@@ -1,45 +1,57 @@
-No composer.lock file present. Updating dependencies to latest instead of installing from lock file. See https://getcomposer.org/install for more information.
-Loading composer repositories with package information
-Updating dependencies
-Your requirements could not be resolved to an installable set of packages.
+Context
+This PHP-based OMS already exists.
+I have uploaded final, approved document formats in Excel (.xlsx) and Word (.docx).
+These formats MUST be reused exactly. No redesign, no layout changes.
+Objective
+Build a document generation system where:
+Data is entered once (master export dispatch form)
+The same data populates multiple existing Excel/Word templates
+Output files retain original formatting, headers, merged cells, and structure
+Uploaded Files
+SCOMET format (Excel/Word)
+COO format
+BILTI format
+Commercial Tax Invoice format
+SAFTA Invoice format
+Rules
+Do NOT recreate templates in HTML
+Do NOT modify layout
+Only replace placeholders or mapped cells
+Output must be downloadable as Excel/Word
+Technical Requirements
+PHP only
+Use PHPSpreadsheet for Excel
+Use PHPWord for Word documents
+MySQL as data source
+Implementation Tasks
+Analyze uploaded templates
+Identify fixed cells / placeholders
+Identify repeating rows (truck-wise data)
+Define a mapping layer
+Database field → Excel cell OR Word placeholder
+Create reusable PHP services:
+loadTemplate()
+mapData()
+generateOutput()
+Support:
+Multiple trucks per day
+One file per truck OR consolidated file (configurable)
+Log generated documents (order ID, truck ID, document type)
+Deliverables
+Mapping configuration array for each document
+PHP code for Excel population
+PHP code for Word population
+Example generation for one order with two trucks
+Constraints
+No hardcoded business values
+Easy to add new formats later
+No framework change
+Start by explaining how the uploaded templates will be parsed and mapped.
+The required formats and files are present in the Formats folder.
 
-  Problem 1
-    - Root composer.json requires phpoffice/phpspreadsheet ^1.29 -> satisfiable by phpoffice/phpspreadsheet[1.30.0, 1.30.1, 1.30.2].
-    - phpoffice/phpspreadsheet[1.30.0, ..., 1.30.2] require ext-gd * -> it is missing from your system. Install or enable PHP's gd extension.
-
-To enable extensions, verify that they are enabled in your .ini files:
-    - /etc/php/8.1/cli/php.ini
-    - /etc/php/8.1/cli/conf.d/10-mysqlnd.ini
-    - /etc/php/8.1/cli/conf.d/10-opcache.ini
-    - /etc/php/8.1/cli/conf.d/10-pdo.ini
-    - /etc/php/8.1/cli/conf.d/15-xml.ini
-    - /etc/php/8.1/cli/conf.d/20-calendar.ini
-    - /etc/php/8.1/cli/conf.d/20-ctype.ini
-    - /etc/php/8.1/cli/conf.d/20-curl.ini
-    - /etc/php/8.1/cli/conf.d/20-dom.ini
-    - /etc/php/8.1/cli/conf.d/20-exif.ini
-    - /etc/php/8.1/cli/conf.d/20-ffi.ini
-    - /etc/php/8.1/cli/conf.d/20-fileinfo.ini
-    - /etc/php/8.1/cli/conf.d/20-ftp.ini
-    - /etc/php/8.1/cli/conf.d/20-gettext.ini
-    - /etc/php/8.1/cli/conf.d/20-iconv.ini
-    - /etc/php/8.1/cli/conf.d/20-mbstring.ini
-    - /etc/php/8.1/cli/conf.d/20-mysqli.ini
-    - /etc/php/8.1/cli/conf.d/20-pdo_mysql.ini
-    - /etc/php/8.1/cli/conf.d/20-phar.ini
-    - /etc/php/8.1/cli/conf.d/20-posix.ini
-    - /etc/php/8.1/cli/conf.d/20-readline.ini
-    - /etc/php/8.1/cli/conf.d/20-shmop.ini
-    - /etc/php/8.1/cli/conf.d/20-simplexml.ini
-    - /etc/php/8.1/cli/conf.d/20-sockets.ini
-    - /etc/php/8.1/cli/conf.d/20-sysvmsg.ini
-    - /etc/php/8.1/cli/conf.d/20-sysvsem.ini
-    - /etc/php/8.1/cli/conf.d/20-sysvshm.ini
-    - /etc/php/8.1/cli/conf.d/20-tokenizer.ini
-    - /etc/php/8.1/cli/conf.d/20-xmlreader.ini
-    - /etc/php/8.1/cli/conf.d/20-xmlwriter.ini
-    - /etc/php/8.1/cli/conf.d/20-xsl.ini
-    - /etc/php/8.1/cli/conf.d/20-zip.ini
-You can also run `php --ini` in a terminal to see which files are used by PHP in CLI mode.
-Alternatively, you can run Composer with `--ignore-platform-req=ext-gd` to temporarily ignore these required extensions.
-Running update with --no-dev does not mean require-dev is ignored, it just means the packages will not be installed. If dev requirements are blocking the update you have to resolve those problems.
+---
+## 2025-02-22 – WheelsEye vendor API (to continue later)
+- Vendor provided **WheelsEye current-location API** details.
+- Documented in: `docs/WHEELSEYE_VENDOR_API.md`
+- **Action:** Share **vehicle numbers** (and IMEIs if needed) with vendor (ref: 8387079292).
+- Optional later: implement pull from `api.wheelseye.com/currentLoc` using token in `.env`.

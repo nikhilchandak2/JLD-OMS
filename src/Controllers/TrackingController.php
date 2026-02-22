@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Services\AuthService;
+use App\Services\WheelsEyeApiService;
 use App\Repositories\VehicleRepository;
 use App\Repositories\GPSTrackingRepository;
 
@@ -105,6 +106,37 @@ class TrackingController
         } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Sync current locations from WheelsEye vendor API into the database.
+     * GET or POST /api/tracking/sync
+     */
+    public function syncFromWheelsEye(): void
+    {
+        header('Content-Type: application/json');
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        try {
+            $service = new WheelsEyeApiService();
+            $result = $service->syncCurrentLocations();
+            echo json_encode(array_merge(['success' => $result['success']], $result));
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'synced' => 0,
+                'skipped' => 0,
+                'errors' => [],
+            ]);
         }
     }
 }

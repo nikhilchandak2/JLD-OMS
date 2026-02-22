@@ -60,6 +60,8 @@ $router->group('/api', function($router) {
         // Live Tracking
         $router->get('/tracking/live', 'TrackingController@live');
         $router->get('/tracking/vehicle/{id}', 'TrackingController@vehicleHistory');
+        $router->get('/tracking/sync', 'TrackingController@syncFromWheelsEye');
+        $router->post('/tracking/sync', 'TrackingController@syncFromWheelsEye');
         
         // Trips
         $router->get('/trips', 'TripController@index');
