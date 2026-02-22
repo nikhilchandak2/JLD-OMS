@@ -32,9 +32,9 @@ class GPSTrackingRepository
             $tracking->speed,
             $tracking->heading,
             $tracking->accuracy,
-            $tracking->satelliteCount,
+            $tracking->satelliteCount !== null && $tracking->satelliteCount !== '' ? (int)$tracking->satelliteCount : null,
             $tracking->timestamp,
-            $tracking->ignitionStatus,
+            $tracking->ignitionStatus === null || $tracking->ignitionStatus === '' ? null : (int)(bool)$tracking->ignitionStatus,
             $tracking->movementStatus,
             $tracking->odometer,
             $tracking->rawData ? json_encode($tracking->rawData) : null

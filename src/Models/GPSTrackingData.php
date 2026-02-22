@@ -39,9 +39,9 @@ class GPSTrackingData
         $this->speed = isset($data['speed']) ? (float)$data['speed'] : null;
         $this->heading = isset($data['heading']) ? (float)$data['heading'] : null;
         $this->accuracy = isset($data['accuracy']) ? (float)$data['accuracy'] : null;
-        $this->satelliteCount = isset($data['satellite_count']) ? (int)$data['satellite_count'] : null;
+        $this->satelliteCount = isset($data['satellite_count']) && $data['satellite_count'] !== '' ? (int)$data['satellite_count'] : null;
         $this->timestamp = $data['timestamp'] ?? date('Y-m-d H:i:s');
-        $this->ignitionStatus = isset($data['ignition_status']) ? (bool)$data['ignition_status'] : null;
+        $this->ignitionStatus = isset($data['ignition_status']) && $data['ignition_status'] !== '' ? (bool)$data['ignition_status'] : null;
         $this->movementStatus = $data['movement_status'] ?? 'stationary';
         $this->odometer = isset($data['odometer']) ? (float)$data['odometer'] : null;
         $this->rawData = isset($data['raw_data']) ? (is_string($data['raw_data']) ? json_decode($data['raw_data'], true) : $data['raw_data']) : null;
