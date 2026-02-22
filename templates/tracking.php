@@ -190,9 +190,9 @@ async function updateMap(vehicles, geofences) {
     Object.values(markers).forEach(marker => map.removeLayer(marker));
     markers = {};
     
-    const allBounds = [];
+    const vehicleViewPoints = [];
     
-    // Draw geofences (active only, from API)
+    // Draw geofences (active only, from API) – do NOT use for map view so we stay focused on vehicle
     geofences.forEach(g => {
         const lat = Number(g.latitude);
         const lng = Number(g.longitude);
@@ -210,7 +210,6 @@ async function updateMap(vehicles, geofences) {
         circle.bindPopup('<strong>' + escapeHtml(g.name || 'Geofence') + '</strong><br>' +
             (g.geofence_type ? escapeHtml(g.geofence_type) : '') + (g.material_type ? ' – ' + escapeHtml(g.material_type) : '') + '<br>Radius: ' + radius + ' m');
         geofenceLayers.push(circle);
-        allBounds.push([lat, lng]);
     });
     
     // When Mapbox token is set, snap routes to roads; otherwise draw straight lines
@@ -239,7 +238,6 @@ async function updateMap(vehicles, geofences) {
             }).addTo(map);
             polyline.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – route (last 24h)');
             pathLayers[vehicle.id] = polyline;
-            latLngs.forEach(ll => allBounds.push(ll));
         }
     });
     
@@ -247,6 +245,7 @@ async function updateMap(vehicles, geofences) {
         if (vehicle.latest_tracking && vehicle.latest_tracking.latitude && vehicle.latest_tracking.longitude) {
             const lat = vehicle.latest_tracking.latitude;
             const lng = vehicle.latest_tracking.longitude;
+            vehicleViewPoints.push([lat, lng]);
             const color = PATH_COLORS[idx % PATH_COLORS.length];
             
             const icon = L.divIcon({
@@ -267,17 +266,17 @@ async function updateMap(vehicles, geofences) {
             marker.bindPopup(popup);
             
             markers[vehicle.id] = marker;
-            allBounds.push([lat, lng]);
         }
     });
     
-    if (allBounds.length > 0) {
-        const bounds = L.latLngBounds(allBounds);
+    // View follows vehicle(s) only – stay zoomed in, pan as vehicle moves (no path/geofence in view calc)
+    if (vehicleViewPoints.length > 0) {
+        const bounds = L.latLngBounds(vehicleViewPoints);
         const center = bounds.getCenter();
-        if (allBounds.length === 1 || bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 0.01) {
+        if (vehicleViewPoints.length === 1 || bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 0.005) {
             map.setView(center, DEFAULT_ZOOM);
         } else {
-            map.fitBounds(bounds.pad(0.15));
+            map.fitBounds(bounds.pad(0.2), { maxZoom: DEFAULT_ZOOM });
             if (map.getZoom() < MIN_ZOOM) map.setZoom(MIN_ZOOM);
         }
     }
