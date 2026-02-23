@@ -149,10 +149,10 @@ function formatTimeAgo(iso) {
     } catch (e) { return iso || '—'; }
 }
 
-// Mapbox Map Matching: snap GPS path to roads (max 100 points per request)
+// Mapbox Map Matching: snap GPS path to roads (max 100 points per request). Points: array of [lat, lng] or {lat, lng}.
 function getMapMatchedPath(pathPoints, token) {
     if (!pathPoints || pathPoints.length < 2 || !token) return Promise.resolve(null);
-    let points = pathPoints;
+    let points = pathPoints.map(p => Array.isArray(p) ? { lat: p[0], lng: p[1] } : p);
     if (points.length > 100) {
         const step = Math.ceil(points.length / 100);
         points = points.filter((_, i) => i % step === 0 || i === points.length - 1);
@@ -278,7 +278,7 @@ async function updateMap(vehicles, geofences) {
         if (points.length > 2000) points = points.slice(-1500);
         sessionPathByVehicle[vehicle.id] = points;
     });
-    // Draw paths (no map matching so path updates every refresh and is always visible)
+    // Draw paths: raw line first (visible immediately), then snap to roads when Mapbox token is set
     vehicles.forEach((vehicle, idx) => {
         const points = sessionPathByVehicle[vehicle.id] || [];
         if (points.length < 2) return;
@@ -300,6 +300,14 @@ async function updateMap(vehicles, geofences) {
         const startMarker = L.marker(startLatLng, { icon: startIcon }).addTo(map);
         startMarker.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – Start');
         pathStartMarkers[vehicle.id] = startMarker;
+        // Snap path to roads (Mapbox Map Matching) so it follows the exact route
+        if (mapboxToken) {
+            getMapMatchedPath(points, mapboxToken).then(matched => {
+                if (matched && matched.length >= 2 && pathLayers[vehicle.id]) {
+                    pathLayers[vehicle.id].setLatLngs(matched);
+                }
+            });
+        }
     });
     
     vehicles.forEach((vehicle, idx) => {
