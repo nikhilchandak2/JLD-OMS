@@ -23,6 +23,10 @@
 
 <div id="error-container" class="error-message"></div>
 
+<div id="route-update-status" class="alert alert-secondary py-2 small mb-3" style="display: none;">
+    <i class="bi bi-info-circle me-1"></i> <strong>Route update status:</strong> <span id="route-update-status-text">—</span>
+</div>
+
 <div class="alert alert-light border mb-3 py-2 small">
     <strong>How updates work:</strong> With <strong>Auto-refresh (15s)</strong> on, the page pulls fresh data from WheelsEye every 15 seconds and updates the map (no need to click Sync). The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24h). With <code>MAPBOX_ACCESS_TOKEN</code> in .env you get Mapbox layers and routes <strong>snapped to roads</strong>.
 </div>
@@ -105,6 +109,45 @@ function loadTracking() {
     }).catch(e => {
         showError('Error loading tracking: ' + e.message);
     });
+    loadSyncStatus();
+}
+
+function loadSyncStatus() {
+    fetch('/api/tracking/sync-status', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success && res.data) updateRouteUpdateStatus(res.data);
+        })
+        .catch(() => {});
+}
+
+function updateRouteUpdateStatus(data) {
+    const box = document.getElementById('route-update-status');
+    const text = document.getElementById('route-update-status-text');
+    if (!box || !text) return;
+    const lastRun = data.last_run ? formatTimeAgo(data.last_run) : '';
+    let msg;
+    if (data.success) {
+        msg = lastRun
+            ? (data.synced > 0 ? lastRun + ' — ' + data.synced + ' vehicle(s) updated' : lastRun + ' — no new locations')
+            : (data.synced > 0 ? data.synced + ' vehicle(s) updated' : 'No new locations');
+    } else {
+        msg = (lastRun ? lastRun + ' — ' : '') + (data.message || 'Sync failed');
+    }
+    text.textContent = msg;
+    box.style.display = 'block';
+    box.className = 'alert py-2 small mb-3 ' + (data.success ? 'alert-secondary' : 'alert-danger');
+}
+
+function formatTimeAgo(iso) {
+    try {
+        const d = new Date(iso);
+        const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (sec < 60) return 'Just now';
+        if (sec < 3600) return Math.floor(sec / 60) + ' min ago';
+        if (sec < 86400) return Math.floor(sec / 3600) + ' hr ago';
+        return d.toLocaleString();
+    } catch (e) { return iso || '—'; }
 }
 
 // Mapbox Map Matching: snap GPS path to roads (max 100 points per request)
@@ -140,6 +183,7 @@ function syncFromWheelsEye() {
     })
         .then(r => r.json())
         .then(data => {
+            updateRouteUpdateStatus({ ...data, last_run: new Date().toISOString().slice(0, 19).replace('T', ' ') });
             if (data.success) {
                 showError(''); // clear any previous error
                 const msg = data.synced > 0
@@ -169,6 +213,7 @@ function syncFromWheelsEyeQuiet() {
     })
         .then(r => r.json())
         .then(data => {
+            updateRouteUpdateStatus({ ...data, last_run: new Date().toISOString().slice(0, 19).replace('T', ' ') });
             if (!data.success) showError(data.message || data.error || 'Sync failed');
             return data;
         })
@@ -385,5 +430,6 @@ function showError(msg) {
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
     loadTracking();
+    loadSyncStatus();
 });
 </script>

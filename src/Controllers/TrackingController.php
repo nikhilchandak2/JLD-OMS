@@ -143,8 +143,17 @@ class TrackingController
         try {
             $service = new WheelsEyeApiService();
             $result = $service->syncCurrentLocations();
+            $this->saveSyncStatus(array_merge($result, ['last_run' => date('Y-m-d H:i:s')]));
             echo json_encode(array_merge(['success' => $result['success']], $result));
         } catch (\Exception $e) {
+            $this->saveSyncStatus([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'synced' => 0,
+                'skipped' => 0,
+                'errors' => [],
+                'last_run' => date('Y-m-d H:i:s'),
+            ]);
             http_response_code(500);
             echo json_encode([
                 'success' => false,
@@ -154,5 +163,45 @@ class TrackingController
                 'errors' => [],
             ]);
         }
+    }
+
+    /**
+     * Get last route/tracking sync status.
+     * GET /api/tracking/sync-status
+     */
+    public function syncStatus(): void
+    {
+        header('Content-Type: application/json');
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        $path = dirname(__DIR__, 2) . '/storage/last_tracking_sync.json';
+        $data = null;
+        if (is_file($path)) {
+            $raw = @file_get_contents($path);
+            if ($raw !== false) {
+                $data = json_decode($raw, true) ?: null;
+            }
+        }
+
+        echo json_encode([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
+    private function saveSyncStatus(array $status): void
+    {
+        $dir = dirname(__DIR__, 2) . '/storage';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        $path = $dir . '/last_tracking_sync.json';
+        @file_put_contents($path, json_encode($status, JSON_PRETTY_PRINT));
     }
 }
