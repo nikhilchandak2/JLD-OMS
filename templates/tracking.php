@@ -58,6 +58,8 @@ let markers = {};
 let pathLayers = {};
 let pathStartMarkers = {};
 let geofenceLayers = [];
+/** Per-vehicle path built in real time from each refresh (so path is always drawn as it grows) */
+let sessionPathByVehicle = {};
 let autoRefreshInterval = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
@@ -256,44 +258,48 @@ async function updateMap(vehicles, geofences) {
         geofenceLayers.push(circle);
     });
     
-    // When Mapbox token is set, snap routes to roads; otherwise draw straight lines
-    const pathPromises = vehicles.map((vehicle, idx) => {
+    // Build path per vehicle: merge API path_points with session buffer and current position (so path draws in real time)
+    vehicles.forEach(vehicle => {
         const pathPoints = vehicle.path_points || [];
-        if (pathPoints.length < 2) return Promise.resolve({ vehicle, idx, latLngs: null });
-        if (mapboxToken) {
-            return getMapMatchedPath(pathPoints, mapboxToken).then(latLngs => ({ vehicle, idx, latLngs }));
+        const latest = vehicle.latest_tracking;
+        const current = (latest && latest.latitude != null && latest.longitude != null)
+            ? [Number(latest.latitude), Number(latest.longitude)] : null;
+        let points = sessionPathByVehicle[vehicle.id] || [];
+        if (pathPoints.length >= 2) {
+            const apiPoints = pathPoints.map(p => [Number(p.lat), Number(p.lng)]);
+            if (apiPoints.length > points.length) points = apiPoints;
         }
-        return Promise.resolve({ vehicle, idx, latLngs: pathPoints.map(p => [p.lat, p.lng]) });
+        if (current) {
+            const last = points[points.length - 1];
+            if (!last || last[0] !== current[0] || last[1] !== current[1]) {
+                points.push(current);
+            }
+        }
+        if (points.length > 2000) points = points.slice(-1500);
+        sessionPathByVehicle[vehicle.id] = points;
     });
-    
-    const pathResults = await Promise.all(pathPromises);
-    
-    pathResults.forEach(({ vehicle, idx, latLngs }) => {
-        if (!latLngs || latLngs.length < 2) {
-            const pathPoints = vehicle.path_points || [];
-            if (pathPoints.length >= 2) latLngs = pathPoints.map(p => [p.lat, p.lng]);
-        }
-        if (latLngs && latLngs.length >= 2) {
-            const color = PATH_COLORS[idx % PATH_COLORS.length];
-            const polyline = L.polyline(latLngs, {
-                color: color,
-                weight: 4,
-                opacity: 0.8,
-            }).addTo(map);
-            polyline.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – route (last 24h)');
-            pathLayers[vehicle.id] = polyline;
-            // Mark start point (first point of path)
-            const startLatLng = latLngs[0];
-            const startIcon = L.divIcon({
-                className: 'path-start-marker',
-                html: '<div style="background:#22c55e; color:#fff; width:24px; height:24px; border-radius:50%; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold;">S</div>',
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
-            });
-            const startMarker = L.marker(startLatLng, { icon: startIcon }).addTo(map);
-            startMarker.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – Start');
-            pathStartMarkers[vehicle.id] = startMarker;
-        }
+    // Draw paths (no map matching so path updates every refresh and is always visible)
+    vehicles.forEach((vehicle, idx) => {
+        const points = sessionPathByVehicle[vehicle.id] || [];
+        if (points.length < 2) return;
+        const color = PATH_COLORS[idx % PATH_COLORS.length];
+        const polyline = L.polyline(points, {
+            color: color,
+            weight: 5,
+            opacity: 0.9,
+        }).addTo(map);
+        polyline.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – route (live)');
+        pathLayers[vehicle.id] = polyline;
+        const startLatLng = points[0];
+        const startIcon = L.divIcon({
+            className: 'path-start-marker',
+            html: '<div style="background:#22c55e; color:#fff; width:24px; height:24px; border-radius:50%; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold;">S</div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+        const startMarker = L.marker(startLatLng, { icon: startIcon }).addTo(map);
+        startMarker.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – Start');
+        pathStartMarkers[vehicle.id] = startMarker;
     });
     
     vehicles.forEach((vehicle, idx) => {
