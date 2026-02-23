@@ -60,6 +60,8 @@ let pathStartMarkers = {};
 let geofenceLayers = [];
 /** Per-vehicle path built in real time from each refresh (so path is always drawn as it grows) */
 let sessionPathByVehicle = {};
+/** Ignore stale map-matching results when a newer refresh has already run */
+let pathUpdateGeneration = 0;
 let autoRefreshInterval = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
@@ -223,6 +225,8 @@ function syncFromWheelsEyeQuiet() {
 }
 
 async function updateMap(vehicles, geofences) {
+    pathUpdateGeneration++;
+    const thisUpdateGen = pathUpdateGeneration;
     geofences = geofences || [];
     // Clear existing geofence circles
     geofenceLayers.forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
@@ -303,7 +307,8 @@ async function updateMap(vehicles, geofences) {
         // Snap path to roads (Mapbox Map Matching) so it follows the exact route
         if (mapboxToken) {
             getMapMatchedPath(points, mapboxToken).then(matched => {
-                if (matched && matched.length >= 2 && pathLayers[vehicle.id]) {
+                if (thisUpdateGen !== pathUpdateGeneration) return;
+                if (matched && matched.length >= 2 && pathLayers[vehicle.id] && map.hasLayer(pathLayers[vehicle.id])) {
                     pathLayers[vehicle.id].setLatLngs(matched);
                 }
             });
