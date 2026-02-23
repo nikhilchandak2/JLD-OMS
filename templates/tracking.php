@@ -15,7 +15,7 @@
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
             <label class="ms-3">
-                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"> Auto-refresh (15s)
+                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" checked> Auto-refresh (15s)
             </label>
         </div>
     </div>
@@ -431,5 +431,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initMap();
     loadTracking();
     loadSyncStatus();
+    toggleAutoRefresh();
 });
 </script>

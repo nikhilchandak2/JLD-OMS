@@ -80,8 +80,15 @@ class TripController
             
             $trips = $this->database->fetchAll($sql, $params);
             
-            // Get statistics
-            $stats = $this->getTripStatistics($params);
+            // Get statistics with same filters (pass explicit filter values, not flat params)
+            $filters = [
+                'vehicle_id' => $_GET['vehicle_id'] ?? null,
+                'start_date' => $_GET['start_date'] ?? null,
+                'end_date' => $_GET['end_date'] ?? null,
+                'material_type' => $_GET['material_type'] ?? null,
+                'status' => $_GET['status'] ?? null,
+            ];
+            $stats = $this->getTripStatistics($filters);
             
             echo json_encode([
                 'success' => true,
@@ -195,32 +202,31 @@ class TripController
         }
     }
     
-    private function getTripStatistics(array $params): array
+    private function getTripStatistics(array $filters): array
     {
         $whereClause = "WHERE 1=1";
         $statParams = [];
-        $i = 0;
-        if (!empty($params[$i])) {
+        if (!empty($filters['vehicle_id'])) {
             $whereClause .= " AND vehicle_id = ?";
-            $statParams[] = $params[$i++];
+            $statParams[] = $filters['vehicle_id'];
         }
-        if (!empty($params[$i])) {
+        if (!empty($filters['start_date'])) {
             $whereClause .= " AND start_time >= ?";
-            $statParams[] = $params[$i++];
+            $statParams[] = strlen($filters['start_date']) <= 10 ? $filters['start_date'] . ' 00:00:00' : $filters['start_date'];
         }
-        if (!empty($params[$i])) {
+        if (!empty($filters['end_date'])) {
             $whereClause .= " AND start_time <= ?";
-            $statParams[] = $params[$i++];
+            $endDate = $filters['end_date'];
+            $statParams[] = strlen($endDate) <= 10 ? $endDate . ' 23:59:59' : $endDate;
         }
-        if (!empty($params[$i])) {
+        if (!empty($filters['material_type'])) {
             $whereClause .= " AND material_type = ?";
-            $statParams[] = $params[$i++];
+            $statParams[] = $filters['material_type'];
         }
-        if (!empty($params[$i])) {
+        if (!empty($filters['status'])) {
             $whereClause .= " AND status = ?";
-            $statParams[] = $params[$i++];
+            $statParams[] = $filters['status'];
         }
-        
         $sql = "
             SELECT 
                 COUNT(*) as total_trips,
@@ -231,7 +237,6 @@ class TripController
             FROM vehicle_trips
             {$whereClause}
         ";
-        
         return $this->database->fetch($sql, $statParams) ?? [];
     }
     

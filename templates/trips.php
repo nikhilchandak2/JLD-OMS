@@ -54,7 +54,7 @@
                     <i class="bi bi-search me-1"></i> Filter
                 </button>
                 <label class="ms-3">
-                    <input type="checkbox" id="autoRefreshTrips" onchange="toggleTripsAutoRefresh()"> Auto-refresh (15s)
+                    <input type="checkbox" id="autoRefreshTrips" onchange="toggleTripsAutoRefresh()" checked> Auto-refresh (15s)
                 </label>
             </div>
         </div>
@@ -233,5 +233,8 @@ function showError(msg) {
     setTimeout(() => container.style.display = 'none', 5000);
 }
 
-document.addEventListener('DOMContentLoaded', loadTrips);
+document.addEventListener('DOMContentLoaded', () => {
+    loadTrips();
+    toggleTripsAutoRefresh();
+});
 </script>
