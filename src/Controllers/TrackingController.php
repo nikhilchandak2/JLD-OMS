@@ -51,7 +51,8 @@ class TrackingController
             $result = [];
             foreach ($vehicles as $vehicle) {
                 $vehicleData = $vehicle->toArray();
-                $vehicleData['latest_tracking'] = $trackingMap[$vehicle->id] ?? null;
+                $latest = $trackingMap[$vehicle->id] ?? null;
+                $vehicleData['latest_tracking'] = $latest;
                 $vehicleData['path_points'] = [];
                 $pathPoints = $this->gpsTrackingRepository->getRecentPathForVehicle($vehicle->id, $pathHours, $pathLimit);
                 foreach ($pathPoints as $p) {
@@ -60,6 +61,19 @@ class TrackingController
                         'lng' => (float)$p->longitude,
                         'timestamp' => $p->timestamp,
                     ];
+                }
+                // Ensure path ends at current position so the line connects to the live marker
+                if ($latest && isset($latest['latitude']) && isset($latest['longitude'])) {
+                    $lat = (float)$latest['latitude'];
+                    $lng = (float)$latest['longitude'];
+                    $last = end($vehicleData['path_points']);
+                    if ($last === false || $last['lat'] != $lat || $last['lng'] != $lng) {
+                        $vehicleData['path_points'][] = [
+                            'lat' => $lat,
+                            'lng' => $lng,
+                            'timestamp' => $latest['timestamp'] ?? date('Y-m-d H:i:s'),
+                        ];
+                    }
                 }
                 $result[] = $vehicleData;
             }
