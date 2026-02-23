@@ -799,8 +799,7 @@
     <nav class="navbar navbar-expand-lg border-bottom" style="background: var(--jld-white) !important;">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="/dashboard">
-                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" class="me-2" style="height: 2.5rem; max-height: 2.5rem; width: auto;" onerror="this.style.display='none'">
-                <span class="d-none d-sm-inline text-primary fw-bold">JLD Minerals</span>
+                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" style="height: 3.5rem; max-height: 3.5rem; width: auto;" onerror="this.style.display='none'">
             </a>
             <div class="d-flex align-items-center ms-auto">
                 <div class="nav-item dropdown">
@@ -983,6 +982,11 @@
         function showError(message, containerId = 'error-container') {
             const container = document.getElementById(containerId);
             if (container) {
+                if (!message || String(message).trim() === '') {
+                    container.innerHTML = '';
+                    container.style.display = 'none';
+                    return;
+                }
                 container.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         ${message}

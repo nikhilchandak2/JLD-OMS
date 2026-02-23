@@ -56,6 +56,7 @@ const mapboxToken = <?= json_encode($mapbox_token ?? '') ?>;
 let map;
 let markers = {};
 let pathLayers = {};
+let pathStartMarkers = {};
 let geofenceLayers = [];
 let autoRefreshInterval = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
@@ -224,9 +225,11 @@ async function updateMap(vehicles, geofences) {
     // Clear existing geofence circles
     geofenceLayers.forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
     geofenceLayers = [];
-    // Clear existing path polylines
+    // Clear existing path polylines and path start markers
     Object.values(pathLayers).forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
     pathLayers = {};
+    Object.values(pathStartMarkers).forEach(m => { if (map.hasLayer(m)) map.removeLayer(m); });
+    pathStartMarkers = {};
     // Clear existing markers
     Object.values(markers).forEach(marker => map.removeLayer(marker));
     markers = {};
@@ -279,6 +282,17 @@ async function updateMap(vehicles, geofences) {
             }).addTo(map);
             polyline.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – route (last 24h)');
             pathLayers[vehicle.id] = polyline;
+            // Mark start point (first point of path)
+            const startLatLng = latLngs[0];
+            const startIcon = L.divIcon({
+                className: 'path-start-marker',
+                html: '<div style="background:#22c55e; color:#fff; width:24px; height:24px; border-radius:50%; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold;">S</div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+            const startMarker = L.marker(startLatLng, { icon: startIcon }).addTo(map);
+            startMarker.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – Start');
+            pathStartMarkers[vehicle.id] = startMarker;
         }
     });
     
