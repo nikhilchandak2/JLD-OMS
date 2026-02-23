@@ -127,4 +127,22 @@ class GPSTrackingRepository
             return new GPSTrackingData($row);
         }, $results);
     }
+
+    /**
+     * Get tracking points for a vehicle between two timestamps (chronological, for stoppage analysis).
+     * @return GPSTrackingData[]
+     */
+    public function getTrackingBetween(int $vehicleId, string $startTime, string $endTime, int $limit = 5000): array
+    {
+        $sql = "
+            SELECT * FROM gps_tracking_data
+            WHERE vehicle_id = ? AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp ASC
+            LIMIT ?
+        ";
+        $results = $this->database->fetchAll($sql, [$vehicleId, $startTime, $endTime, $limit]);
+        return array_map(function($row) {
+            return new GPSTrackingData($row);
+        }, $results);
+    }
 }

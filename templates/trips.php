@@ -86,6 +86,7 @@
                         <th>Material</th>
                         <th>Distance (km)</th>
                         <th>Duration</th>
+                        <th>Stoppages</th>
                         <th>Fuel (L)</th>
                         <th>Status</th>
                     </tr>
@@ -191,11 +192,16 @@ function renderTrips(trips) {
     tbody.innerHTML = '';
     
     if (trips.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No trips found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center">No trips found</td></tr>';
         return;
     }
-    
+
     trips.forEach(trip => {
+        const stopCount = trip.stoppage_count != null && trip.stoppage_count !== '' ? Number(trip.stoppage_count) : null;
+        const stopMin = trip.total_stoppage_minutes != null && trip.total_stoppage_minutes !== '' ? Number(trip.total_stoppage_minutes) : null;
+        const stoppageText = (stopCount != null && stopCount > 0)
+            ? `${stopCount} (${(stopMin ?? 0).toFixed(1)} min)`
+            : (stopCount === 0 ? '0' : '-');
         const row = document.createElement('tr');
         row.innerHTML = `
             <td><strong>${escapeHtml(trip.vehicle_number)}</strong></td>
@@ -206,6 +212,7 @@ function renderTrips(trips) {
             <td>${escapeHtml(trip.material_type || '-')}</td>
             <td>${trip.distance_km != null && trip.distance_km !== '' ? Number(trip.distance_km).toFixed(2) : '-'}</td>
             <td>${trip.duration_minutes != null && trip.duration_minutes !== '' ? trip.duration_minutes + ' min' : '-'}</td>
+            <td>${stoppageText}</td>
             <td>${trip.fuel_consumed_liters != null && trip.fuel_consumed_liters !== '' ? Number(trip.fuel_consumed_liters).toFixed(2) : '-'}</td>
             <td><span class="badge bg-${trip.status === 'completed' ? 'success' : trip.status === 'in_progress' ? 'warning' : 'secondary'}">${escapeHtml(trip.status)}</span></td>
         `;

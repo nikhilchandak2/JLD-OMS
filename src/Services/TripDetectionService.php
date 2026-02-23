@@ -5,20 +5,26 @@ namespace App\Services;
 use App\Core\Database;
 use App\Repositories\VehicleRepository;
 use App\Repositories\GPSTrackingRepository;
+use App\Repositories\TripStoppageRepository;
 use App\Services\GeofenceService;
 
 class TripDetectionService
 {
+    private const STOPPAGE_SPEED_KMH = 5.0;
+    private const MIN_STOPPAGE_MINUTES = 2.0;
+
     private Database $database;
     private VehicleRepository $vehicleRepository;
     private GPSTrackingRepository $gpsTrackingRepository;
+    private TripStoppageRepository $tripStoppageRepository;
     private GeofenceService $geofenceService;
-    
+
     public function __construct()
     {
         $this->database = new Database();
         $this->vehicleRepository = new VehicleRepository();
         $this->gpsTrackingRepository = new GPSTrackingRepository();
+        $this->tripStoppageRepository = new TripStoppageRepository();
         $this->geofenceService = new GeofenceService();
     }
     
@@ -133,7 +139,7 @@ class TripDetectionService
                 status = 'completed'
             WHERE id = ?
         ";
-        
+
         $this->database->execute($sql, [
             $stockpileGeofenceId,
             $materialType,
@@ -147,6 +153,26 @@ class TripDetectionService
             $fuelData['end_fuel'] ?? null,
             $activeTrip['id']
         ]);
+
+        // Analyze stoppages (when stopped, for how long, count) and save
+        $stoppageSummary = $this->analyzeAndSaveStoppages(
+            (int)$activeTrip['id'],
+            $vehicleId,
+            $activeTrip['start_time'],
+            $trackingData->timestamp
+        );
+        if ($stoppageSummary['count'] > 0) {
+            $updateSql = "
+                UPDATE vehicle_trips
+                SET stoppage_count = ?, total_stoppage_minutes = ?
+                WHERE id = ?
+            ";
+            $this->database->execute($updateSql, [
+                $stoppageSummary['count'],
+                $stoppageSummary['total_minutes'],
+                $activeTrip['id']
+            ]);
+        }
     }
     
     /**
@@ -230,5 +256,76 @@ class TripDetectionService
             'end_fuel' => (float)$result['end_fuel'],
             'consumed' => (float)$result['consumed']
         ];
+    }
+
+    /**
+     * Analyze GPS points between trip start and end to detect stoppages (vehicle stopped for min duration).
+     * Saves stoppages to trip_stoppages and returns count and total minutes.
+     */
+    private function analyzeAndSaveStoppages(int $tripId, int $vehicleId, string $startTime, string $endTime): array
+    {
+        $points = $this->gpsTrackingRepository->getTrackingBetween($vehicleId, $startTime, $endTime);
+        if (empty($points)) {
+            return ['count' => 0, 'total_minutes' => 0.0];
+        }
+
+        $stoppages = [];
+        $i = 0;
+        while ($i < count($points)) {
+            if (!$this->isStopped($points[$i])) {
+                $i++;
+                continue;
+            }
+            $segStart = $points[$i]->timestamp;
+            $segLat = $points[$i]->latitude;
+            $segLon = $points[$i]->longitude;
+            while ($i < count($points) && $this->isStopped($points[$i])) {
+                $i++;
+            }
+            $segEnd = $i > 0 ? $points[$i - 1]->timestamp : $segStart;
+            $durationMinutes = $this->durationMinutes($segStart, $segEnd);
+            if ($durationMinutes >= self::MIN_STOPPAGE_MINUTES) {
+                $stoppages[] = [
+                    'start_time' => $segStart,
+                    'end_time' => $segEnd,
+                    'duration_minutes' => round($durationMinutes, 2),
+                    'latitude' => $segLat,
+                    'longitude' => $segLon
+                ];
+            }
+        }
+
+        $totalMinutes = 0.0;
+        foreach ($stoppages as $s) {
+            $this->tripStoppageRepository->insert(
+                $tripId,
+                $s['start_time'],
+                $s['end_time'],
+                $s['duration_minutes'],
+                $s['latitude'],
+                $s['longitude']
+            );
+            $totalMinutes += $s['duration_minutes'];
+        }
+
+        return [
+            'count' => count($stoppages),
+            'total_minutes' => round($totalMinutes, 2)
+        ];
+    }
+
+    private function isStopped($point): bool
+    {
+        if ($point->speed !== null) {
+            return $point->speed < self::STOPPAGE_SPEED_KMH;
+        }
+        return strtolower((string)$point->movementStatus) === 'stationary';
+    }
+
+    private function durationMinutes(string $startTime, string $endTime): float
+    {
+        $start = new \DateTime($startTime);
+        $end = new \DateTime($endTime);
+        return ($end->getTimestamp() - $start->getTimestamp()) / 60.0;
     }
 }
