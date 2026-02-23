@@ -795,6 +795,27 @@
 </head>
 <body>
     <?php if (isset($user)): ?>
+    <!-- Top header: logo left, user right -->
+    <nav class="navbar navbar-expand-lg border-bottom" style="background: var(--jld-white) !important;">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="/dashboard">
+                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" class="me-2" style="height: 2.5rem; max-height: 2.5rem; width: auto;" onerror="this.style.display='none'">
+                <span class="d-none d-sm-inline text-primary fw-bold">JLD Minerals</span>
+            </a>
+            <div class="d-flex align-items-center ms-auto">
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle text-primary fw-medium" href="#" role="button" data-bs-toggle="dropdown" id="headerUserMenu">
+                        <i class="bi bi-person-circle me-1"></i><?= htmlspecialchars($user['name']) ?>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><span class="dropdown-item-text small">Role: <?= ucfirst($user['role']) ?></span></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="logout(); return false;"><i class="bi bi-box-arrow-right me-1"></i> Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
     <!-- Mobile menu toggle (floating button) -->
     <button class="mobile-menu-toggle mobile-toggle-fixed" onclick="toggleSidebar()" type="button" aria-label="Toggle menu">
         <i class="bi bi-list"></i>

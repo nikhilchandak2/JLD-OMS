@@ -12,10 +12,6 @@
 
 <div id="error-container" class="error-message"></div>
 
-<div class="alert alert-light border mb-3 py-2 small">
-    <strong>How a trip is counted:</strong> Time starts when the vehicle <strong>enters the Pit</strong> geofence and stops when it <strong>enters the Stockpile</strong> geofence. That is recorded as one trip with start and end timestamps below.
-</div>
-
 <!-- Filters -->
 <div class="card mb-4">
     <div class="card-header">
@@ -71,32 +67,9 @@
     <p>Loading trips...</p>
 </div>
 
-<!-- Trips Table -->
-<div class="card">
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-striped" id="tripsTable">
-                <thead>
-                    <tr>
-                        <th>Vehicle</th>
-                        <th>Entered Pit (Start)</th>
-                        <th>Entered Stockpile (End)</th>
-                        <th>Source</th>
-                        <th>Destination</th>
-                        <th>Material</th>
-                        <th>Distance (km)</th>
-                        <th>Duration</th>
-                        <th>Stoppages</th>
-                        <th>Fuel (L)</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Data will be populated by JavaScript -->
-                </tbody>
-            </table>
-        </div>
-    </div>
+<!-- Trips by vehicle (list of vehicles, expand to see trips) -->
+<div id="tripsByVehicleList">
+    <!-- Populated by JavaScript: vehicle cards with collapse per vehicle -->
 </div>
 
 <script>
@@ -188,23 +161,68 @@ function renderStatistics(stats) {
 }
 
 function renderTrips(trips) {
-    const tbody = document.querySelector('#tripsTable tbody');
-    tbody.innerHTML = '';
-    
+    const container = document.getElementById('tripsByVehicleList');
+    if (!container) return;
+    container.innerHTML = '';
+
     if (trips.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center">No trips found</td></tr>';
+        container.innerHTML = '<div class="card"><div class="card-body text-center text-muted">No trips found</div></div>';
         return;
     }
 
+    const byVehicle = {};
     trips.forEach(trip => {
-        const stopCount = trip.stoppage_count != null && trip.stoppage_count !== '' ? Number(trip.stoppage_count) : null;
-        const stopMin = trip.total_stoppage_minutes != null && trip.total_stoppage_minutes !== '' ? Number(trip.total_stoppage_minutes) : null;
-        const stoppageText = (stopCount != null && stopCount > 0)
-            ? `${stopCount} (${(stopMin ?? 0).toFixed(1)} min)`
-            : (stopCount === 0 ? '0' : '-');
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td><strong>${escapeHtml(trip.vehicle_number)}</strong></td>
+        const k = trip.vehicle_id;
+        if (!byVehicle[k]) byVehicle[k] = { vehicle_number: trip.vehicle_number, trips: [] };
+        byVehicle[k].trips.push(trip);
+    });
+
+    Object.keys(byVehicle).forEach((vehicleId, idx) => {
+        const v = byVehicle[vehicleId];
+        const collapseId = 'trips-vehicle-' + vehicleId;
+        const card = document.createElement('div');
+        card.className = 'card mb-2';
+        card.innerHTML = `
+            <div class="card-header d-flex justify-content-between align-items-center py-3" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="${idx === 0}">
+                <strong>${escapeHtml(v.vehicle_number)}</strong>
+                <span class="badge bg-primary">${v.trips.length} trip(s)</span>
+            </div>
+            <div id="${collapseId}" class="collapse ${idx === 0 ? 'show' : ''}">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Entered Pit (Start)</th>
+                                    <th>Entered Stockpile (End)</th>
+                                    <th>Source</th>
+                                    <th>Destination</th>
+                                    <th>Material</th>
+                                    <th>Distance (km)</th>
+                                    <th>Duration</th>
+                                    <th>Stoppages</th>
+                                    <th>Fuel (L)</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>${v.trips.map(t => tripRow(t)).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function tripRow(trip) {
+    const stopCount = trip.stoppage_count != null && trip.stoppage_count !== '' ? Number(trip.stoppage_count) : null;
+    const stopMin = trip.total_stoppage_minutes != null && trip.total_stoppage_minutes !== '' ? Number(trip.total_stoppage_minutes) : null;
+    const stoppageText = (stopCount != null && stopCount > 0)
+        ? `${stopCount} (${(stopMin ?? 0).toFixed(1)} min)`
+        : (stopCount === 0 ? '0' : '-');
+    return `
+        <tr>
             <td>${new Date(trip.start_time).toLocaleString()}</td>
             <td>${trip.end_time ? new Date(trip.end_time).toLocaleString() : '-'}</td>
             <td>${escapeHtml(trip.source_geofence_name || 'N/A')}</td>
@@ -215,9 +233,8 @@ function renderTrips(trips) {
             <td>${stoppageText}</td>
             <td>${trip.fuel_consumed_liters != null && trip.fuel_consumed_liters !== '' ? Number(trip.fuel_consumed_liters).toFixed(2) : '-'}</td>
             <td><span class="badge bg-${trip.status === 'completed' ? 'success' : trip.status === 'in_progress' ? 'warning' : 'secondary'}">${escapeHtml(trip.status)}</span></td>
-        `;
-        tbody.appendChild(row);
-    });
+        </tr>
+    `;
 }
 
 function escapeHtml(text) {

@@ -27,10 +27,6 @@
     <i class="bi bi-info-circle me-1"></i> <strong>Route update status:</strong> <span id="route-update-status-text">—</span>
 </div>
 
-<div class="alert alert-light border mb-3 py-2 small">
-    <strong>How updates work:</strong> With <strong>Auto-refresh (15s)</strong> on, the page pulls fresh data from WheelsEye every 15 seconds and updates the map (no need to click Sync). The map shows each vehicle's <strong>current position</strong> and <strong>route path</strong> (last 24h). With <code>MAPBOX_ACCESS_TOKEN</code> in .env you get Mapbox layers and routes <strong>snapped to roads</strong>.
-</div>
-
 <div class="row">
     <div class="col-md-9">
         <div class="card">
@@ -64,8 +60,8 @@ let geofenceLayers = [];
 let autoRefreshInterval = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
-const DEFAULT_ZOOM = 17;
-const MIN_ZOOM = 16;
+const DEFAULT_ZOOM = 19;
+const MIN_ZOOM = 18;
 let mapboxStreetLayer, mapboxSatelliteLayer;
 
 function initMap() {
@@ -80,9 +76,9 @@ function initMap() {
             'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}?access_token=' + mapboxToken,
             { attribution: '© Mapbox', maxZoom: 22 }
         );
-        mapboxStreetLayer.addTo(map);
+        mapboxSatelliteLayer.addTo(map);
         L.control.layers(
-            { 'Mapbox Street': mapboxStreetLayer, 'Mapbox Satellite': mapboxSatelliteLayer },
+            { 'Mapbox Satellite': mapboxSatelliteLayer, 'Mapbox Street': mapboxStreetLayer },
             null,
             { position: 'topright' }
         ).addTo(map);
@@ -374,7 +370,7 @@ function vehicleListItem(v) {
 
 function focusVehicle(id) {
     if (markers[id]) {
-        map.setView(markers[id].getLatLng(), 15);
+        map.panTo(markers[id].getLatLng());
         markers[id].openPopup();
     }
 }
@@ -421,9 +417,15 @@ function escapeHtml(text) {
 
 function showError(msg) {
     const container = document.getElementById('error-container');
+    if (!container) return;
+    if (!msg || String(msg).trim() === '') {
+        container.style.display = 'none';
+        container.textContent = '';
+        return;
+    }
     container.textContent = msg;
     container.style.display = 'block';
-    setTimeout(() => container.style.display = 'none', 5000);
+    setTimeout(() => { container.style.display = 'none'; container.textContent = ''; }, 5000);
 }
 
 // Initialize map and load data
