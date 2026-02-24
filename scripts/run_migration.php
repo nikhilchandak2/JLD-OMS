@@ -29,6 +29,8 @@ try {
     echo "Running migration: " . basename($migrationFile) . "\n";
     $database = new Database();
     $pdo = $database->getConnection();
+    $dbName = $_ENV['DB_NAME'] ?? 'order_processing';
+    echo "Using database: " . $dbName . "\n";
     $sql = file_get_contents($migrationFile);
 
     $statements = array_filter(
@@ -38,19 +40,19 @@ try {
         }
     );
 
-    $pdo->beginTransaction();
-    foreach ($statements as $statement) {
-        if (trim($statement)) {
-            echo "  " . substr(trim($statement), 0, 60) . "...\n";
+    foreach ($statements as $i => $statement) {
+        $statement = trim($statement);
+        if ($statement === '') continue;
+        echo "  [" . ($i + 1) . "] " . substr($statement, 0, 55) . "...\n";
+        try {
             $pdo->exec($statement);
+        } catch (Exception $e) {
+            echo "Migration failed at statement " . ($i + 1) . ": " . $e->getMessage() . "\n";
+            exit(1);
         }
     }
-    $pdo->commit();
     echo "Migration completed successfully.\n";
 } catch (Exception $e) {
-    if (isset($pdo) && $pdo->inTransaction()) {
-        $pdo->rollback();
-    }
     echo "Migration failed: " . $e->getMessage() . "\n";
     exit(1);
 }
