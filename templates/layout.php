@@ -896,6 +896,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/dumper-assignment') !== false ? 'active' : '' ?>" href="/dumper-assignment">
+                            <i class="bi bi-truck"></i> Dumper Assignment
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'geofences' ? 'active' : '' ?>" href="/geofences">
                             <i class="bi bi-geo-fill"></i> Geofences
                         </a>

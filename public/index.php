@@ -83,6 +83,12 @@ $router->group('/api', function($router) {
         $router->get('/fuel/vehicles', 'FuelController@vehicles');
         $router->get('/fuel/vehicle/{id}', 'FuelController@vehicleFuel');
         $router->get('/fuel/alerts', 'FuelController@alerts');
+        // Excavating machines & daily dumper assignments
+        $router->get('/excavating-machines', 'DumperAssignmentController@listMachines');
+        $router->put('/excavating-machines/{id}', 'DumperAssignmentController@updateMachine');
+        $router->get('/dumper-assignments', 'DumperAssignmentController@getAssignments');
+        $router->post('/dumper-assignments', 'DumperAssignmentController@addAssignment');
+        $router->delete('/dumper-assignments/{id}', 'DumperAssignmentController@removeAssignment');
         // User management (admin only)
         $router->get('/users', 'UserController@index');
         $router->get('/users/roles', 'UserController@roles');
@@ -173,6 +179,7 @@ $router->get('/tracking', 'WebController@tracking');
 $router->get('/trips', 'WebController@trips');
 $router->get('/geofences', 'WebController@geofences');
 $router->get('/fuel', 'WebController@fuel');
+$router->get('/dumper-assignment', 'WebController@dumperAssignment');
 
 // Handle the request
 try {

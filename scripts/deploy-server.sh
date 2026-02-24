@@ -11,7 +11,8 @@ git pull
 echo "=== Deploy: composer install ==="
 composer install --no-dev --optimize-autoloader
 
-echo "=== Deploy: run migration 006 (trip stoppages) ==="
-php scripts/run_migration.php 006
+echo "=== Deploy: run migrations (006, 008) ==="
+php scripts/run_migration.php 006 2>/dev/null || true
+php scripts/run_migration.php 008 2>/dev/null || true
 
 echo "=== Deploy done. ==="

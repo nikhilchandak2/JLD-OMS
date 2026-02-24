@@ -296,6 +296,17 @@ class WebController
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
+
+    public function dumperAssignment(): void
+    {
+        $this->requireAuth();
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('dumper-assignment', [
+            'title' => 'Dumper Assignment',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
     
     private function requireAuth(): void
     {
