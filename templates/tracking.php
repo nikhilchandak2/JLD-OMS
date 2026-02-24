@@ -304,13 +304,21 @@ async function updateMap(vehicles, geofences) {
         const startMarker = L.marker(startLatLng, { icon: startIcon }).addTo(map);
         startMarker.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – Start');
         pathStartMarkers[vehicle.id] = startMarker;
-        // Snap path to roads (Mapbox Map Matching) so it follows the exact route
+        // Snap path to roads (Mapbox Map Matching) only when the result is good (don't replace with a bad/short match)
         if (mapboxToken) {
+            const rawPointCount = points.length;
             getMapMatchedPath(points, mapboxToken).then(matched => {
                 if (thisUpdateGen !== pathUpdateGeneration) return;
-                if (matched && matched.length >= 2 && pathLayers[vehicle.id] && map.hasLayer(pathLayers[vehicle.id])) {
-                    pathLayers[vehicle.id].setLatLngs(matched);
-                }
+                if (!pathLayers[vehicle.id] || !map.hasLayer(pathLayers[vehicle.id])) return;
+                if (!matched || matched.length < 2) return;
+                const minPoints = Math.max(2, Math.floor(rawPointCount * 0.15));
+                if (matched.length < minPoints) return;
+                const rawStart = points[0], rawEnd = points[points.length - 1];
+                const matchedStart = matched[0], matchedEnd = matched[matched.length - 1];
+                const distStart = Math.abs(matchedStart[0] - rawStart[0]) + Math.abs(matchedStart[1] - rawStart[1]);
+                const distEnd = Math.abs(matchedEnd[0] - rawEnd[0]) + Math.abs(matchedEnd[1] - rawEnd[1]);
+                if (distStart > 0.05 || distEnd > 0.05) return;
+                pathLayers[vehicle.id].setLatLngs(matched);
             });
         }
     });
