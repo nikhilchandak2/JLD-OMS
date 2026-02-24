@@ -1,5 +1,5 @@
 -- Excavating machines (one per mine) and daily dumper assignments
--- 5 machines, 4-5 dumpers per machine; assignments can change daily
+-- 5 machines, 4-5 dumpers per machine, assignments can change daily
 
 CREATE TABLE IF NOT EXISTS excavating_machines (
     id INT AUTO_INCREMENT PRIMARY KEY,
