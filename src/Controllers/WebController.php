@@ -308,6 +308,21 @@ class WebController
         ]);
     }
     
+    /**
+     * Export Documents (Nepal) – separate module from OMS orders/tracking/admin.
+     * Used only for Nepal export: Commercial Invoice, Tax Invoice, Packing List, etc.
+     */
+    public function exportDocuments(): void
+    {
+        $this->requireAuth();
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('export/index', [
+            'title' => 'Nepal Export Documents',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+    
     private function requireAuth(): void
     {
         if (!$this->authService->isAuthenticated()) {

@@ -8,6 +8,7 @@ composer.phar
 
 # Storage
 /storage/documents/
+/storage/export_documents/
 /storage/logs/
 
 # IDE

@@ -911,6 +911,16 @@
                         </a>
                     </li>
                     
+                    <!-- Export Documents (Nepal) - Separate from OMS orders/tracking -->
+                    <li class="nav-item mt-3">
+                        <small class="text-white-50 text-uppercase px-3">Export Documents</small>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/export') === 0 ? 'active' : '' ?>" href="/export">
+                            <i class="bi bi-file-earmark-spreadsheet"></i> Nepal Export Docs
+                        </a>
+                    </li>
+                    
                     <!-- Administration Section -->
                     <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
                     <li class="nav-item mt-3">

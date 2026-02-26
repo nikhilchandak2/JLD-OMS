@@ -128,10 +128,17 @@ $router->group('/api', function($router) {
         $router->get('/dispatches', 'DispatchController@index');
         $router->post('/orders/{id}/dispatches', 'DispatchController@create');
         
-        // Document Generation
+        // Document Generation (OMS – orders/dispatches)
         $router->get('/documents/types', 'DocumentController@getTypes');
         $router->post('/documents/generate', 'DocumentController@generate');
         $router->get('/documents/download', 'DocumentController@download');
+        
+        // Export Documents (Nepal) – separate module; own data, no link to OMS orders/tracking
+        $router->get('/export/orders', 'ExportDocumentsController@listExportOrders');
+        $router->post('/export/orders', 'ExportDocumentsController@createExportOrder');
+        $router->get('/export/orders/{id}', 'ExportDocumentsController@showExportOrder');
+        $router->post('/export/dispatch-pack', 'ExportDocumentsController@generateDispatchPack');
+        $router->get('/export/download', 'ExportDocumentsController@download');
         
         // Busy Integration
         $router->post('/busy/webhook', 'BusyIntegrationController@receiveInvoiceWebhook');
@@ -180,6 +187,8 @@ $router->get('/trips', 'WebController@trips');
 $router->get('/geofences', 'WebController@geofences');
 $router->get('/fuel', 'WebController@fuel');
 $router->get('/dumper-assignment', 'WebController@dumperAssignment');
+// Export Documents (Nepal) - separate module, not linked to OMS orders/tracking
+$router->get('/export', 'WebController@exportDocuments');
 
 // Handle the request
 try {
