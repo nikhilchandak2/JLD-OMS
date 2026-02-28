@@ -22,6 +22,27 @@ class ExportDocumentsController
     }
 
     /**
+     * Check if export_orders table exists. GET /api/export/check-setup
+     */
+    public function checkSetup(): void
+    {
+        $this->requireAuthJson();
+        header('Content-Type: application/json');
+        try {
+            $conn = $this->database->getConnection();
+            $dbName = $conn->query('SELECT DATABASE()')->fetchColumn();
+            $stmt = $conn->query("SHOW TABLES LIKE 'export_orders'");
+            $exists = $stmt->rowCount() > 0;
+            echo json_encode([
+                'table_exists' => $exists,
+                'database' => $dbName,
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['table_exists' => false, 'database' => null, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * List export orders (Nepal). Uses export_orders table only.
      * GET /api/export/orders
      */
@@ -93,7 +114,10 @@ class ExportDocumentsController
         } catch (\Throwable $e) {
             if ($this->tableMissing($e)) {
                 http_response_code(503);
-                echo json_encode(['error' => 'Export module not set up. Run migration for export_orders.']);
+                echo json_encode([
+                    'error' => 'Export module not set up. Run migration for export_orders.',
+                    'detail' => $e->getMessage(),
+                ]);
                 return;
             }
             http_response_code(500);

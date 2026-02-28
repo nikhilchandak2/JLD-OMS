@@ -148,6 +148,7 @@ $router->group('/api', function($router) {
         $router->get('/documents/download', 'DocumentController@download');
         
         // Export Documents (Nepal) – separate module; own data, no link to OMS orders/tracking
+        $router->get('/export/check-setup', 'ExportDocumentsController@checkSetup');
         $router->get('/export/orders', 'ExportDocumentsController@listExportOrders');
         $router->post('/export/orders', 'ExportDocumentsController@createExportOrder');
         $router->get('/export/orders/{id}', 'ExportDocumentsController@showExportOrder');
