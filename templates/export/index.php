@@ -271,7 +271,7 @@
 
 <script>
 (function() {
-    const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+    const csrf = '<?= htmlspecialchars($csrf_token ?? '') ?>';
 
     function loadExportOrders() {
         const listEl = document.getElementById('export-orders-list');
