@@ -123,6 +123,8 @@ class ExportDocumentPackService
         $outputPath = $outputDir . '/' . $filename;
 
         $writer = IOFactory::createWriter($mainWorkbook, 'Xlsx');
+        // Avoid "Sheet does not exist" when formulas reference other sheets (e.g. Packing List!G39)
+        $writer->setPreCalculateFormulas(false);
         $writer->save($outputPath);
 
         return $outputPath;
