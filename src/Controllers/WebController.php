@@ -326,7 +326,10 @@ class WebController
     private function requireAuth(): void
     {
         if (!$this->authService->isAuthenticated()) {
-            header('Location: /login');
+            $returnUrl = $_SERVER['REQUEST_URI'] ?? '/dashboard';
+            $loginUrl = '/login?redirect=' . urlencode($returnUrl);
+            header('Cache-Control: no-store, no-cache, must-revalidate');
+            header('Location: ' . $loginUrl);
             exit;
         }
     }

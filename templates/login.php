@@ -74,7 +74,9 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         const data = await response.json();
         
         if (response.ok && data.success) {
-            window.location.href = '/dashboard';
+            const params = new URLSearchParams(window.location.search);
+            const redirect = params.get('redirect');
+            window.location.href = (redirect && redirect.startsWith('/')) ? redirect : '/dashboard';
         } else {
             showError(data.error || 'Login failed');
         }

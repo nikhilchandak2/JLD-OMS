@@ -18,8 +18,18 @@ $dotenv->load();
 // Set timezone (default: India)
 date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'Asia/Kolkata');
 
-// Start session
-session_start();
+// Session cookie: ensure it works over HTTPS and persists
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'domain' => '',
+        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https'),
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ]);
+    session_start();
+}
 
 // Initialize application
 $app = new Application();
