@@ -66,6 +66,14 @@ class ExportDocumentPackService
             $workbook = IOFactory::load($fullPath);
             $sheet = $workbook->getSheet(0);
 
+            $sheetNames = [
+                'commercial_invoice' => 'Commercial Invoice',
+                'tax_invoice' => 'Tax Invoice',
+                'packing_list' => 'Packing List',
+            ];
+            $sheetTitle = $sheetNames[$docType] ?? $docType;
+            $sheet->setTitle($sheetTitle);
+
             $data = ['order' => $order, 'dispatch' => $dispatch];
 
             if (!empty($config['single_value_mappings'])) {
@@ -81,21 +89,17 @@ class ExportDocumentPackService
                 );
             }
 
-            $sheetNames = [
-                'commercial_invoice' => 'Commercial Invoice',
-                'tax_invoice' => 'Tax Invoice',
-                'packing_list' => 'Packing List',
-            ];
-            $sheet->setTitle($sheetNames[$docType] ?? $docType);
-
             if ($mainWorkbook === null) {
                 $mainWorkbook = $workbook;
-                // Keep only the first sheet so adding "Packing List" later does not duplicate a tab name
-                while ($mainWorkbook->getSheetCount() > 1) {
-                    $mainWorkbook->removeSheetByIndex($mainWorkbook->getSheetCount() - 1);
-                }
             } else {
                 $clonedSheet = clone $sheet;
+                // If a sheet with this name already exists (e.g. in Commercial Invoice.xlsx), remove it so formulas resolve to our filled sheet
+                for ($i = $mainWorkbook->getSheetCount() - 1; $i >= 0; $i--) {
+                    if ($mainWorkbook->getSheet($i)->getTitle() === $sheetTitle) {
+                        $mainWorkbook->removeSheetByIndex($i);
+                        break;
+                    }
+                }
                 $mainWorkbook->addSheet($clonedSheet);
             }
             $sheetIndex++;
