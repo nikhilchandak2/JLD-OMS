@@ -421,7 +421,9 @@
                     bootstrap.Modal.getInstance(document.getElementById('generatePackModal')).hide();
                     showSuccess('Documents generated. Download started.', 'success-container');
                 } else {
-                    showError(res.error || res.message || 'Failed to generate documents', 'error-container');
+                    const msg = res.error || res.message || 'Failed to generate documents';
+                    const detail = res.detail ? ' ' + res.detail : '';
+                    showError(msg + detail, 'error-container');
                 }
             })
             .catch(() => showError('Request failed', 'error-container'))

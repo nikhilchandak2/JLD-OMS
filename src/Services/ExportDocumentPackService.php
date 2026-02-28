@@ -35,7 +35,10 @@ class ExportDocumentPackService
     {
         $outputDir = __DIR__ . '/../../storage/export_documents';
         if (!is_dir($outputDir)) {
-            mkdir($outputDir, 0755, true);
+            @mkdir($outputDir, 0755, true);
+        }
+        if (!is_dir($outputDir) || !is_writable($outputDir)) {
+            throw new \RuntimeException('Export output directory is missing or not writable: storage/export_documents');
         }
 
         $order = $this->buildOrderData($exportOrder);
@@ -95,7 +98,12 @@ class ExportDocumentPackService
         }
 
         if ($mainWorkbook === null) {
-            throw new \RuntimeException('No export templates could be loaded.');
+            $paths = ['Formats/Export/Commercial Invoice.xlsx', 'Formats/Export/Packing List.xlsx'];
+            $base = realpath($this->templateBasePath) ?: $this->templateBasePath;
+            throw new \RuntimeException(
+                'No export templates could be loaded. Ensure these files exist on the server: ' .
+                implode(', ', $paths) . ' (relative to ' . $base . '). Also ensure storage/export_documents is writable.'
+            );
         }
 
         $invoiceNo = preg_replace('/[^a-zA-Z0-9_-]/', '_', $dispatch['invoice_no'] ?? 'export');
