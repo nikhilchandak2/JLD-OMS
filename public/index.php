@@ -18,13 +18,16 @@ $dotenv->load();
 // Set timezone (default: India)
 date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'Asia/Kolkata');
 
-// Session cookie: ensure it works over HTTPS and persists
+// Session cookie: ensure it works over HTTPS (set SESSION_SECURE=1 or APP_URL=https://... in .env)
 if (session_status() === PHP_SESSION_NONE) {
+    $appUrl = $_ENV['APP_URL'] ?? '';
+    $forceSecure = ($_ENV['SESSION_SECURE'] ?? '') === '1' || str_starts_with(strtolower($appUrl), 'https://');
+    $isSecure = $forceSecure || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
     session_set_cookie_params([
         'lifetime' => 0,
         'path' => '/',
         'domain' => '',
-        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https'),
+        'secure' => $isSecure,
         'httponly' => true,
         'samesite' => 'Lax'
     ]);
