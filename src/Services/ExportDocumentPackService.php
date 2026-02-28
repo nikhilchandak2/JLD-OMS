@@ -93,13 +93,15 @@ class ExportDocumentPackService
                 $mainWorkbook = $workbook;
             } else {
                 $clonedSheet = clone $sheet;
-                // If a sheet with this name already exists (e.g. in Commercial Invoice.xlsx), remove it so formulas resolve to our filled sheet
-                for ($i = $mainWorkbook->getSheetCount() - 1; $i >= 0; $i--) {
-                    if ($mainWorkbook->getSheet($i)->getTitle() === $sheetTitle) {
-                        $mainWorkbook->removeSheetByIndex($i);
+                // Use a unique name so we never duplicate; keeps formulas in other sheets (e.g. Commercial Invoice referencing Packing List!G39) valid
+                $uniqueTitle = $sheetTitle;
+                for ($i = 0; $i < $mainWorkbook->getSheetCount(); $i++) {
+                    if ($mainWorkbook->getSheet($i)->getTitle() === $uniqueTitle) {
+                        $uniqueTitle = $sheetTitle . ' - Dispatch';
                         break;
                     }
                 }
+                $clonedSheet->setTitle($uniqueTitle);
                 $mainWorkbook->addSheet($clonedSheet);
             }
             $sheetIndex++;
