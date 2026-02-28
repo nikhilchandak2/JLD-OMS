@@ -1,0 +1,60 @@
+<?php
+/**
+ * Commercial Invoice – Excel template mapping for Nepal export.
+ * File in Formats/Export/: Commercial Invoice.xlsx
+ */
+
+return [
+    'template_file' => 'Formats/Export/Commercial Invoice.xlsx',
+    'sheet_name' => null, // null = first/active sheet
+    'single_value_mappings' => [
+        // Exporter (often fixed; can come from order or config)
+        'B5' => 'order.iec',
+        'C5' => 'order.gstin',
+        'E5' => 'dispatch.invoice_no',
+        'G5' => 'dispatch.invoice_date',
+        'B6' => 'order.exporter_name',
+        'B7' => 'order.exporter_address',
+        'E6' => 'order.buyer_po_no',
+        'B10' => 'order.exporter_email',
+        'B11' => 'order.exporter_phone',
+        // Consignee & Notify
+        'B13' => 'order.consignee',
+        'B14' => 'order.consignee_address',
+        'E13' => 'order.notify_applicant',
+        'E14' => 'order.notify_address',
+        'E15' => 'order.pan_no',
+        'E16' => 'order.exim_code',
+        // Terms & logistics
+        'B18' => 'order.pre_carriage',
+        'C18' => 'order.place_of_receipt',
+        'E17' => 'order.payment_terms',
+        'E18' => 'order.delivery_terms',
+        'B20' => 'order.country_origin',
+        'D20' => 'order.country_destination',
+        'E20' => 'dispatch.truck_numbers',
+        'B22' => 'order.final_destination',
+        'E22' => 'dispatch.lr_numbers_and_dates',
+        'E24' => 'dispatch.shipping_bill',
+        // Goods & LC
+        'C27' => 'order.packaging',
+        'D27' => 'order.product_description',
+        'F29' => 'dispatch.total_weight_mt',
+        'G29' => 'dispatch.rate_per_mt',
+        'H29' => 'dispatch.amount',
+        'D31' => 'order.lc_number',
+        'D32' => 'order.lc_issue_date',
+        'D33' => 'order.harmonic_code',
+        'D34' => 'order.country_origin',
+        'D35' => 'order.customs_entry',
+        // Amount summary
+        'B38' => 'dispatch.amount_in_words',
+        'H38' => 'dispatch.amount',
+        'H41' => 'dispatch.assessable_value',
+        // Bank (exporter)
+        'C41' => 'order.beneficiary_name',
+        'C42' => 'order.bank_account',
+        'C43' => 'order.bank_name',
+        'H42' => 'order.exporter_name',
+    ],
+];
