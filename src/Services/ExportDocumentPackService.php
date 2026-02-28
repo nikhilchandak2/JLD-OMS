@@ -90,6 +90,10 @@ class ExportDocumentPackService
 
             if ($mainWorkbook === null) {
                 $mainWorkbook = $workbook;
+                // Keep only the first sheet so adding "Packing List" later does not duplicate a tab name
+                while ($mainWorkbook->getSheetCount() > 1) {
+                    $mainWorkbook->removeSheetByIndex($mainWorkbook->getSheetCount() - 1);
+                }
             } else {
                 $clonedSheet = clone $sheet;
                 $mainWorkbook->addSheet($clonedSheet);
