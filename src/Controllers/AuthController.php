@@ -80,6 +80,22 @@ class AuthController
         ]);
     }
     
+    /**
+     * Debug: check if session is valid (no auth required).
+     * GET /api/session-status - use after login to verify session persists.
+     */
+    public function sessionStatus(): void
+    {
+        header('Content-Type: application/json');
+        $authenticated = $this->authService->isAuthenticated();
+        $user = $this->authService->getCurrentUser();
+        echo json_encode([
+            'authenticated' => $authenticated,
+            'has_session' => isset($_SESSION['user_id']),
+            'user_name' => $authenticated ? ($user['name'] ?? null) : null,
+        ]);
+    }
+    
     public function me(): void
     {
         header('Content-Type: application/json');

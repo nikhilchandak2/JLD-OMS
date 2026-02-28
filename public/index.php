@@ -52,6 +52,7 @@ $router->group('/api', function($router) {
     // Authentication routes
     $router->post('/login', 'AuthController@login');
     $router->post('/logout', 'AuthController@logout');
+    $router->get('/session-status', 'AuthController@sessionStatus');
     
     // GPS/Fuel Webhooks (public, no auth required)
     $router->post('/gps/webhook', 'GPSFuelWebhookController@receiveGPSData');
