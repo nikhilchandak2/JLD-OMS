@@ -24,6 +24,61 @@ class ExcelDocumentService
     }
     
     /**
+     * Replace {{PLACEHOLDER}} in cell values with data. Use this so your Excel template
+     * keeps its exact layout and formatting; put {{INVOICE_NO}}, {{CONSIGNEE}}, etc. in the cells.
+     *
+     * @param array $placeholderMap [ 'INVOICE_NO' => 'dispatch.invoice_no', ... ]
+     * @param int|null $onlyRow If set, only replace in this 1-based row (for truck rows)
+     */
+    public function replacePlaceholders(Worksheet $sheet, array $data, array $placeholderMap, ?int $onlyRow = null): void
+    {
+        $highestRow = $sheet->getHighestDataRow();
+        $highestCol = $sheet->getHighestDataColumn();
+        $highestColIndex = Coordinate::columnIndexFromString($highestCol);
+
+        $rowStart = $onlyRow !== null ? $onlyRow : 1;
+        $rowEnd = $onlyRow !== null ? $onlyRow : $highestRow;
+
+        for ($row = $rowStart; $row <= $rowEnd; $row++) {
+            for ($col = 1; $col <= $highestColIndex; $col++) {
+                $cellRef = Coordinate::stringFromColumnIndex($col) . $row;
+                $cell = $sheet->getCell($cellRef);
+                $value = $cell->getValue();
+
+                if (!is_string($value) || strpos($value, '{{') === false) {
+                    continue;
+                }
+
+                $replaced = $value;
+                foreach ($placeholderMap as $key => $path) {
+                    $placeholder = '{{' . $key . '}}';
+                    if (strpos($replaced, $placeholder) !== false) {
+                        $resolved = $this->getDataValue($data, $path);
+                        $replaced = str_replace($placeholder, (string)($resolved ?? ''), $replaced);
+                    }
+                }
+                $sheet->setCellValue($cellRef, $replaced);
+            }
+        }
+    }
+
+    /**
+     * Copy styles and values from one row to another (e.g. template row to newly inserted row so placeholders can be replaced).
+     */
+    public function copyRowStyle(Worksheet $sheet, int $fromRow, int $toRow): void
+    {
+        $highestCol = $sheet->getHighestDataColumn();
+        $highestColIndex = Coordinate::columnIndexFromString($highestCol);
+        for ($col = 1; $col <= $highestColIndex; $col++) {
+            $colLetter = Coordinate::stringFromColumnIndex($col);
+            $fromCell = $colLetter . $fromRow;
+            $toCell = $colLetter . $toRow;
+            $sheet->duplicateStyle($sheet->getStyle($fromCell), $toCell);
+            $sheet->setCellValue($toCell, $sheet->getCell($fromCell)->getValue());
+        }
+    }
+
+    /**
      * Map single values to cells
      */
     public function mapSingleValues(Worksheet $sheet, array $mappings, array $data): void

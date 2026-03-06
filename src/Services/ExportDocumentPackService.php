@@ -4,6 +4,8 @@ namespace App\Services;
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use App\Helpers\AmountInWords;
 
 /**
@@ -16,12 +18,15 @@ class ExportDocumentPackService
     private ExcelDocumentService $excelService;
     private string $configPath;
     private string $templateBasePath;
+    private array $placeholderMap;
 
     public function __construct()
     {
         $this->excelService = new ExcelDocumentService();
         $this->configPath = __DIR__ . '/../../config/export_document_mappings';
         $this->templateBasePath = __DIR__ . '/../../';
+        $placeholderFile = __DIR__ . '/../../config/export_placeholders.php';
+        $this->placeholderMap = is_file($placeholderFile) ? require $placeholderFile : [];
     }
 
     /**
@@ -49,6 +54,11 @@ class ExportDocumentPackService
         $documentTypes = ['commercial_invoice', 'packing_list'];
         $mainWorkbook = null;
         $sheetIndex = 0;
+        $sheetNames = [
+            'commercial_invoice' => 'Commercial Invoice',
+            'tax_invoice' => 'Tax Invoice',
+            'packing_list' => 'Packing List',
+        ];
 
         foreach ($documentTypes as $docType) {
             $configFile = $this->configPath . '/' . $docType . '.php';
@@ -56,52 +66,69 @@ class ExportDocumentPackService
                 continue;
             }
             $config = require $configFile;
-            $templatePath = $config['template_file'] ?? '';
-            $fullPath = $this->templateBasePath . $templatePath;
-
-            if (!is_file($fullPath)) {
-                continue; // skip if this template is not present
-            }
-
-            $workbook = IOFactory::load($fullPath);
-            $sheet = $workbook->getSheet(0);
-
-            $sheetNames = [
-                'commercial_invoice' => 'Commercial Invoice',
-                'tax_invoice' => 'Tax Invoice',
-                'packing_list' => 'Packing List',
-            ];
             $sheetTitle = $sheetNames[$docType] ?? $docType;
-            $sheet->setTitle($sheetTitle);
 
             $data = ['order' => $order, 'dispatch' => $dispatch];
 
-            if (!empty($config['single_value_mappings'])) {
-                $this->excelService->mapSingleValues($sheet, $config['single_value_mappings'], $data);
+            $templatePath = $config['template_file'] ?? '';
+            $fullPath = $this->templateBasePath . $templatePath;
+
+            // Load workbook if present; otherwise, if we already have a main workbook, try to process the sheet inside it
+            $workbook = null;
+            $sheet = null;
+            $processingMainSheet = false;
+
+            if (is_file($fullPath)) {
+                $workbook = IOFactory::load($fullPath);
+                $sheet = $this->getSheetFromConfig($workbook, $config, $sheetTitle);
+            } elseif ($mainWorkbook instanceof Spreadsheet) {
+                $sheet = $this->getSheetFromConfig($mainWorkbook, $config, $sheetTitle);
+                $processingMainSheet = true;
+            } else {
+                continue;
             }
 
-            if (!empty($config['repeating_rows']) && !empty($trucks)) {
-                $this->excelService->mapRepeatingRows(
-                    $sheet,
-                    $config['repeating_rows'],
-                    $trucks,
-                    $data
-                );
+            // Keep sheet title consistent when possible (helps formulas like Packing List!G39)
+            if ($sheet instanceof Worksheet && $sheet->getTitle() !== $sheetTitle) {
+                // Only rename when we are explicitly generating this docType; safe because placeholders are unique
+                $sheet->setTitle($sheetTitle);
+            }
+
+            // Fill placeholders or fall back to cell mappings
+            if (!empty($this->placeholderMap)) {
+                $this->fillSheetWithPlaceholders($sheet, $config, $order, $dispatch, $trucks);
+            } else {
+                if (!empty($config['single_value_mappings'])) {
+                    $this->excelService->mapSingleValues($sheet, $config['single_value_mappings'], $data);
+                }
+                if (!empty($config['repeating_rows']) && !empty($trucks)) {
+                    $this->excelService->mapRepeatingRows(
+                        $sheet,
+                        $config['repeating_rows'],
+                        $trucks,
+                        $data
+                    );
+                }
+            }
+
+            // If we processed a sheet already inside the main workbook, don't merge anything
+            if ($processingMainSheet) {
+                $sheetIndex++;
+                continue;
             }
 
             if ($mainWorkbook === null) {
                 $mainWorkbook = $workbook;
             } else {
                 $clonedSheet = clone $sheet;
-                // Use a unique name so we never duplicate; keeps formulas in other sheets (e.g. Commercial Invoice referencing Packing List!G39) valid
-                $uniqueTitle = $sheetTitle;
-                for ($i = 0; $i < $mainWorkbook->getSheetCount(); $i++) {
-                    if ($mainWorkbook->getSheet($i)->getTitle() === $uniqueTitle) {
-                        $uniqueTitle = $sheetTitle . ' - Dispatch';
+                // If a sheet with this title already exists (e.g. inside Commercial Invoice template), replace it.
+                for ($i = $mainWorkbook->getSheetCount() - 1; $i >= 0; $i--) {
+                    if ($mainWorkbook->getSheet($i)->getTitle() === $sheetTitle) {
+                        $mainWorkbook->removeSheetByIndex($i);
                         break;
                     }
                 }
-                $clonedSheet->setTitle($uniqueTitle);
+                $clonedSheet->setTitle($sheetTitle);
                 $mainWorkbook->addSheet($clonedSheet);
             }
             $sheetIndex++;
@@ -128,6 +155,96 @@ class ExportDocumentPackService
         $writer->save($outputPath);
 
         return $outputPath;
+    }
+
+    private function getSheetFromConfig(Spreadsheet $workbook, array $config, string $fallbackTitle): Worksheet
+    {
+        $sheetName = $config['sheet_name'] ?? null;
+        if (is_string($sheetName) && $sheetName !== '') {
+            $s = $workbook->getSheetByName($sheetName);
+            if ($s instanceof Worksheet) {
+                return $s;
+            }
+        }
+        if (is_int($sheetName)) {
+            try {
+                return $workbook->getSheet($sheetName);
+            } catch (\Throwable $e) {
+                // fall through
+            }
+        }
+        $byTitle = $workbook->getSheetByName($fallbackTitle);
+        if ($byTitle instanceof Worksheet) {
+            return $byTitle;
+        }
+        return $workbook->getSheet(0);
+    }
+
+    private function fillSheetWithPlaceholders(Worksheet $sheet, array $config, array $order, array $dispatch, array $trucks): void
+    {
+        $templateRow = isset($config['repeating_rows']['template_row']) ? (int) $config['repeating_rows']['template_row'] : null;
+        $numTrucks = count($trucks);
+
+        if ($templateRow !== null && $numTrucks > 0) {
+            // Detect height of one truck block by scanning for any truck placeholders in a window
+            $truckKeys = ['TRUCK_NO', 'LR_NO', 'DATE', 'QTY_MT', 'BAGS'];
+            $blockHeight = 1;
+            $highestColIndex = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
+            $maxRowFound = null;
+            for ($r = $templateRow; $r <= $templateRow + 30; $r++) {
+                for ($c = 1; $c <= $highestColIndex; $c++) {
+                    $cellRef = Coordinate::stringFromColumnIndex($c) . $r;
+                    $v = $sheet->getCell($cellRef)->getValue();
+                    if (!is_string($v) || strpos($v, '{{') === false) {
+                        continue;
+                    }
+                    foreach ($truckKeys as $k) {
+                        if (strpos($v, '{{' . $k . '}}') !== false) {
+                            $maxRowFound = $maxRowFound === null ? $r : max($maxRowFound, $r);
+                            break;
+                        }
+                    }
+                }
+            }
+            if ($maxRowFound !== null && $maxRowFound >= $templateRow) {
+                $blockHeight = max(1, ($maxRowFound - $templateRow) + 1);
+            }
+
+            // Insert blocks for extra trucks
+            if ($numTrucks > 1) {
+                for ($i = 1; $i < $numTrucks; $i++) {
+                    $sheet->insertNewRowBefore($templateRow + ($blockHeight * $i), $blockHeight);
+                }
+                for ($i = 1; $i < $numTrucks; $i++) {
+                    for ($br = 0; $br < $blockHeight; $br++) {
+                        $this->excelService->copyRowStyle(
+                            $sheet,
+                            $templateRow + $br,
+                            $templateRow + ($blockHeight * $i) + $br
+                        );
+                    }
+                }
+            }
+
+            // Replace placeholders row-by-row; inside the block area, swap dispatch context per-truck
+            $highestRow = $sheet->getHighestDataRow();
+            for ($row = 1; $row <= $highestRow; $row++) {
+                $truckIndex = 0;
+                if ($row >= $templateRow && $row < ($templateRow + ($numTrucks * $blockHeight))) {
+                    $truckIndex = intdiv(($row - $templateRow), $blockHeight);
+                }
+                $rowData = [
+                    'order' => $order,
+                    'dispatch' => array_merge($dispatch, $trucks[$truckIndex] ?? ($trucks[0] ?? [])),
+                ];
+                $this->excelService->replacePlaceholders($sheet, $rowData, $this->placeholderMap, $row);
+            }
+            return;
+        }
+
+        // No repeating section: replace all placeholders using dispatch header data
+        $dataForSheet = ['order' => $order, 'dispatch' => array_merge($dispatch, $trucks[0] ?? [])];
+        $this->excelService->replacePlaceholders($sheet, $dataForSheet, $this->placeholderMap);
     }
 
     private function buildOrderData(array $exportOrder): array
