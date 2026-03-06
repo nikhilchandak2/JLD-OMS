@@ -152,6 +152,7 @@ $router->group('/api', function($router) {
         $router->get('/export/orders', 'ExportDocumentsController@listExportOrders');
         $router->post('/export/orders', 'ExportDocumentsController@createExportOrder');
         $router->get('/export/orders/{id}', 'ExportDocumentsController@showExportOrder');
+        $router->post('/export/upload-template', 'ExportDocumentsController@uploadTemplate');
         $router->post('/export/dispatch-pack', 'ExportDocumentsController@generateDispatchPack');
         $router->get('/export/download', 'ExportDocumentsController@download');
         
@@ -204,6 +205,9 @@ $router->get('/fuel', 'WebController@fuel');
 $router->get('/dumper-assignment', 'WebController@dumperAssignment');
 // Export Documents (Nepal) - separate module, not linked to OMS orders/tracking
 $router->get('/export', 'WebController@exportDocuments');
+
+// CRM – Customer Relationship Management (leads, deals, contacts, activities)
+$router->get('/crm', 'WebController@crm');
 
 // Handle the request
 try {

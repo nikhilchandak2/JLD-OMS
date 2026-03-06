@@ -71,7 +71,7 @@ class ExportDocumentPackService
             $data = ['order' => $order, 'dispatch' => $dispatch];
 
             $templatePath = $config['template_file'] ?? '';
-            $fullPath = $this->templateBasePath . $templatePath;
+            $fullPath = $this->getTemplateFullPath($templatePath);
 
             // Load workbook if present; otherwise, if we already have a main workbook, try to process the sheet inside it
             $workbook = null;
@@ -155,6 +155,21 @@ class ExportDocumentPackService
         $writer->save($outputPath);
 
         return $outputPath;
+    }
+
+    /**
+     * Prefer uploaded template in storage/export_templates/ so the exact format is used; else use Formats/Export/.
+     */
+    private function getTemplateFullPath(string $configRelativePath): string
+    {
+        $base = $this->templateBasePath;
+        $filename = basename($configRelativePath);
+        $uploadDir = __DIR__ . '/../../storage/export_templates';
+        $uploadPath = $uploadDir . '/' . $filename;
+        if (is_file($uploadPath) && is_readable($uploadPath)) {
+            return $uploadPath;
+        }
+        return $base . $configRelativePath;
     }
 
     private function getSheetFromConfig(Spreadsheet $workbook, array $config, string $fallbackTitle): Worksheet

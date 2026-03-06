@@ -322,6 +322,21 @@ class WebController
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
+
+    /**
+     * CRM – Customer Relationship Management (leads, deals, contacts, activities).
+     * Separate section like Export; uses Parties as accounts.
+     */
+    public function crm(): void
+    {
+        $this->requireAuth();
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/index', [
+            'title' => 'CRM',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
     
     private function requireAuth(): void
     {

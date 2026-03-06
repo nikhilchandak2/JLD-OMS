@@ -921,6 +921,16 @@
                         </a>
                     </li>
                     
+                    <!-- CRM Section -->
+                    <li class="nav-item mt-3">
+                        <small class="text-white-50 text-uppercase px-3">CRM</small>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/crm') === 0 ? 'active' : '' ?>" href="/crm">
+                            <i class="bi bi-person-lines-fill"></i> CRM
+                        </a>
+                    </li>
+                    
                     <!-- Administration Section -->
                     <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
                     <li class="nav-item mt-3">

@@ -1,5 +1,34 @@
 # Deploy notes
 
+## Deploy steps
+
+**From your machine (after code changes):**
+1. Commit and push to your repo:
+   ```bash
+   git add -A
+   git commit -m "Your message"
+   git push origin main
+   ```
+
+**On the server (SSH in, then from app root):**
+2. Run the deploy script:
+   ```bash
+   cd /var/www/your-app   # or your app root
+   bash scripts/deploy-server.sh
+   ```
+   This does: `git pull`, `composer install --no-dev --optimize-autoloader`, and runs migrations 006–011 (skips already-applied ones).
+
+**Or run manually:**
+```bash
+git pull
+composer install --no-dev --optimize-autoloader
+php scripts/run_migration.php 006
+php scripts/run_migration.php 007
+# ... 008, 009, 010, 011 as needed
+```
+
+---
+
 ## Composer
 
 - **Do not run Composer as root.** On the server, run `composer install` as the app user (e.g. `www-data` or your deploy user). If you must use root, create a dedicated user for running composer.

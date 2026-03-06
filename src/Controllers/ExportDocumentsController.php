@@ -88,15 +88,17 @@ class ExportDocumentsController
 
         try {
             $conn = $this->database->getConnection();
-            $sql = "INSERT INTO export_orders (reference_no, buyer_po_no, buyer_po_date, consignee, notify_applicant, pan_no, exim_code, lc_number, lc_issue_date, harmonic_code, country_origin, customs_entry, payment_terms, delivery_terms, product_description, packaging, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+            $sql = "INSERT INTO export_orders (reference_no, buyer_po_no, buyer_po_date, consignee, consignee_address, notify_applicant, notify_address, pan_no, exim_code, lc_number, lc_issue_date, harmonic_code, country_origin, customs_entry, payment_terms, delivery_terms, product_description, product_item, packaging, total_bags, final_destination, our_pi_no, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
             $stmt = $conn->prepare($sql);
             $stmt->execute([
                 $input['reference_no'] ?? '',
                 $input['buyer_po_no'] ?? '',
                 $input['buyer_po_date'] ?? null,
                 $input['consignee'] ?? '',
+                $input['consignee_address'] ?? '',
                 $input['notify_applicant'] ?? '',
+                $input['notify_address'] ?? '',
                 $input['pan_no'] ?? '',
                 $input['exim_code'] ?? '',
                 $input['lc_number'] ?? '',
@@ -107,7 +109,11 @@ class ExportDocumentsController
                 $input['payment_terms'] ?? '',
                 $input['delivery_terms'] ?? '',
                 $input['product_description'] ?? '',
+                $input['product_item'] ?? '',
                 $input['packaging'] ?? '',
+                $input['total_bags'] ?? '',
+                $input['final_destination'] ?? '',
+                $input['our_pi_no'] ?? '',
             ]);
             $id = (int) $conn->lastInsertId();
             echo json_encode(['success' => true, 'id' => $id]);
@@ -209,6 +215,56 @@ class ExportDocumentsController
                 'detail' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Upload Excel template so generation uses your exact format. POST /api/export/upload-template
+     * Form: type = commercial_invoice | packing_list, file = .xlsx
+     */
+    public function uploadTemplate(): void
+    {
+        $this->requireAuthJson();
+        header('Content-Type: application/json');
+
+        $type = $_POST['type'] ?? '';
+        $allowed = ['commercial_invoice' => 'Commercial Invoice.xlsx', 'packing_list' => 'Packing List.xlsx'];
+        if (!isset($allowed[$type])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid type. Use commercial_invoice or packing_list.']);
+            return;
+        }
+
+        $targetFilename = $allowed[$type];
+        $dir = __DIR__ . '/../../storage/export_templates';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        if (!is_dir($dir) || !is_writable($dir)) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Template upload directory is not writable.']);
+            return;
+        }
+
+        $file = $_FILES['file'] ?? null;
+        if (!$file || ($file['error'] ?? 0) !== UPLOAD_ERR_OK) {
+            http_response_code(400);
+            echo json_encode(['error' => 'No file uploaded or upload error.']);
+            return;
+        }
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($ext !== 'xlsx' && $ext !== 'xls') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Only Excel files (.xlsx, .xls) are allowed.']);
+            return;
+        }
+
+        $path = $dir . '/' . $targetFilename;
+        if (!move_uploaded_file($file['tmp_name'], $path)) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to save template.']);
+            return;
+        }
+        echo json_encode(['success' => true, 'message' => 'Template saved. Generation will use this file.', 'filename' => $targetFilename]);
     }
 
     /**

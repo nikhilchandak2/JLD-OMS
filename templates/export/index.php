@@ -21,6 +21,32 @@
     This section is only for <strong>Nepal export documentation</strong>. It does not use OMS Orders, Dispatches, or Vehicle Tracking. You maintain export orders and dispatch details here; one click generates all required documents in a single Excel file.
 </div>
 
+<!-- Upload templates: use your own Excel format -->
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-upload me-2"></i>Document templates</div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">Upload your own Commercial Invoice and Packing List Excel files. The generator will use these so layout and format stay exactly as you want. Put placeholders like <code>{{INVOICE_NO}}</code>, <code>{{CONSIGNEE}}</code> in the cells where values should appear.</p>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Commercial Invoice (.xlsx)</label>
+                <div class="input-group">
+                    <input type="file" class="form-control" id="uploadCommercialInvoice" accept=".xlsx,.xls">
+                    <button type="button" class="btn btn-outline-primary" id="btnUploadCommercialInvoice">Upload</button>
+                </div>
+                <small class="text-muted" id="uploadCommercialStatus"></small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Packing List (.xlsx)</label>
+                <div class="input-group">
+                    <input type="file" class="form-control" id="uploadPackingList" accept=".xlsx,.xls">
+                    <button type="button" class="btn btn-outline-primary" id="btnUploadPackingList">Upload</button>
+                </div>
+                <small class="text-muted" id="uploadPackingStatus"></small>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-lg-8">
         <div class="card">
@@ -94,8 +120,16 @@
                         </div>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">Consignee address</label>
+                        <input type="text" class="form-control" name="consignee_address" placeholder="Full address">
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Notify Applicant</label>
                         <input type="text" class="form-control" name="notify_applicant" placeholder="e.g. ARIHANT INFRASTRUCTURE LIMITED">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notify address</label>
+                        <input type="text" class="form-control" name="notify_address" placeholder="Full address">
                     </div>
                     <div class="row">
                         <div class="col-md-6">
@@ -152,8 +186,30 @@
                         <input type="text" class="form-control" name="product_description" placeholder="e.g. INDUSTRIAL RAW MATERIAL FOR TILES INDUSTRY, FELDSPAR">
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">Product item</label>
+                        <input type="text" class="form-control" name="product_item" placeholder="e.g. FELDSPAR">
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Packaging</label>
                         <input type="text" class="form-control" name="packaging" placeholder="e.g. Packed In Small Bags">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Total bags</label>
+                                <input type="text" class="form-control" name="total_bags" placeholder="e.g. 500">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Final destination</label>
+                                <input type="text" class="form-control" name="final_destination" placeholder="e.g. NEPAL">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Our P.I. No.</label>
+                        <input type="text" class="form-control" name="our_pi_no" placeholder="Proforma invoice number">
                     </div>
                 </form>
             </div>
@@ -437,6 +493,48 @@
     document.getElementById('newExportOrderModal').addEventListener('hidden.bs.modal', function() {
         document.getElementById('error-container').innerHTML = '';
         document.getElementById('success-container').innerHTML = '';
+    });
+
+    function uploadTemplate(type, fileInputId, statusId, btnId) {
+        const fileInput = document.getElementById(fileInputId);
+        const statusEl = document.getElementById(statusId);
+        const btn = document.getElementById(btnId);
+        if (!fileInput.files.length) {
+            statusEl.textContent = 'Choose a file first.';
+            return;
+        }
+        const fd = new FormData();
+        fd.append('type', type);
+        fd.append('file', fileInput.files[0]);
+        btn.disabled = true;
+        statusEl.textContent = 'Uploading…';
+        fetch('/api/export/upload-template', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrf },
+            body: fd
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    statusEl.textContent = 'Saved. Generation will use this file.';
+                    statusEl.classList.remove('text-danger');
+                    fileInput.value = '';
+                } else {
+                    statusEl.textContent = data.error || 'Upload failed.';
+                    statusEl.classList.add('text-danger');
+                }
+            })
+            .catch(() => {
+                statusEl.textContent = 'Upload failed.';
+                statusEl.classList.add('text-danger');
+            })
+            .finally(() => { btn.disabled = false; });
+    }
+    document.getElementById('btnUploadCommercialInvoice').addEventListener('click', function() {
+        uploadTemplate('commercial_invoice', 'uploadCommercialInvoice', 'uploadCommercialStatus', 'btnUploadCommercialInvoice');
+    });
+    document.getElementById('btnUploadPackingList').addEventListener('click', function() {
+        uploadTemplate('packing_list', 'uploadPackingList', 'uploadPackingStatus', 'btnUploadPackingList');
     });
 
     loadExportOrders();

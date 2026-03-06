@@ -39,3 +39,5 @@ The row used as the truck template is set in `packing_list.php` as `repeating_ro
 - **Packing List:** set in `packing_list.php` → `'template_file' => 'Formats/Export/Packing List.xlsx'`
 
 If your Excel filenames differ, edit `template_file` in each PHP file. For Packing List, ensure `repeating_rows.template_row` is the 1-based row index of the row that contains the truck placeholders (`{{TRUCK_NO}}`, etc.).
+
+**Uploading templates:** On the Nepal Export Docs page you can upload your own Commercial Invoice and Packing List Excel files. Uploaded files are stored in `storage/export_templates/` and are used in place of the files in `Formats/Export/`. This way you can use your exact format without deploying via git. Run migration `011_export_orders_extra_columns.sql` so all form fields (consignee address, notify address, product item, total bags, final destination, our P.I. no.) are saved.
