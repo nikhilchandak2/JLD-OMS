@@ -149,6 +149,9 @@ function renderPartiesTable() {
                 </span>
             </td>
             <td>
+                <a href="/crm/parties/${party.id}" class="btn btn-sm btn-outline-success me-1" title="CRM view (profile, samples, receivables)">
+                    <i class="bi bi-person-lines-fill"></i> CRM
+                </a>
                 <button class="btn btn-sm btn-outline-primary me-1" onclick="editParty(${party.id})">
                     <i class="fas fa-edit"></i>
                 </button>

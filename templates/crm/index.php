@@ -14,7 +14,7 @@
 
 <div class="alert alert-info border-0 mb-4">
     <strong><i class="bi bi-info-circle me-2"></i>CRM section</strong><br>
-    Manage leads, opportunities (deals), contacts per party, and log calls, meetings, and notes. Parties from <strong>Administration → Parties</strong> are your customer accounts here.
+    Manage leads, deals, samples/trials, and receivables. Go to <strong>Administration → Parties</strong>, then click <strong>CRM</strong> on any party to open its full profile (company profile, contacts, deals, samples &amp; trials, receivables, activities).
 </div>
 
 <!-- Summary cards (loaded via API) -->
