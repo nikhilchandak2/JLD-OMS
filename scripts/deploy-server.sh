@@ -12,7 +12,7 @@ echo "=== Deploy: composer install ==="
 composer install --no-dev --optimize-autoloader
 
 echo "=== Deploy: run migrations ==="
-for n in 006 007 008 009 010 011; do
+for n in 006 007 008 009 010 011 012; do
   php scripts/run_migration.php $n 2>/dev/null || true
 done
 

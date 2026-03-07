@@ -177,6 +177,31 @@ $router->group('/api', function($router) {
         $router->get('/analytics/pending', 'AnalyticsController@pending');
         $router->get('/analytics/parties', 'AnalyticsController@parties');
         
+        // CRM API
+        $router->get('/crm/summary', 'CrmController@summary');
+        $router->get('/crm/stages', 'CrmController@stages');
+        $router->get('/crm/parties/{partyId}/contacts', 'CrmContactController@listByParty');
+        $router->post('/crm/parties/{partyId}/contacts', 'CrmContactController@create');
+        $router->get('/crm/contacts/{id}', 'CrmContactController@show');
+        $router->put('/crm/contacts/{id}', 'CrmContactController@update');
+        $router->delete('/crm/contacts/{id}', 'CrmContactController@delete');
+        $router->get('/crm/leads', 'CrmLeadController@index');
+        $router->get('/crm/leads/{id}', 'CrmLeadController@show');
+        $router->post('/crm/leads', 'CrmLeadController@create');
+        $router->put('/crm/leads/{id}', 'CrmLeadController@update');
+        $router->delete('/crm/leads/{id}', 'CrmLeadController@delete');
+        $router->post('/crm/leads/{id}/convert-to-deal', 'CrmLeadController@convertToDeal');
+        $router->get('/crm/deals', 'CrmDealController@index');
+        $router->get('/crm/deals/{id}', 'CrmDealController@show');
+        $router->post('/crm/deals', 'CrmDealController@create');
+        $router->put('/crm/deals/{id}', 'CrmDealController@update');
+        $router->delete('/crm/deals/{id}', 'CrmDealController@delete');
+        $router->get('/crm/activities', 'CrmActivityController@index');
+        $router->get('/crm/activities/{id}', 'CrmActivityController@show');
+        $router->post('/crm/activities', 'CrmActivityController@create');
+        $router->put('/crm/activities/{id}', 'CrmActivityController@update');
+        $router->delete('/crm/activities/{id}', 'CrmActivityController@delete');
+        
     }, [new AuthMiddleware()]);
 });
 
@@ -208,6 +233,13 @@ $router->get('/export', 'WebController@exportDocuments');
 
 // CRM – Customer Relationship Management (leads, deals, contacts, activities)
 $router->get('/crm', 'WebController@crm');
+$router->get('/crm/leads', 'WebController@crmLeads');
+$router->get('/crm/leads/new', 'WebController@crmLeadNew');
+$router->get('/crm/leads/{id}', 'WebController@crmLeadDetail');
+$router->get('/crm/deals', 'WebController@crmDeals');
+$router->get('/crm/deals/new', 'WebController@crmDealNew');
+$router->get('/crm/deals/{id}', 'WebController@crmDealDetail');
+$router->get('/crm/parties/{id}', 'WebController@crmPartyDetail');
 
 // Handle the request
 try {

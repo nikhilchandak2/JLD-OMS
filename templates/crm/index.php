@@ -1,4 +1,4 @@
-<!-- CRM – Customer Relationship Management. Separate section like Export Documents. -->
+<!-- CRM – Customer Relationship Management. -->
 <div class="page-header">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
@@ -10,49 +10,78 @@
     </div>
 </div>
 
+<div id="error-container" class="error-message"></div>
+
 <div class="alert alert-info border-0 mb-4">
     <strong><i class="bi bi-info-circle me-2"></i>CRM section</strong><br>
     Manage leads, opportunities (deals), contacts per party, and log calls, meetings, and notes. Parties from <strong>Administration → Parties</strong> are your customer accounts here.
 </div>
 
-<div class="row g-4">
-    <div class="col-md-6 col-lg-3">
-        <div class="card h-100">
-            <div class="card-body text-center">
-                <i class="bi bi-building display-5 text-primary mb-3"></i>
-                <h5 class="card-title">Customers (Parties)</h5>
-                <p class="card-text text-muted small">View and manage customer accounts. Parties are used as CRM accounts.</p>
-                <a href="/admin/parties" class="btn btn-outline-primary btn-sm">Open Parties</a>
+<!-- Summary cards (loaded via API) -->
+<div class="row g-4 mb-4" id="crmSummaryRow">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h6 class="card-title">Leads</h6>
+                <p class="mb-0 display-6" id="summaryTotalLeads">–</p>
             </div>
         </div>
     </div>
-    <div class="col-md-6 col-lg-3">
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h6 class="card-title">Deals</h6>
+                <p class="mb-0 display-6" id="summaryTotalDeals">–</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h6 class="card-title">Activities today</h6>
+                <p class="mb-0 display-6" id="summaryActivitiesToday">–</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-building display-5 text-primary mb-2"></i>
+                <h6>Customers (Parties)</h6>
+                <a href="/admin/parties" class="btn btn-outline-primary btn-sm mt-2">Open Parties</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-4">
+        <div class="card h-100 clickable-card" onclick="window.location.href='/crm/leads'" style="cursor: pointer;">
             <div class="card-body text-center">
                 <i class="bi bi-lightning-charge display-5 text-warning mb-3"></i>
                 <h5 class="card-title">Leads</h5>
                 <p class="card-text text-muted small">Incoming opportunities – track and convert to deals.</p>
-                <span class="badge bg-secondary">Coming soon</span>
+                <a href="/crm/leads" class="btn btn-outline-primary btn-sm">View leads</a>
             </div>
         </div>
     </div>
-    <div class="col-md-6 col-lg-3">
-        <div class="card h-100">
+    <div class="col-md-4">
+        <div class="card h-100 clickable-card" onclick="window.location.href='/crm/deals'" style="cursor: pointer;">
             <div class="card-body text-center">
                 <i class="bi bi-graph-up-arrow display-5 text-success mb-3"></i>
                 <h5 class="card-title">Deals</h5>
                 <p class="card-text text-muted small">Sales pipeline – qualified, proposal, won/lost.</p>
-                <span class="badge bg-secondary">Coming soon</span>
+                <a href="/crm/deals" class="btn btn-outline-primary btn-sm">View deals</a>
             </div>
         </div>
     </div>
-    <div class="col-md-6 col-lg-3">
+    <div class="col-md-4">
         <div class="card h-100">
             <div class="card-body text-center">
                 <i class="bi bi-telephone display-5 text-info mb-3"></i>
                 <h5 class="card-title">Activities</h5>
-                <p class="card-text text-muted small">Calls, meetings, notes – log against parties and deals.</p>
-                <span class="badge bg-secondary">Coming soon</span>
+                <p class="card-text text-muted small">Calls, meetings, notes – log from party or deal detail.</p>
+                <a href="/admin/parties" class="btn btn-outline-primary btn-sm">Parties → CRM view</a>
             </div>
         </div>
     </div>
@@ -63,6 +92,12 @@
     <div class="card-body">
         <div class="row g-2">
             <div class="col-auto">
+                <a href="/crm/leads/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus me-1"></i>New lead</a>
+            </div>
+            <div class="col-auto">
+                <a href="/crm/deals/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus me-1"></i>New deal</a>
+            </div>
+            <div class="col-auto">
                 <a href="/admin/parties" class="btn btn-outline-primary btn-sm"><i class="bi bi-building me-1"></i>Parties</a>
             </div>
             <div class="col-auto">
@@ -71,3 +106,20 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        const r = await apiCall('/api/crm/summary');
+        if (r.success && r.data) {
+            document.getElementById('summaryTotalLeads').textContent = r.data.total_leads ?? 0;
+            document.getElementById('summaryTotalDeals').textContent = r.data.total_deals ?? 0;
+            document.getElementById('summaryActivitiesToday').textContent = r.data.activities_today ?? 0;
+        }
+    } catch (e) {
+        document.getElementById('summaryTotalLeads').textContent = '0';
+        document.getElementById('summaryTotalDeals').textContent = '0';
+        document.getElementById('summaryActivitiesToday').textContent = '0';
+    }
+});
+</script>

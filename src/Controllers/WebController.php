@@ -337,7 +337,122 @@ class WebController
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
-    
+
+    public function crmLeads(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/leads', [
+            'title' => 'Leads - CRM',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function crmLeadNew(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/lead-new', [
+            'title' => 'New Lead - CRM',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function crmLeadDetail(string $id): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/lead-detail', [
+            'title' => 'Lead - CRM',
+            'user' => $user,
+            'lead_id' => (int)$id,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function crmDeals(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/deals', [
+            'title' => 'Deals - CRM',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function crmDealNew(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/deal-new', [
+            'title' => 'New Deal - CRM',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function crmDealDetail(string $id): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/deal-detail', [
+            'title' => 'Deal - CRM',
+            'user' => $user,
+            'deal_id' => (int)$id,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function crmPartyDetail(string $id): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/party-detail', [
+            'title' => 'Party - CRM',
+            'user' => $user,
+            'party_id' => (int)$id,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
     private function requireAuth(): void
     {
         if (!$this->authService->isAuthenticated()) {
