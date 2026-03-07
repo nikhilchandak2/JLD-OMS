@@ -12,7 +12,7 @@ class CrmLead
     public string $email = '';
     public string $source = '';
     public ?float $value = null;
-    public string $stage = 'new';
+    public string $stage = 'new_lead';
     public ?int $partyId = null;
     public ?int $assignedTo = null;
     public string $assignedToName = '';
@@ -37,7 +37,7 @@ class CrmLead
         $this->email = $data['email'] ?? '';
         $this->source = $data['source'] ?? '';
         $this->value = isset($data['value']) ? (float)$data['value'] : null;
-        $this->stage = $data['stage'] ?? 'new';
+        $this->stage = $data['stage'] ?? 'new_lead';
         $this->partyId = isset($data['party_id']) ? (int)$data['party_id'] : null;
         $this->assignedTo = isset($data['assigned_to']) ? (int)$data['assigned_to'] : null;
         $this->assignedToName = $data['assigned_to_name'] ?? '';

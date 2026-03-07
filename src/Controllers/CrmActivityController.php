@@ -84,7 +84,7 @@ class CrmActivityController
             echo json_encode(['error' => 'Party is required']);
             return;
         }
-        $validTypes = ['call', 'meeting', 'note', 'email'];
+        $validTypes = ['call', 'meeting', 'note', 'email', 'visit', 'whatsapp'];
         if (!in_array($activity->type, $validTypes)) {
             $activity->type = 'note';
         }
@@ -117,7 +117,7 @@ class CrmActivityController
         if (isset($input['subject'])) $data['subject'] = trim($input['subject']);
         if (isset($input['description'])) $data['description'] = trim($input['description']);
         if (isset($input['activity_date'])) $data['activity_date'] = trim($input['activity_date']);
-        if (isset($data['type']) && !in_array($data['type'], ['call', 'meeting', 'note', 'email'])) unset($data['type']);
+        if (isset($data['type']) && !in_array($data['type'], ['call', 'meeting', 'note', 'email', 'visit', 'whatsapp'])) unset($data['type']);
         if (empty($data)) {
             echo json_encode(['success' => true, 'data' => $existing->toArray()]);
             return;

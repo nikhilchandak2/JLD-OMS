@@ -210,6 +210,27 @@ class PartyController
             if (isset($input['is_active'])) {
                 $updateData['is_active'] = (bool)$input['is_active'];
             }
+            if (array_key_exists('region', $input)) {
+                $updateData['region'] = $input['region'] !== null && $input['region'] !== '' ? trim($input['region']) : null;
+            }
+            if (array_key_exists('product_category', $input)) {
+                $updateData['product_category'] = $input['product_category'] !== null && $input['product_category'] !== '' ? trim($input['product_category']) : null;
+            }
+            if (array_key_exists('production_capacity', $input)) {
+                $updateData['production_capacity'] = $input['production_capacity'] !== null && $input['production_capacity'] !== '' ? trim($input['production_capacity']) : null;
+            }
+            if (array_key_exists('factory_locations', $input)) {
+                $updateData['factory_locations'] = $input['factory_locations'] !== null && $input['factory_locations'] !== '' ? trim($input['factory_locations']) : null;
+            }
+            if (array_key_exists('credit_limit', $input)) {
+                $updateData['credit_limit'] = $input['credit_limit'] !== null && $input['credit_limit'] !== '' ? (float)$input['credit_limit'] : null;
+            }
+            if (array_key_exists('payment_terms_days', $input)) {
+                $updateData['payment_terms_days'] = $input['payment_terms_days'] !== null && $input['payment_terms_days'] !== '' ? (int)$input['payment_terms_days'] : null;
+            }
+            if (array_key_exists('technical_notes', $input)) {
+                $updateData['technical_notes'] = $input['technical_notes'] !== null ? trim($input['technical_notes']) : null;
+            }
             
             if (empty($updateData)) {
                 http_response_code(400);

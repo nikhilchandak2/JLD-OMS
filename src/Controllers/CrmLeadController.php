@@ -195,7 +195,7 @@ class CrmLeadController
         $deal->leadId = $lead->id;
         $deal->title = trim($input['title'] ?? $lead->title);
         $deal->value = $lead->value;
-        $deal->stage = 'qualified';
+        $deal->stage = 'prospect_identified';
         $deal->expectedCloseDate = !empty($input['expected_close_date']) ? $input['expected_close_date'] : null;
         $deal->assignedTo = $lead->assignedTo;
         $deal->notes = $lead->notes;

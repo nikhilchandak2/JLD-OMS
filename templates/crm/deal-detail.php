@@ -59,8 +59,10 @@
                     <select class="form-select" id="activityType">
                         <option value="call">Call</option>
                         <option value="meeting">Meeting</option>
-                        <option value="note">Note</option>
+                        <option value="visit">Sales Visit</option>
+                        <option value="whatsapp">WhatsApp</option>
                         <option value="email">Email</option>
+                        <option value="note">Note</option>
                     </select>
                 </div>
                 <div class="mb-3">

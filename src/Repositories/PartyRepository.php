@@ -72,7 +72,7 @@ class PartyRepository
         $fields = [];
         $values = [];
         
-        $allowedFields = ['name', 'contact_person', 'phone', 'email', 'address', 'is_active'];
+        $allowedFields = ['name', 'contact_person', 'phone', 'email', 'address', 'is_active', 'region', 'product_category', 'production_capacity', 'factory_locations', 'credit_limit', 'payment_terms_days', 'technical_notes'];
         
         foreach ($allowedFields as $field) {
             if (array_key_exists($field, $data)) {

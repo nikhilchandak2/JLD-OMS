@@ -10,7 +10,7 @@ class CrmDeal
     public ?int $leadId = null;
     public string $title = '';
     public ?float $value = null;
-    public string $stage = 'qualified';
+    public string $stage = 'prospect_identified';
     public ?string $expectedCloseDate = null;
     public ?int $assignedTo = null;
     public string $assignedToName = '';
@@ -33,7 +33,7 @@ class CrmDeal
         $this->leadId = isset($data['lead_id']) ? (int)$data['lead_id'] : null;
         $this->title = $data['title'] ?? '';
         $this->value = isset($data['value']) ? (float)$data['value'] : null;
-        $this->stage = $data['stage'] ?? 'qualified';
+        $this->stage = $data['stage'] ?? 'prospect_identified';
         $this->expectedCloseDate = $data['expected_close_date'] ?? null;
         $this->assignedTo = isset($data['assigned_to']) ? (int)$data['assigned_to'] : null;
         $this->assignedToName = $data['assigned_to_name'] ?? '';

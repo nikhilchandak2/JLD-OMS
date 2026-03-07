@@ -22,6 +22,15 @@
 
 <div id="error-container" class="error-message"></div>
 
+<!-- Company profile (BRD 4.3) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Company profile</span>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="btnEditProfile">Edit</button>
+    </div>
+    <div class="card-body" id="companyProfile">Loading…</div>
+</div>
+
 <div class="row">
     <div class="col-lg-4 mb-4">
         <div class="card h-100">
@@ -42,6 +51,31 @@
                 <div id="dealsList">Loading…</div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- Samples & trials (BRD 4.4) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Samples & trials</span>
+        <button type="button" class="btn btn-sm btn-primary" id="btnAddSample"><i class="bi bi-plus me-1"></i>Add sample</button>
+    </div>
+    <div class="card-body" id="samplesList">Loading…</div>
+</div>
+
+<!-- Receivables & credit (BRD 4.8) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Receivables & credit</span>
+        <button type="button" class="btn btn-sm btn-primary" id="btnAddReceivable"><i class="bi bi-plus me-1"></i>Add entry</button>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-4"><strong>Outstanding:</strong> <span id="receivableOutstanding">–</span></div>
+            <div class="col-md-4"><strong>Credit limit:</strong> <span id="receivableCreditLimit">–</span></div>
+            <div class="col-md-4"><span id="receivableAlert" class="text-danger small"></span></div>
+        </div>
+        <div id="receivablesEntries">Loading…</div>
     </div>
 </div>
 
@@ -84,9 +118,11 @@
                     <label class="form-label">Type</label>
                     <select class="form-select" id="activityType">
                         <option value="call">Call</option>
-                        <option value="meeting">Meeting</option>
-                        <option value="note">Note</option>
+                        <option value="meeting">Customer Meeting</option>
+                        <option value="visit">Sales Visit</option>
+                        <option value="whatsapp">WhatsApp</option>
                         <option value="email">Email</option>
+                        <option value="note">Note</option>
                     </select>
                 </div>
                 <div class="mb-3"><label class="form-label">Subject</label><input type="text" class="form-control" id="activitySubject"></div>
@@ -97,6 +133,66 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="btnSaveActivity">Save</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit company profile modal -->
+<div class="modal fade" id="profileModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Company profile</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="row g-2">
+                    <div class="col-md-6"><label class="form-label">Region</label><input type="text" class="form-control" id="profileRegion" placeholder="e.g. Morbi, Export"></div>
+                    <div class="col-md-6"><label class="form-label">Product category</label><select class="form-select" id="profileProductCategory"><option value="">–</option><option value="tiles">Tiles</option><option value="sanitary">Sanitary</option><option value="tableware">Tableware</option><option value="other">Other</option></select></div>
+                    <div class="col-md-6"><label class="form-label">Production capacity</label><input type="text" class="form-control" id="profileProductionCapacity"></div>
+                    <div class="col-md-6"><label class="form-label">Payment terms (days)</label><input type="number" class="form-control" id="profilePaymentTermsDays" placeholder="90, 180"></div>
+                    <div class="col-12"><label class="form-label">Factory locations</label><textarea class="form-control" id="profileFactoryLocations" rows="2"></textarea></div>
+                    <div class="col-md-6"><label class="form-label">Credit limit (₹)</label><input type="number" class="form-control" id="profileCreditLimit" step="0.01"></div>
+                    <div class="col-12"><label class="form-label">Technical notes (body formulation, clay requirements)</label><textarea class="form-control" id="profileTechnicalNotes" rows="3"></textarea></div>
+                </div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="btnSaveProfile">Save</button></div>
+        </div>
+    </div>
+</div>
+
+<!-- Add sample modal -->
+<div class="modal fade" id="sampleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Add sample / trial</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-2"><label class="form-label">Sample type</label><input type="text" class="form-control" id="sampleType" placeholder="e.g. Ball Clay"></div>
+                <div class="mb-2"><label class="form-label">Quantity sent</label><input type="text" class="form-control" id="sampleQuantity"></div>
+                <div class="row g-2 mb-2">
+                    <div class="col-4"><label class="form-label">Request date</label><input type="date" class="form-control" id="sampleRequestDate"></div>
+                    <div class="col-4"><label class="form-label">Dispatch date</label><input type="date" class="form-control" id="sampleDispatchDate"></div>
+                    <div class="col-4"><label class="form-label">Trial date</label><input type="date" class="form-control" id="sampleTrialDate"></div>
+                </div>
+                <div class="mb-2"><label class="form-label">Status</label><select class="form-select" id="sampleStatus"><option value="sample_sent">Sample Sent</option><option value="trial_scheduled">Trial Scheduled</option><option value="trial_successful">Trial Successful</option><option value="trial_failed">Trial Failed</option><option value="trial_retesting">Trial Retesting</option></select></div>
+                <div class="mb-2"><label class="form-label">Outcome</label><input type="text" class="form-control" id="sampleOutcome"></div>
+                <div class="mb-2"><label class="form-label">Technical feedback</label><textarea class="form-control" id="sampleTechnicalFeedback" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="btnSaveSample">Save</button></div>
+        </div>
+    </div>
+</div>
+
+<!-- Add receivable entry modal -->
+<div class="modal fade" id="receivableModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Add entry</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-2"><label class="form-label">Type</label><select class="form-select" id="receivableType"><option value="invoice">Invoice</option><option value="payment">Payment</option><option value="adjustment">Adjustment</option></select></div>
+                <div class="mb-2"><label class="form-label">Amount (₹) *</label><input type="number" class="form-control" id="receivableAmount" step="0.01" required></div>
+                <div class="mb-2"><label class="form-label">Date</label><input type="date" class="form-control" id="receivableDate"></div>
+                <div class="mb-2"><label class="form-label">Reference</label><input type="text" class="form-control" id="receivableReference" placeholder="Invoice no. / Chq no."></div>
+                <div class="mb-2"><label class="form-label">Description</label><textarea class="form-control" id="receivableDescription" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="btnSaveReceivable">Save</button></div>
         </div>
     </div>
 </div>
@@ -113,12 +209,151 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('partyName').textContent = party.name;
         document.getElementById('partyContact').textContent = party.contact_person || party.email || '';
         document.getElementById('partyBreadcrumb').textContent = party.name;
+        renderCompanyProfile();
     } catch (e) {
         showError(e.message);
     }
     loadContacts();
     loadDeals();
+    loadSamples();
+    loadReceivables();
     loadActivities();
+});
+
+function renderCompanyProfile() {
+    if (!party) return;
+    const el = document.getElementById('companyProfile');
+    el.innerHTML = `
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Region</dt><dd class="col-sm-9">${escapeHtml(party.region || '–')}</dd>
+            <dt class="col-sm-3">Product category</dt><dd class="col-sm-9">${escapeHtml(party.product_category || '–')}</dd>
+            <dt class="col-sm-3">Production capacity</dt><dd class="col-sm-9">${escapeHtml(party.production_capacity || '–')}</dd>
+            <dt class="col-sm-3">Factory locations</dt><dd class="col-sm-9">${escapeHtml(party.factory_locations || '–')}</dd>
+            <dt class="col-sm-3">Credit limit</dt><dd class="col-sm-9">${party.credit_limit != null ? '₹' + Number(party.credit_limit).toLocaleString() : '–'}</dd>
+            <dt class="col-sm-3">Payment terms</dt><dd class="col-sm-9">${party.payment_terms_days != null ? party.payment_terms_days + ' days' : '–'}</dd>
+            <dt class="col-sm-3">Technical notes</dt><dd class="col-sm-9">${escapeHtml(party.technical_notes || '–')}</dd>
+        </dl>
+    `;
+}
+
+document.getElementById('btnEditProfile').addEventListener('click', function() {
+    if (!party) return;
+    document.getElementById('profileRegion').value = party.region || '';
+    document.getElementById('profileProductCategory').value = party.product_category || '';
+    document.getElementById('profileProductionCapacity').value = party.production_capacity || '';
+    document.getElementById('profileFactoryLocations').value = party.factory_locations || '';
+    document.getElementById('profileCreditLimit').value = party.credit_limit != null ? party.credit_limit : '';
+    document.getElementById('profilePaymentTermsDays').value = party.payment_terms_days != null ? party.payment_terms_days : '';
+    document.getElementById('profileTechnicalNotes').value = party.technical_notes || '';
+    new bootstrap.Modal(document.getElementById('profileModal')).show();
+});
+document.getElementById('btnSaveProfile').addEventListener('click', async function() {
+    try {
+        await apiCall('/api/parties/' + partyId, { method: 'PUT', body: JSON.stringify({
+            region: document.getElementById('profileRegion').value.trim() || null,
+            product_category: document.getElementById('profileProductCategory').value || null,
+            production_capacity: document.getElementById('profileProductionCapacity').value.trim() || null,
+            factory_locations: document.getElementById('profileFactoryLocations').value.trim() || null,
+            credit_limit: document.getElementById('profileCreditLimit').value ? parseFloat(document.getElementById('profileCreditLimit').value) : null,
+            payment_terms_days: document.getElementById('profilePaymentTermsDays').value ? parseInt(document.getElementById('profilePaymentTermsDays').value, 10) : null,
+            technical_notes: document.getElementById('profileTechnicalNotes').value.trim() || null,
+        }) });
+        const r = await apiCall('/api/parties/' + partyId);
+        party = r.data;
+        renderCompanyProfile();
+        bootstrap.Modal.getInstance(document.getElementById('profileModal')).hide();
+    } catch (e) { showError(e.message); }
+});
+
+async function loadSamples() {
+    try {
+        const r = await apiCall('/api/crm/samples?party_id=' + partyId);
+        const list = r.data || [];
+        const el = document.getElementById('samplesList');
+        if (list.length === 0) el.innerHTML = '<p class="text-muted mb-0">No samples yet. Click Add sample.</p>';
+        else {
+            const statusLabels = { sample_sent: 'Sample Sent', trial_scheduled: 'Trial Scheduled', trial_successful: 'Trial Successful', trial_failed: 'Trial Failed', trial_retesting: 'Trial Retesting' };
+            el.innerHTML = '<table class="table table-sm mb-0"><thead><tr><th>Type</th><th>Qty</th><th>Dates</th><th>Status</th><th>Outcome</th></tr></thead><tbody>' +
+                list.map(s => `<tr><td>${escapeHtml(s.sample_type || '–')}</td><td>${escapeHtml(s.quantity_sent || '–')}</td><td>${s.request_date || ''} / ${s.dispatch_date || ''} / ${s.trial_date || ''}</td><td><span class="badge bg-secondary">${statusLabels[s.status] || s.status}</span></td><td>${escapeHtml(s.outcome || '–')}</td></tr>`).join('') + '</tbody></table>';
+        }
+    } catch (e) {
+        document.getElementById('samplesList').innerHTML = '<p class="text-muted mb-0">Samples not available.</p>';
+    }
+}
+
+document.getElementById('btnAddSample').addEventListener('click', function() {
+    document.getElementById('sampleType').value = '';
+    document.getElementById('sampleQuantity').value = '';
+    document.getElementById('sampleRequestDate').value = '';
+    document.getElementById('sampleDispatchDate').value = '';
+    document.getElementById('sampleTrialDate').value = '';
+    document.getElementById('sampleStatus').value = 'sample_sent';
+    document.getElementById('sampleOutcome').value = '';
+    document.getElementById('sampleTechnicalFeedback').value = '';
+    new bootstrap.Modal(document.getElementById('sampleModal')).show();
+});
+document.getElementById('btnSaveSample').addEventListener('click', async function() {
+    try {
+        await apiCall('/api/crm/samples', { method: 'POST', body: JSON.stringify({
+            party_id: partyId,
+            sample_type: document.getElementById('sampleType').value.trim(),
+            quantity_sent: document.getElementById('sampleQuantity').value.trim(),
+            request_date: document.getElementById('sampleRequestDate').value || null,
+            dispatch_date: document.getElementById('sampleDispatchDate').value || null,
+            trial_date: document.getElementById('sampleTrialDate').value || null,
+            status: document.getElementById('sampleStatus').value,
+            outcome: document.getElementById('sampleOutcome').value.trim(),
+            technical_feedback: document.getElementById('sampleTechnicalFeedback').value.trim(),
+        }) });
+        loadSamples();
+        bootstrap.Modal.getInstance(document.getElementById('sampleModal')).hide();
+    } catch (e) { showError(e.message); }
+});
+
+async function loadReceivables() {
+    try {
+        const r = await apiCall('/api/crm/parties/' + partyId + '/receivables');
+        const data = r.data || {};
+        const entries = data.entries || [];
+        const out = data.outstanding != null ? data.outstanding : 0;
+        const limit = data.credit_limit;
+        document.getElementById('receivableOutstanding').textContent = '₹' + Number(out).toLocaleString();
+        document.getElementById('receivableCreditLimit').textContent = limit != null ? '₹' + Number(limit).toLocaleString() : '–';
+        const alertEl = document.getElementById('receivableAlert');
+        if (limit != null && out > limit) alertEl.textContent = 'Over credit limit';
+        else alertEl.textContent = '';
+        const el = document.getElementById('receivablesEntries');
+        if (entries.length === 0) el.innerHTML = '<p class="text-muted mb-0">No entries. Add invoice or payment.</p>';
+        else el.innerHTML = '<table class="table table-sm mb-0"><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Reference</th></tr></thead><tbody>' +
+            entries.map(e => `<tr><td>${e.entry_date}</td><td>${e.entry_type}</td><td>₹${Number(e.amount).toLocaleString()}</td><td>${escapeHtml(e.reference || '')}</td></tr>`).join('') + '</tbody></table>';
+    } catch (e) {
+        document.getElementById('receivableOutstanding').textContent = '–';
+        document.getElementById('receivablesEntries').innerHTML = '<p class="text-muted mb-0">Receivables not available.</p>';
+    }
+}
+
+document.getElementById('btnAddReceivable').addEventListener('click', function() {
+    document.getElementById('receivableAmount').value = '';
+    document.getElementById('receivableDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('receivableReference').value = '';
+    document.getElementById('receivableDescription').value = '';
+    new bootstrap.Modal(document.getElementById('receivableModal')).show();
+});
+document.getElementById('btnSaveReceivable').addEventListener('click', async function() {
+    const amount = parseFloat(document.getElementById('receivableAmount').value);
+    if (!amount || amount <= 0) { showError('Amount is required'); return; }
+    try {
+        await apiCall('/api/crm/receivables', { method: 'POST', body: JSON.stringify({
+            party_id: partyId,
+            entry_type: document.getElementById('receivableType').value,
+            amount,
+            entry_date: document.getElementById('receivableDate').value || new Date().toISOString().slice(0, 10),
+            reference: document.getElementById('receivableReference').value.trim(),
+            description: document.getElementById('receivableDescription').value.trim(),
+        }) });
+        loadReceivables();
+        bootstrap.Modal.getInstance(document.getElementById('receivableModal')).hide();
+    } catch (e) { showError(e.message); }
 });
 
 async function loadContacts() {

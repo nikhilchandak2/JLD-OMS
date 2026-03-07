@@ -43,24 +43,33 @@
 <script>
 const leadId = <?= $lead_id ?>;
 let lead = null;
+let leadStages = {};
 
 document.addEventListener('DOMContentLoaded', loadLead);
 
 async function loadLead() {
     if (leadId <= 0) { showError('Invalid lead'); return; }
     try {
-        const r = await apiCall('/api/crm/leads/' + leadId);
-        lead = r.data;
+        const [leadRes, stagesRes] = await Promise.all([
+            apiCall('/api/crm/leads/' + leadId),
+            apiCall('/api/crm/stages').catch(() => ({ data: {} }))
+        ]);
+        lead = leadRes.data;
+        leadStages = stagesRes.data.lead_stages || {};
         render();
     } catch (e) {
         showError(e.message);
     }
 }
 
+function stageLabel(s) {
+    return leadStages[s] || s || 'New Lead';
+}
+
 function render() {
     if (!lead) return;
     document.getElementById('leadTitle').textContent = lead.title;
-    document.getElementById('leadSubtitle').textContent = (lead.company_name || '') + (lead.stage ? ' · ' + lead.stage : '');
+    document.getElementById('leadSubtitle').textContent = (lead.company_name || '') + (lead.stage ? ' · ' + stageLabel(lead.stage) : '');
     const d = document.getElementById('leadDetails');
     d.innerHTML = `
         <dl class="row mb-0">
@@ -70,12 +79,12 @@ function render() {
             <dt class="col-sm-3">Email</dt><dd class="col-sm-9">${escapeHtml(lead.email || '–')}</dd>
             <dt class="col-sm-3">Source</dt><dd class="col-sm-9">${escapeHtml(lead.source || '–')}</dd>
             <dt class="col-sm-3">Value</dt><dd class="col-sm-9">${lead.value != null ? '₹' + Number(lead.value).toLocaleString() : '–'}</dd>
-            <dt class="col-sm-3">Stage</dt><dd class="col-sm-9"><span class="badge bg-secondary">${escapeHtml(lead.stage || 'new')}</span></dd>
+            <dt class="col-sm-3">Stage</dt><dd class="col-sm-9"><span class="badge bg-secondary">${escapeHtml(stageLabel(lead.stage))}</span></dd>
             <dt class="col-sm-3">Assigned</dt><dd class="col-sm-9">${escapeHtml(lead.assigned_to_name || '–')}</dd>
             ${lead.notes ? '<dt class="col-sm-3">Notes</dt><dd class="col-sm-9">' + escapeHtml(lead.notes) + '</dd>' : ''}
         </dl>
     `;
-    document.getElementById('btnConvertToDeal').style.display = lead.stage === 'converted' ? 'none' : 'inline-block';
+    document.getElementById('btnConvertToDeal').style.display = (lead.stage === 'converted' || lead.stage === 'converted_customer') ? 'none' : 'inline-block';
 }
 
 document.getElementById('btnConvertToDeal').addEventListener('click', async function() {
@@ -128,13 +137,22 @@ document.getElementById('btnEditLead').addEventListener('click', function() {
     document.getElementById('editNotes').value = lead.notes || '';
     const stageSel = document.getElementById('editStage');
     stageSel.innerHTML = '';
-    ['new','contacted','qualified','converted','lost'].forEach(s => {
+    Object.entries(leadStages).forEach(([key, label]) => {
         const o = document.createElement('option');
-        o.value = s;
-        o.textContent = s.charAt(0).toUpperCase() + s.slice(1);
-        if (lead.stage === s) o.selected = true;
+        o.value = key;
+        o.textContent = label;
+        if (lead.stage === key) o.selected = true;
         stageSel.appendChild(o);
     });
+    if (stageSel.options.length === 0) {
+        ['new_lead','contacted','interested','trial_stage','commercial_negotiation','converted_customer','lost'].forEach(s => {
+            const o = document.createElement('option');
+            o.value = s;
+            o.textContent = s.replace(/_/g, ' ');
+            if (lead.stage === s) o.selected = true;
+            stageSel.appendChild(o);
+        });
+    }
     new bootstrap.Modal(document.getElementById('editLeadModal')).show();
 });
 document.getElementById('btnDeleteLead').addEventListener('click', async function() {

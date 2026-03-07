@@ -103,6 +103,13 @@
             <div class="col-auto">
                 <a href="/orders" class="btn btn-outline-primary btn-sm"><i class="bi bi-clipboard-check me-1"></i>Orders</a>
             </div>
+            <div class="col-auto">
+                <a href="#" class="btn btn-outline-primary btn-sm" id="linkReceivablesAging"><i class="bi bi-currency-rupee me-1"></i>Receivables aging</a>
+            </div>
+        </div>
+        <div class="mt-3" id="receivablesAgingBox" style="display:none;">
+            <h6 class="text-primary">Receivables (outstanding by party)</h6>
+            <div id="receivablesAgingList"></div>
         </div>
     </div>
 </div>
@@ -122,4 +129,32 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('summaryActivitiesToday').textContent = '0';
     }
 });
+
+document.getElementById('linkReceivablesAging').addEventListener('click', async function(e) {
+    e.preventDefault();
+    const box = document.getElementById('receivablesAgingBox');
+    const list = document.getElementById('receivablesAgingList');
+    if (box.style.display === 'none') {
+        try {
+            const r = await apiCall('/api/crm/receivables/aging');
+            if (r.success && r.data && r.data.length) {
+                list.innerHTML = '<table class="table table-sm"><thead><tr><th>Party</th><th>Outstanding</th><th>Status</th></tr></thead><tbody>' +
+                    r.data.map(p => `<tr><td><a href="/crm/parties/${p.party_id}">${escapeHtml(p.party_name)}</a></td><td>₹${Number(p.outstanding).toLocaleString()}</td><td>${p.over_limit ? '<span class="badge bg-danger">Over limit</span>' : '–'}</td></tr>`).join('') + '</tbody></table>';
+            } else {
+                list.innerHTML = '<p class="text-muted mb-0">No outstanding receivables.</p>';
+            }
+        } catch (err) {
+            list.innerHTML = '<p class="text-muted mb-0">Unable to load.</p>';
+        }
+        box.style.display = 'block';
+    } else {
+        box.style.display = 'none';
+    }
+});
+function escapeHtml(s) {
+    if (s == null) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
 </script>

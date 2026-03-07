@@ -201,6 +201,15 @@ $router->group('/api', function($router) {
         $router->post('/crm/activities', 'CrmActivityController@create');
         $router->put('/crm/activities/{id}', 'CrmActivityController@update');
         $router->delete('/crm/activities/{id}', 'CrmActivityController@delete');
+        $router->get('/crm/samples', 'CrmSampleController@index');
+        $router->get('/crm/samples/{id}', 'CrmSampleController@show');
+        $router->post('/crm/samples', 'CrmSampleController@create');
+        $router->put('/crm/samples/{id}', 'CrmSampleController@update');
+        $router->delete('/crm/samples/{id}', 'CrmSampleController@delete');
+        $router->get('/crm/parties/{partyId}/receivables', 'CrmReceivableController@listByParty');
+        $router->post('/crm/receivables', 'CrmReceivableController@addEntry');
+        $router->delete('/crm/receivables/{id}', 'CrmReceivableController@deleteEntry');
+        $router->get('/crm/receivables/aging', 'CrmReceivableController@agingSummary');
         
     }, [new AuthMiddleware()]);
 });
