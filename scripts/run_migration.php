@@ -36,11 +36,14 @@ try {
     $statements = array_filter(
         array_map('trim', explode(';', $sql)),
         function ($stmt) {
-            return !empty($stmt) && !preg_match('/^\s*--/', $stmt);
+            return trim($stmt) !== '';
         }
     );
 
     foreach ($statements as $i => $statement) {
+        $statement = trim($statement);
+        // Strip leading comment lines so "-\- ...\nCREATE TABLE" is executed as "CREATE TABLE"
+        $statement = preg_replace('/^(\s*--[^\n]*\n)+/m', '', $statement);
         $statement = trim($statement);
         if ($statement === '') continue;
         echo "  [" . ($i + 1) . "] " . substr($statement, 0, 55) . "...\n";
