@@ -16,6 +16,14 @@ try {
     
     $database = new Database();
     $pdo = $database->getConnection();
+
+    $stripSqlComments = static function (string $sql): string {
+        // Remove /* ... */ block comments
+        $sql = preg_replace('~/\\*[\\s\\S]*?\\*/~', '', $sql) ?? $sql;
+        // Remove full-line -- comments
+        $sql = preg_replace('/^\\s*--.*$/m', '', $sql) ?? $sql;
+        return $sql;
+    };
     
     // Read and execute seed file
     $seedFile = __DIR__ . '/../database/seeds/seed_data.sql';
@@ -28,22 +36,32 @@ try {
     
     // Split SQL into individual statements
     $statements = array_filter(
-        array_map('trim', explode(';', $sql)),
+        array_map('trim', explode(';', $stripSqlComments($sql))),
         function($stmt) {
-            return !empty($stmt) && !preg_match('/^\s*--/', $stmt);
+            return !empty($stmt);
         }
     );
     
-    $pdo->beginTransaction();
-    
     foreach ($statements as $statement) {
         if (trim($statement)) {
-            echo "Executing: " . substr(trim($statement), 0, 50) . "...\n";
-            $pdo->exec($statement);
+            $statement = trim($statement);
+            if ($statement === '') {
+                continue;
+            }
+
+            try {
+                $pdo->exec($statement);
+            } catch (PDOException $e) {
+                $msg = $e->getMessage();
+                $isIgnorable =
+                    stripos($msg, 'Duplicate') !== false ||
+                    stripos($msg, 'duplicate entry') !== false;
+                if (!$isIgnorable) {
+                    throw $e;
+                }
+            }
         }
     }
-    
-    $pdo->commit();
     
     echo "Seeding completed successfully!\n";
     echo "\nDefault user credentials:\n";
@@ -52,9 +70,6 @@ try {
     echo "View: view@example.com / Passw0rd!\n";
     
 } catch (Exception $e) {
-    if (isset($pdo) && $pdo->inTransaction()) {
-        $pdo->rollback();
-    }
     echo "Seeding failed: " . $e->getMessage() . "\n";
     exit(1);
 }

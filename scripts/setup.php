@@ -19,19 +19,28 @@ try {
     $connection = $database->getConnection();
     
     echo "✓ Database connection established\n";
+
+    $stripSqlComments = static function (string $sql): string {
+        // Remove /* ... */ block comments
+        $sql = preg_replace('~/\\*[\\s\\S]*?\\*/~', '', $sql) ?? $sql;
+        // Remove full-line -- comments
+        $sql = preg_replace('/^\\s*--.*$/m', '', $sql) ?? $sql;
+        return $sql;
+    };
     
     // Run migrations
     echo "\n--- Running Migrations ---\n";
-    
-    $migrationFiles = [
-        '001_create_tables.sql',
-        '002_add_companies.sql',
-        '004_add_busy_integration.sql',
-        '005_add_gps_fuel_tracking.sql'
-    ];
-    
-    foreach ($migrationFiles as $migrationFile) {
-        $migrationPath = __DIR__ . '/../database/migrations/' . $migrationFile;
+
+    $migrationsDir = realpath(__DIR__ . '/../database/migrations');
+    if (!$migrationsDir || !is_dir($migrationsDir)) {
+        throw new Exception("Migrations directory not found: " . (__DIR__ . '/../database/migrations'));
+    }
+
+    $migrationPaths = glob($migrationsDir . '/*.sql') ?: [];
+    sort($migrationPaths, SORT_NATURAL);
+
+    foreach ($migrationPaths as $migrationPath) {
+        $migrationFile = basename($migrationPath);
         
         if (!file_exists($migrationPath)) {
             echo "⚠ Migration file not found: {$migrationFile}\n";
@@ -41,11 +50,12 @@ try {
         echo "Running {$migrationFile}...\n";
         
         $sql = file_get_contents($migrationPath);
+        $sql = $stripSqlComments($sql);
         
         // Split by semicolon and execute each statement
         $statements = array_filter(
             array_map('trim', explode(';', $sql)),
-            fn($stmt) => !empty($stmt) && !preg_match('/^\s*--/', $stmt)
+            fn($stmt) => !empty($stmt)
         );
         
         foreach ($statements as $statement) {

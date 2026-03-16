@@ -1,32 +1,11 @@
 <?php
 /**
  * CRM pipeline stages and options per BRD (B2B ceramic raw materials).
- * Lead stages, Deal/Opportunity stages, Activity types, Contact roles, Sample statuses.
+ * Activity types, Contact roles, Sample statuses, Funnel stages.
  */
 
 return [
-    // 4.1 Lead Management – BRD stages
-    'lead_stages' => [
-        'new_lead'              => 'New Lead',
-        'contacted'             => 'Contacted',
-        'interested'             => 'Interested',
-        'trial_stage'           => 'Trial Stage',
-        'commercial_negotiation' => 'Commercial Negotiation',
-        'converted_customer'    => 'Converted Customer',
-        'lost'                  => 'Lost',
-    ],
-    // 4.2 Opportunity & Pipeline Management – BRD stages
-    'deal_stages' => [
-        'prospect_identified'   => 'Prospect Identified',
-        'initial_meeting'       => 'Initial Meeting',
-        'sample_sent'           => 'Sample Sent',
-        'trial_under_testing'   => 'Trial Under Testing',
-        'trial_success'        => 'Trial Success',
-        'commercial_discussion' => 'Commercial Discussion',
-        'trial_rejection'      => 'Trial Rejection',
-        'converted_customer'    => 'Converted Customer',
-    ],
-    // 4.5 Sales Activity + WhatsApp, visits
+    // Sales Activity + WhatsApp, visits
     'activity_types' => [
         'call'     => 'Call',
         'meeting'  => 'Customer Meeting',
@@ -57,5 +36,40 @@ return [
         'trial_successful' => 'Trial Successful',
         'trial_failed'     => 'Trial Failed',
         'trial_retesting'  => 'Trial Retesting',
+    ],
+    // log.md: 5-stage CRM funnel (company-level)
+    'funnel_stages' => [
+        'sampling'          => '1. Sampling',
+        'technical_support' => '2. Technical Support',
+        're_sampling'       => '3. Re-Sampling',
+        'trial_order'       => '4. Trial Order',
+        'closed'            => '5. Closed',
+    ],
+    // log.md: Industry type
+    'industry_types' => [
+        'tiles'        => 'Tiles',
+        'sanitaryware' => 'Sanitaryware',
+        'tableware'    => 'Tableware',
+        'refractory'   => 'Refractory',
+        'glaze'        => 'Glaze',
+    ],
+    // log.md: Tiles subtype (when industry = Tiles)
+    'tiles_subtypes' => [
+        'slab'           => 'Slab',
+        'double_charge'  => 'Double Charge',
+        'gvt'            => 'GVT',
+        'nano'           => 'Nano',
+        'full_body'      => 'Full Body',
+        'other'          => 'Other',
+    ],
+    // Visit details: sample products dropdown (samples provided to client)
+    'sample_products' => [
+        'ball_clay'   => 'Ball Clay',
+        'kaolin'      => 'Kaolin',
+        'feldspar'    => 'Feldspar',
+        'quartz'      => 'Quartz',
+        'soda_feldspar' => 'Soda Feldspar',
+        'potash_feldspar' => 'Potash Feldspar',
+        'other'      => 'Other',
     ],
 ];

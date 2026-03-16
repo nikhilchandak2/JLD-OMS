@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Services\AuthService;
+use App\Services\ReceivablesImportService;
 use App\Repositories\CrmReceivableEntryRepository;
 use App\Repositories\PartyRepository;
 use App\Models\CrmReceivableEntry;
@@ -23,7 +24,7 @@ class CrmReceivableController
     private function requireCrmAccess(): bool
     {
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'crm'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return false;
@@ -155,6 +156,55 @@ class CrmReceivableController
             }
             usort($list, fn($a, $b) => $b['outstanding'] <=> $a['outstanding']);
             echo json_encode(['success' => true, 'data' => $list]);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Import bills receivables from CSV. POST with multipart/form-data, file = .csv
+     * CSV should have headers: Party Name (or Customer, Name), Amount (or Due, Balance), optional Invoice No, Date
+     */
+    public function importFromCsv(): void
+    {
+        header('Content-Type: application/json');
+        if (!$this->requireCrmAccess()) return;
+
+        $file = $_FILES['file'] ?? null;
+        if (!$file || ($file['error'] ?? 0) !== UPLOAD_ERR_OK) {
+            http_response_code(400);
+            echo json_encode(['error' => 'No file uploaded or upload error.']);
+            return;
+        }
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($ext !== 'csv') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Only CSV files are allowed.']);
+            return;
+        }
+
+        $content = file_get_contents($file['tmp_name']);
+        if ($content === false) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Could not read file.']);
+            return;
+        }
+
+        $user = $this->authService->getCurrentUser();
+        $createdBy = $user ? (int)$user['id'] : null;
+
+        try {
+            $service = new ReceivablesImportService();
+            $result = $service->importFromCsv($content, $createdBy);
+            echo json_encode([
+                'success' => $result['success'],
+                'parties_created' => $result['parties_created'],
+                'parties_matched' => $result['parties_matched'],
+                'invoices_added' => $result['invoices_added'],
+                'errors' => $result['errors'],
+                'preview' => $result['preview'],
+            ]);
         } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);

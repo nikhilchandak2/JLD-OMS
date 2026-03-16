@@ -13,71 +13,9 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="/css/design-system.css" rel="stylesheet">
     <style>
-        :root {
-            --jld-primary: #2b235e;
-            --jld-secondary: #ed1d25;
-            --jld-white: #ffffff;
-            --jld-light-gray: #f8f9fa;
-            --jld-gray: #6c757d;
-            --jld-dark-gray: #495057;
-            --jld-border: #e9ecef;
-            --jld-shadow: 0 0.125rem 0.25rem rgba(43, 35, 94, 0.075);
-            --jld-shadow-lg: 0 0.5rem 1rem rgba(43, 35, 94, 0.15);
-        }
-        
-        * {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        
-        body {
-            background-color: var(--jld-light-gray);
-            color: var(--jld-dark-gray);
-            font-weight: 400;
-            line-height: 1.6;
-        }
-        
-        /* Custom Bootstrap overrides */
-        .btn-primary {
-            background-color: var(--jld-primary);
-            border-color: var(--jld-primary);
-            font-weight: 500;
-        }
-        
-        .btn-primary:hover, .btn-primary:focus {
-            background-color: #1e1a4a;
-            border-color: #1e1a4a;
-        }
-        
-        .btn-danger {
-            background-color: var(--jld-secondary);
-            border-color: var(--jld-secondary);
-        }
-        
-        .btn-danger:hover, .btn-danger:focus {
-            background-color: #c91621;
-            border-color: #c91621;
-        }
-        
-        .text-primary {
-            color: var(--jld-primary) !important;
-        }
-        
-        .text-danger {
-            color: var(--jld-secondary) !important;
-        }
-        
-        .bg-primary {
-            background-color: var(--jld-primary) !important;
-        }
-        
-        .bg-danger {
-            background-color: var(--jld-secondary) !important;
-        }
-        
-        .border-primary {
-            border-color: var(--jld-primary) !important;
-        }
+        /* Layout & components – design tokens live in /css/design-system.css */
         
         /* Sidebar styling */
         .sidebar {
@@ -324,6 +262,199 @@
             font-weight: 400;
             margin-bottom: 0;
         }
+        
+        /* CRM – professional dashboard & funnel */
+        .crm-kpi-card {
+            border-radius: 0.75rem;
+            border: none;
+            box-shadow: 0 1px 3px rgba(43, 35, 94, 0.08);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .crm-kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(43, 35, 94, 0.12);
+        }
+        .crm-kpi-card .kpi-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--jld-primary);
+            letter-spacing: -0.02em;
+        }
+        .crm-kpi-card .kpi-label {
+            font-size: 0.8125rem;
+            font-weight: 500;
+            color: var(--jld-gray);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .crm-nav-tile {
+            display: block;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--jld-border);
+            background: var(--jld-white);
+            color: inherit;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(43, 35, 94, 0.06);
+        }
+        .crm-nav-tile:hover {
+            border-color: var(--jld-primary);
+            background: rgba(43, 35, 94, 0.03);
+            color: var(--jld-primary);
+            box-shadow: 0 4px 12px rgba(43, 35, 94, 0.1);
+        }
+        .crm-nav-tile .tile-icon {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .crm-nav-tile .tile-title { font-weight: 600; font-size: 1rem; }
+        .crm-nav-tile .tile-desc { font-size: 0.8125rem; color: var(--jld-gray); margin-top: 0.25rem; }
+        /* Funnel board – 5 equal columns (Sampling, Technical Support, Re-Sampling, Trial Order, Closed) */
+        .crm-funnel-board {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 1rem;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+            min-height: 420px;
+        }
+        .crm-funnel-column {
+            border-radius: 0.75rem;
+            background: var(--jld-light-gray);
+            border: 1px solid var(--jld-border);
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 220px);
+            min-width: 0;
+        }
+        .crm-funnel-column-header {
+            padding: 1rem 1.25rem;
+            border-radius: 0.75rem 0.75rem 0 0;
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: #fff;
+            flex-shrink: 0;
+        }
+        .crm-funnel-column-meta {
+            padding: 0.5rem 1.25rem 0.75rem;
+            font-size: 0.75rem;
+            color: var(--jld-gray);
+            border-top: 1px solid var(--jld-border);
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+        .crm-funnel-column-cards {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+            min-height: 0;
+        }
+        .crm-company-card {
+            background: var(--jld-white);
+            border: 1px solid var(--jld-border);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .crm-company-card:hover {
+            border-color: var(--jld-primary);
+            box-shadow: 0 2px 8px rgba(43, 35, 94, 0.12);
+        }
+        .crm-company-card .company-name { font-weight: 600; font-size: 0.875rem; margin-bottom: 0.25rem; }
+        .crm-company-card .company-meta { font-size: 0.75rem; color: var(--jld-gray); }
+        .crm-company-card .company-value { font-size: 0.8125rem; font-weight: 600; color: var(--jld-primary); margin-top: 0.35rem; }
+        
+        /* Company profile page */
+        .crm-profile-hero {
+            background: linear-gradient(135deg, var(--jld-primary) 0%, #1e1a4a 100%);
+            border-radius: 0.75rem;
+            padding: 1.5rem 1.75rem;
+            color: #fff;
+            margin-bottom: 1.5rem;
+        }
+        .crm-profile-hero .profile-name { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; letter-spacing: -0.02em; }
+        .crm-profile-hero .profile-meta { opacity: 0.9; font-size: 0.9375rem; }
+        .crm-profile-hero .profile-meta i { opacity: 0.85; margin-right: 0.35rem; }
+        .crm-profile-hero .btn-light { font-weight: 500; border-radius: 0.5rem; }
+        .crm-glance-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .crm-glance-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.4rem 0.75rem;
+            background: var(--jld-light-gray);
+            border: 1px solid var(--jld-border);
+            border-radius: 2rem;
+            font-size: 0.8125rem;
+            color: var(--jld-dark-gray);
+        }
+        .crm-glance-pill .pill-label { color: var(--jld-gray); font-weight: 500; }
+        .crm-profile-section {
+            border-radius: 0.75rem;
+            border: 1px solid var(--jld-border);
+            background: var(--jld-white);
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        .crm-profile-section-title {
+            padding: 0.75rem 1.25rem;
+            background: var(--jld-light-gray);
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--jld-primary);
+            border-bottom: 1px solid var(--jld-border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .crm-profile-section-title i { opacity: 0.9; }
+        .crm-profile-section-body { padding: 1rem 1.25rem; }
+        .crm-profile-dl { display: grid; gap: 0.5rem 1rem; margin: 0; font-size: 0.875rem; }
+        .crm-profile-dl dt { color: var(--jld-gray); font-weight: 500; grid-column: 1; }
+        .crm-profile-dl dd { margin: 0; grid-column: 2; }
+        .crm-profile-dl.two-cols { grid-template-columns: auto 1fr; }
+        .crm-section-card .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            font-size: 0.9375rem;
+        }
+        .crm-section-card .card-header i { color: var(--jld-primary); opacity: 0.9; }
+        .crm-contact-item, .crm-activity-item {
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--jld-border);
+            font-size: 0.875rem;
+        }
+        .crm-contact-item:last-child, .crm-activity-item:last-child { border-bottom: none; }
+        .crm-receivable-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem 1.5rem;
+            padding: 0.75rem 0;
+            margin-bottom: 0.75rem;
+            background: var(--jld-light-gray);
+            border-radius: 0.5rem;
+            padding: 1rem 1.25rem;
+        }
+        .crm-receivable-summary .item { font-size: 0.875rem; }
+        .crm-receivable-summary .item strong { color: var(--jld-primary); margin-right: 0.35rem; }
         
         /* Select2 customization */
         .select2-container--bootstrap-5 .select2-selection {
@@ -795,12 +926,14 @@
 </head>
 <body>
     <?php if (isset($user)): ?>
-    <!-- Top header: logo left, user right -->
+    <!-- Top header: brand left, user right -->
     <nav class="navbar navbar-expand-lg border-bottom" style="background: var(--jld-white) !important;">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center" href="/dashboard">
-                <img src="/assets/images/jld-logo.png" alt="JLD Minerals" style="height: 3.5rem; max-height: 3.5rem; width: auto;" onerror="this.style.display='none'">
-            </a>
+            <?php
+                    $r = $user['role'] ?? '';
+                    $brandHome = ($r === 'admin') ? '/dashboard' : (($r === 'crm') ? '/crm' : (($r === 'accounts') ? '/admin/parties' : (($r === 'operator') ? '/vehicles' : '/orders')));
+                    ?>
+            <a class="navbar-brand d-flex align-items-center" href="<?= htmlspecialchars($brandHome) ?>">JLD Minerals</a>
             <div class="d-flex align-items-center ms-auto">
                 <div class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle text-primary fw-medium" href="#" role="button" data-bs-toggle="dropdown" id="headerUserMenu">
@@ -842,32 +975,45 @@
             <!-- Sidebar -->
             <div class="col-md-2 sidebar p-3" id="sidebar">
                 <ul class="nav nav-pills flex-column">
+                    <?php
+                    $r = $user['role'] ?? '';
+                    $isAdmin = ($r === 'admin');
+                    $navHome = $isAdmin ? '/dashboard' : (
+                        $r === 'crm' ? '/crm' : ($r === 'accounts' ? '/admin/parties' : ($r === 'operator' ? '/vehicles' : '/orders'))
+                    );
+                    if ($isAdmin): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'dashboard' ? 'active' : '' ?>" href="/dashboard">
                             <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
-                    
-                    <!-- Orders & Dispatches Section -->
-                    <?php if (in_array($user['role'], ['entry', 'admin', 'view'])): ?>
+                    <?php endif; ?>
+                    <?php
+                    $canOrders = in_array($r, ['admin', 'order_processing', 'entry', 'view']);
+                    $canVehicles = in_array($r, ['admin', 'operator']);
+                    $canExport = in_array($r, ['admin', 'accounts']);
+                    $canCrm = in_array($r, ['admin', 'crm', 'entry']);
+                    $canPartyMgmt = in_array($r, ['admin', 'accounts', 'entry', 'crm']);
+                    $canProducts = in_array($r, ['admin', 'accounts', 'entry']);
+                    ?>
+                    <!-- Orders & Dispatches: admin, order_processing, entry, view -->
+                    <?php if ($canOrders): ?>
                     <li class="nav-item mt-3">
                         <small class="text-white-50 text-uppercase px-3">Orders & Dispatches</small>
                     </li>
-                    <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
+                    <?php if (in_array($r, ['admin', 'order_processing', 'entry'])): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders') === 0 && strpos($_SERVER['REQUEST_URI'], '/orders/analytics') === false && strpos($_SERVER['REQUEST_URI'], '/orders/new') === false ? 'active' : '' ?>" href="/orders">
                             <i class="bi bi-clipboard-check"></i> Orders
                         </a>
                     </li>
                     <?php endif; ?>
-                    <?php if (in_array($user['role'], ['entry', 'admin', 'view'])): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders/analytics') === 0 ? 'active' : '' ?>" href="/orders/analytics">
                             <i class="bi bi-bar-chart"></i> Orders Analytics
                         </a>
                     </li>
-                    <?php endif; ?>
-                    <?php if (in_array($user['role'], ['view', 'admin'])): ?>
+                    <?php if (in_array($r, ['admin', 'order_processing', 'view'])): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'reports' ? 'active' : '' ?>" href="/reports">
                             <i class="bi bi-graph-up"></i> Reports
@@ -875,8 +1021,9 @@
                     </li>
                     <?php endif; ?>
                     <?php endif; ?>
-                    
-                    <!-- Vehicle Tracking Section -->
+
+                    <!-- Vehicle Tracking: admin, operator -->
+                    <?php if ($canVehicles): ?>
                     <li class="nav-item mt-3">
                         <small class="text-white-50 text-uppercase px-3">Vehicle Tracking</small>
                     </li>
@@ -910,8 +1057,10 @@
                             <i class="bi bi-fuel-pump"></i> Fuel Management
                         </a>
                     </li>
-                    
-                    <!-- Export Documents (Nepal) - Separate from OMS orders/tracking -->
+                    <?php endif; ?>
+
+                    <!-- Export Documents: admin, accounts -->
+                    <?php if ($canExport): ?>
                     <li class="nav-item mt-3">
                         <small class="text-white-50 text-uppercase px-3">Export Documents</small>
                     </li>
@@ -920,35 +1069,54 @@
                             <i class="bi bi-file-earmark-spreadsheet"></i> Nepal Export Docs
                         </a>
                     </li>
-                    
-                    <!-- CRM Section -->
+                    <?php endif; ?>
+
+                    <!-- CRM: admin, crm, entry -->
+                    <?php if ($canCrm): ?>
                     <li class="nav-item mt-3">
                         <small class="text-white-50 text-uppercase px-3">CRM</small>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/crm') === 0 ? 'active' : '' ?>" href="/crm">
-                            <i class="bi bi-person-lines-fill"></i> CRM
+                        <a class="nav-link <?= (($u = $_SERVER['REQUEST_URI']) === '/crm' || $u === '/crm/') ? 'active' : '' ?>" href="/crm">
+                            <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
-                    
-                    <!-- Administration Section -->
-                    <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/crm/funnel') === 0 ? 'active' : '' ?>" href="/crm/funnel">
+                            <i class="bi bi-funnel"></i> Funnel
+                        </a>
+                    </li>
+                    <?php endif; ?>
+
+                    <!-- Administration: Parties & Products for admin, accounts, entry; Users & Busy for admin only -->
+                    <?php if ($canPartyMgmt || $canProducts || $r === 'admin'): ?>
                     <li class="nav-item mt-3">
                         <small class="text-white-50 text-uppercase px-3">Administration</small>
                     </li>
+                    <?php if ($canPartyMgmt): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/parties') === 0 ? 'active' : '' ?>" href="/admin/parties">
-                            <i class="bi bi-building"></i> Parties
+                            <i class="bi bi-person-circle"></i> Parties
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if ($canProducts): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/products') === 0 ? 'active' : '' ?>" href="/admin/products">
                             <i class="bi bi-box"></i> Products
                         </a>
                     </li>
                     <?php endif; ?>
-                    
-                    <?php if ($user['role'] === 'admin'): ?>
+                    <?php if (in_array($r, ['admin', 'accounts'])): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/reminders') === 0 ? 'active' : '' ?>" href="/admin/reminders">
+                            <i class="bi bi-envelope-check"></i> Reminders
+                        </a>
+                    </li>
+                    <?php endif; ?>
+                    <?php endif; ?>
+
+                    <?php if ($r === 'admin'): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/users') === 0 ? 'active' : '' ?>" href="/admin/users">
                             <i class="bi bi-people"></i> Users

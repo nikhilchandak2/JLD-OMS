@@ -6,6 +6,7 @@ class CrmActivity
 {
     public int $id = 0;
     public int $partyId = 0;
+    public string $partyName = '';
     public ?int $dealId = null;
     public ?int $contactId = null;
     public string $type = 'note';
@@ -28,6 +29,7 @@ class CrmActivity
     {
         $this->id = (int)($data['id'] ?? 0);
         $this->partyId = (int)($data['party_id'] ?? 0);
+        $this->partyName = $data['party_name'] ?? '';
         $this->dealId = isset($data['deal_id']) ? (int)$data['deal_id'] : null;
         $this->contactId = isset($data['contact_id']) ? (int)$data['contact_id'] : null;
         $this->type = $data['type'] ?? 'note';
@@ -45,6 +47,7 @@ class CrmActivity
         return [
             'id' => $this->id,
             'party_id' => $this->partyId,
+            'party_name' => $this->partyName,
             'deal_id' => $this->dealId,
             'contact_id' => $this->contactId,
             'type' => $this->type,
@@ -58,3 +61,4 @@ class CrmActivity
         ];
     }
 }
+

@@ -16,9 +16,10 @@ class WebController
     
     public function loginForm(): void
     {
-        // Redirect if already logged in
         if ($this->authService->isAuthenticated()) {
-            header('Location: /dashboard');
+            $user = $this->authService->getCurrentUser();
+            $home = ($user['role'] ?? '') === 'admin' ? '/dashboard' : $this->getDefaultHomeForRole($user['role'] ?? '');
+            header('Location: ' . $home);
             return;
         }
         
@@ -31,22 +32,41 @@ class WebController
     public function dashboard(): void
     {
         $this->requireAuth();
-        
         $user = $this->authService->getCurrentUser();
-        
+        // Main dashboard is for admin only; others redirect to their default section
+        if (!$this->authService->hasRole('admin')) {
+            header('Location: ' . $this->getDefaultHomeForRole($user['role'] ?? ''));
+            return;
+        }
         $this->renderTemplate('dashboard', [
             'title' => 'Dashboard',
             'user' => $user,
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
+
+    private function getDefaultHomeForRole(string $role): string
+    {
+        $homes = [
+            'order_processing' => '/orders',
+            'entry' => '/orders',
+            'view' => '/orders',
+            'accounts' => '/admin/parties',
+            'operator' => '/vehicles',
+            'crm' => '/crm',
+        ];
+        return $homes[$role] ?? '/orders';
+    }
     
     public function orders(): void
     {
         $this->requireAuth();
-        
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Orders access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('orders', [
             'title' => 'Orders',
             'user' => $user,
@@ -60,8 +80,7 @@ class WebController
         
         $user = $this->authService->getCurrentUser();
         
-        // Check permissions
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'order_processing'])) {
             http_response_code(403);
             $this->renderTemplate('error', [
                 'title' => 'Access Denied',
@@ -80,9 +99,12 @@ class WebController
     public function orderDetail(int $id): void
     {
         $this->requireAuth();
-        
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Orders access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('order-detail', [
             'title' => 'Order Details',
             'user' => $user,
@@ -97,8 +119,7 @@ class WebController
         
         $user = $this->authService->getCurrentUser();
         
-        // Check permissions
-        if (!$this->authService->hasAnyRole(['view', 'admin'])) {
+        if (!$this->authService->hasAnyRole(['view', 'admin', 'order_processing'])) {
             http_response_code(403);
             $this->renderTemplate('error', [
                 'title' => 'Access Denied',
@@ -143,8 +164,7 @@ class WebController
         
         $user = $this->authService->getCurrentUser();
         
-        // Check permissions - allow both entry and admin users
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
             http_response_code(403);
             $this->renderTemplate('error', [
                 'title' => 'Access Denied',
@@ -159,6 +179,22 @@ class WebController
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
+
+    public function partiesImport(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'You do not have permission.']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('parties-import', [
+            'title' => 'Import parties',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
     
     public function products(): void
     {
@@ -166,8 +202,7 @@ class WebController
         
         $user = $this->authService->getCurrentUser();
         
-        // Check permissions - allow both entry and admin users
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'accounts'])) {
             http_response_code(403);
             $this->renderTemplate('error', [
                 'title' => 'Access Denied',
@@ -186,8 +221,12 @@ class WebController
     public function analyticsOrders(): void
     {
         $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Orders analytics access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('analytics-orders', [
             'title' => 'Orders Analytics - JLD Minerals',
             'user' => $user,
@@ -198,8 +237,12 @@ class WebController
     public function analyticsDispatches(): void
     {
         $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Orders analytics access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('analytics-dispatches', [
             'title' => 'Dispatches Analytics - JLD Minerals',
             'user' => $user,
@@ -210,8 +253,12 @@ class WebController
     public function analyticsPending(): void
     {
         $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Orders analytics access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('analytics-pending', [
             'title' => 'Pending Orders Analytics - JLD Minerals',
             'user' => $user,
@@ -222,8 +269,12 @@ class WebController
     public function analyticsParties(): void
     {
         $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Orders analytics access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('analytics-parties', [
             'title' => 'Parties Analytics - JLD Minerals',
             'user' => $user,
@@ -234,9 +285,12 @@ class WebController
     public function vehicles(): void
     {
         $this->requireAuth();
-        
+        if (!$this->authService->hasAnyRole(['admin', 'operator'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Vehicle tracking access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('vehicles', [
             'title' => 'Vehicles',
             'user' => $user,
@@ -247,9 +301,12 @@ class WebController
     public function tracking(): void
     {
         $this->requireAuth();
-        
+        if (!$this->authService->hasAnyRole(['admin', 'operator'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Vehicle tracking access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('tracking', [
             'title' => 'Live Tracking',
             'user' => $user,
@@ -261,9 +318,12 @@ class WebController
     public function trips(): void
     {
         $this->requireAuth();
-        
+        if (!$this->authService->hasAnyRole(['admin', 'operator'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Vehicle tracking access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('trips', [
             'title' => 'Trips',
             'user' => $user,
@@ -274,9 +334,12 @@ class WebController
     public function geofences(): void
     {
         $this->requireAuth();
-        
+        if (!$this->authService->hasAnyRole(['admin', 'operator'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Vehicle tracking access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('geofences', [
             'title' => 'Geofences',
             'user' => $user,
@@ -287,9 +350,12 @@ class WebController
     public function fuel(): void
     {
         $this->requireAuth();
-        
+        if (!$this->authService->hasAnyRole(['admin', 'operator'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Vehicle tracking access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('fuel', [
             'title' => 'Fuel Management',
             'user' => $user,
@@ -300,6 +366,11 @@ class WebController
     public function dumperAssignment(): void
     {
         $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'operator'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Vehicle tracking access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
         $this->renderTemplate('dumper-assignment', [
             'title' => 'Dumper Assignment',
@@ -315,6 +386,11 @@ class WebController
     public function exportDocuments(): void
     {
         $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'accounts'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Export documents access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
         $this->renderTemplate('export/index', [
             'title' => 'Nepal Export Documents',
@@ -324,12 +400,42 @@ class WebController
     }
 
     /**
-     * CRM – Customer Relationship Management (leads, deals, contacts, activities).
-     * Separate section like Export; uses Parties as accounts.
+     * Email & WhatsApp reminders – runs external Python script. Accounts + admin only.
+     */
+    public function reminders(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'accounts'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Reminders access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        // Always offer both BusyPayBot companies; backend chooses script path per selection.
+        $reminderCompanies = [
+            ['id' => 'jld_minerals', 'label' => 'JLD Minerals Private Limited'],
+            ['id' => 'jaichand', 'label' => 'Jaichand Lal Daga'],
+        ];
+        $this->renderTemplate('admin/reminders', [
+            'title' => 'Email & WhatsApp Reminders',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken(),
+            'reminder_companies' => $reminderCompanies,
+        ]);
+    }
+
+    /**
+     * CRM – Customer Relationship Management (funnel, contacts, activities, samples, receivables).
+     * Uses Parties as accounts; no separate leads/deals.
      */
     public function crm(): void
     {
         $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'crm', 'entry'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
         $this->renderTemplate('crm/index', [
             'title' => 'CRM',
@@ -338,100 +444,34 @@ class WebController
         ]);
     }
 
-    public function crmLeads(): void
+    public function crmFunnel(): void
     {
         $this->requireAuth();
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'crm'])) {
             http_response_code(403);
             $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
             return;
         }
         $user = $this->authService->getCurrentUser();
-        $this->renderTemplate('crm/leads', [
-            'title' => 'Leads - CRM',
+        $this->renderTemplate('crm/funnel', [
+            'title' => 'CRM Funnel',
             'user' => $user,
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
 
-    public function crmLeadNew(): void
+    public function crmPartyNew(): void
     {
         $this->requireAuth();
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'crm'])) {
             http_response_code(403);
             $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
             return;
         }
         $user = $this->authService->getCurrentUser();
-        $this->renderTemplate('crm/lead-new', [
-            'title' => 'New Lead - CRM',
+        $this->renderTemplate('crm/party-new', [
+            'title' => 'Add new company - CRM',
             'user' => $user,
-            'csrf_token' => CsrfMiddleware::getToken()
-        ]);
-    }
-
-    public function crmLeadDetail(string $id): void
-    {
-        $this->requireAuth();
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
-            http_response_code(403);
-            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
-            return;
-        }
-        $user = $this->authService->getCurrentUser();
-        $this->renderTemplate('crm/lead-detail', [
-            'title' => 'Lead - CRM',
-            'user' => $user,
-            'lead_id' => (int)$id,
-            'csrf_token' => CsrfMiddleware::getToken()
-        ]);
-    }
-
-    public function crmDeals(): void
-    {
-        $this->requireAuth();
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
-            http_response_code(403);
-            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
-            return;
-        }
-        $user = $this->authService->getCurrentUser();
-        $this->renderTemplate('crm/deals', [
-            'title' => 'Deals - CRM',
-            'user' => $user,
-            'csrf_token' => CsrfMiddleware::getToken()
-        ]);
-    }
-
-    public function crmDealNew(): void
-    {
-        $this->requireAuth();
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
-            http_response_code(403);
-            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
-            return;
-        }
-        $user = $this->authService->getCurrentUser();
-        $this->renderTemplate('crm/deal-new', [
-            'title' => 'New Deal - CRM',
-            'user' => $user,
-            'csrf_token' => CsrfMiddleware::getToken()
-        ]);
-    }
-
-    public function crmDealDetail(string $id): void
-    {
-        $this->requireAuth();
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
-            http_response_code(403);
-            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
-            return;
-        }
-        $user = $this->authService->getCurrentUser();
-        $this->renderTemplate('crm/deal-detail', [
-            'title' => 'Deal - CRM',
-            'user' => $user,
-            'deal_id' => (int)$id,
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
@@ -439,7 +479,7 @@ class WebController
     public function crmPartyDetail(string $id): void
     {
         $this->requireAuth();
-        if (!$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'crm'])) {
             http_response_code(403);
             $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
             return;
@@ -449,6 +489,22 @@ class WebController
             'title' => 'Party - CRM',
             'user' => $user,
             'party_id' => (int)$id,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function crmImportReceivables(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'crm'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('crm/import-receivables', [
+            'title' => 'Import receivables - CRM',
+            'user' => $user,
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
@@ -487,9 +543,12 @@ class WebController
     public function ordersAnalytics(): void
     {
         $this->requireAuth();
-        
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Orders analytics access required']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
-        
         $this->renderTemplate('orders-analytics', [
             'title' => 'Orders & Dispatches Analytics',
             'user' => $user,

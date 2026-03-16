@@ -23,7 +23,7 @@ class CrmActivityController
     private function requireCrmAccess(): bool
     {
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'crm'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return false;
@@ -41,6 +41,7 @@ class CrmActivityController
         if (!empty($_GET['type'])) $filters['type'] = $_GET['type'];
         if (!empty($_GET['from_date'])) $filters['from_date'] = $_GET['from_date'];
         if (!empty($_GET['to_date'])) $filters['to_date'] = $_GET['to_date'];
+        if (isset($_GET['limit']) && $_GET['limit'] !== '') $filters['limit'] = (int)$_GET['limit'];
         try {
             $list = $this->activityRepo->findAll($filters);
             echo json_encode(['success' => true, 'data' => array_map(fn($a) => $a->toArray(), $list)]);

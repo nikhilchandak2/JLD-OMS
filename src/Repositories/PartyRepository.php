@@ -72,12 +72,28 @@ class PartyRepository
         $fields = [];
         $values = [];
         
-        $allowedFields = ['name', 'contact_person', 'phone', 'email', 'address', 'is_active', 'region', 'product_category', 'production_capacity', 'factory_locations', 'credit_limit', 'payment_terms_days', 'technical_notes'];
+        $allowedFields = [
+            'name', 'contact_person', 'phone', 'email', 'address', 'is_active',
+            'region', 'product_category', 'production_capacity', 'factory_locations',
+            'credit_limit', 'payment_terms_days', 'technical_notes',
+            'products_introduced', 'monthly_consumption', 'year_of_association',
+            'order_frequency', 'last_order_date', 'last_visit_date', 'payment_track',
+            'target_volume', 'next_followup_date', 'assigned_sales_owner',
+            'number_of_plants', 'general_notes',
+            'funnel_stage', 'industry_type', 'tiles_subtype',
+            'monthly_consumption_ton', 'avg_price_per_ton', 'current_supplier_details',
+            'relation_with_purchase', 'relation_with_internal_team', 'probability_of_conversion',
+            'visit_description', 'followup_notes', 'visit_samples_provided'
+        ];
         
         foreach ($allowedFields as $field) {
             if (array_key_exists($field, $data)) {
                 $fields[] = "$field = ?";
-                $values[] = $data[$field];
+                $val = $data[$field];
+                if ($field === 'visit_samples_provided' && is_array($val)) {
+                    $val = json_encode($val);
+                }
+                $values[] = $val;
             }
         }
         

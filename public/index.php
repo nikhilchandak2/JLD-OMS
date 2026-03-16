@@ -116,8 +116,12 @@ $router->group('/api', function($router) {
         $router->get('/parties', 'PartyController@index');
         $router->get('/parties/{id}', 'PartyController@show');
         $router->post('/parties', 'PartyController@create');
+        $router->post('/parties/import', 'PartyController@importFromCsv');
         $router->put('/parties/{id}', 'PartyController@update');
         $router->delete('/parties/{id}', 'PartyController@delete');
+        
+        // Reminders (Python script) – admin, accounts
+        $router->post('/reminders/run', 'RemindersController@run');
         
         // Product management API
         $router->get('/products', 'ProductController@index');
@@ -180,22 +184,13 @@ $router->group('/api', function($router) {
         // CRM API
         $router->get('/crm/summary', 'CrmController@summary');
         $router->get('/crm/stages', 'CrmController@stages');
+        $router->get('/crm/funnel', 'CrmController@funnel');
+        $router->get('/crm/users/options', 'CrmController@userOptions');
         $router->get('/crm/parties/{partyId}/contacts', 'CrmContactController@listByParty');
         $router->post('/crm/parties/{partyId}/contacts', 'CrmContactController@create');
         $router->get('/crm/contacts/{id}', 'CrmContactController@show');
         $router->put('/crm/contacts/{id}', 'CrmContactController@update');
         $router->delete('/crm/contacts/{id}', 'CrmContactController@delete');
-        $router->get('/crm/leads', 'CrmLeadController@index');
-        $router->get('/crm/leads/{id}', 'CrmLeadController@show');
-        $router->post('/crm/leads', 'CrmLeadController@create');
-        $router->put('/crm/leads/{id}', 'CrmLeadController@update');
-        $router->delete('/crm/leads/{id}', 'CrmLeadController@delete');
-        $router->post('/crm/leads/{id}/convert-to-deal', 'CrmLeadController@convertToDeal');
-        $router->get('/crm/deals', 'CrmDealController@index');
-        $router->get('/crm/deals/{id}', 'CrmDealController@show');
-        $router->post('/crm/deals', 'CrmDealController@create');
-        $router->put('/crm/deals/{id}', 'CrmDealController@update');
-        $router->delete('/crm/deals/{id}', 'CrmDealController@delete');
         $router->get('/crm/activities', 'CrmActivityController@index');
         $router->get('/crm/activities/{id}', 'CrmActivityController@show');
         $router->post('/crm/activities', 'CrmActivityController@create');
@@ -210,6 +205,7 @@ $router->group('/api', function($router) {
         $router->post('/crm/receivables', 'CrmReceivableController@addEntry');
         $router->delete('/crm/receivables/{id}', 'CrmReceivableController@deleteEntry');
         $router->get('/crm/receivables/aging', 'CrmReceivableController@agingSummary');
+        $router->post('/crm/receivables/import', 'CrmReceivableController@importFromCsv');
         
     }, [new AuthMiddleware()]);
 });
@@ -224,8 +220,10 @@ $router->get('/orders/new', 'WebController@newOrder');
 $router->get('/orders/{id}', 'WebController@orderDetail');
 $router->get('/reports', 'WebController@reports');
 $router->get('/admin/users', 'WebController@users');
+$router->get('/admin/parties/import', 'WebController@partiesImport');
 $router->get('/admin/parties', 'WebController@parties');
 $router->get('/admin/products', 'WebController@products');
+$router->get('/admin/reminders', 'WebController@reminders');
 $router->get('/analytics/orders', 'WebController@analyticsOrders');
 $router->get('/analytics/dispatches', 'WebController@analyticsDispatches');
 $router->get('/analytics/pending', 'WebController@analyticsPending');
@@ -240,15 +238,12 @@ $router->get('/dumper-assignment', 'WebController@dumperAssignment');
 // Export Documents (Nepal) - separate module, not linked to OMS orders/tracking
 $router->get('/export', 'WebController@exportDocuments');
 
-// CRM – Customer Relationship Management (leads, deals, contacts, activities)
+// CRM – Customer Relationship Management (funnel, contacts, activities, samples, receivables)
 $router->get('/crm', 'WebController@crm');
-$router->get('/crm/leads', 'WebController@crmLeads');
-$router->get('/crm/leads/new', 'WebController@crmLeadNew');
-$router->get('/crm/leads/{id}', 'WebController@crmLeadDetail');
-$router->get('/crm/deals', 'WebController@crmDeals');
-$router->get('/crm/deals/new', 'WebController@crmDealNew');
-$router->get('/crm/deals/{id}', 'WebController@crmDealDetail');
+$router->get('/crm/funnel', 'WebController@crmFunnel');
+$router->get('/crm/parties/new', 'WebController@crmPartyNew');
 $router->get('/crm/parties/{id}', 'WebController@crmPartyDetail');
+$router->get('/crm/import-receivables', 'WebController@crmImportReceivables');
 
 // Handle the request
 try {

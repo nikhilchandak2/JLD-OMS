@@ -12,45 +12,82 @@ $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->load();
 
 try {
-    echo "Starting database migration...\n";
-    
+    echo "Starting database migrations...\n\n";
+
     $database = new Database();
     $pdo = $database->getConnection();
-    
-    // Read and execute migration file
-    $migrationFile = __DIR__ . '/../database/migrations/001_create_tables.sql';
-    
-    if (!file_exists($migrationFile)) {
-        throw new Exception("Migration file not found: {$migrationFile}");
+
+    $stripSqlComments = static function (string $sql): string {
+        // Remove /* ... */ block comments
+        $sql = preg_replace('~/\\*[\\s\\S]*?\\*/~', '', $sql) ?? $sql;
+        // Remove full-line -- comments
+        $sql = preg_replace('/^\\s*--.*$/m', '', $sql) ?? $sql;
+        return $sql;
+    };
+
+    $migrationsDir = realpath(__DIR__ . '/../database/migrations');
+    if (!$migrationsDir || !is_dir($migrationsDir)) {
+        throw new Exception("Migrations directory not found: " . (__DIR__ . '/../database/migrations'));
     }
-    
-    $sql = file_get_contents($migrationFile);
-    
-    // Split SQL into individual statements
-    $statements = array_filter(
-        array_map('trim', explode(';', $sql)),
-        function($stmt) {
-            return !empty($stmt) && !preg_match('/^\s*--/', $stmt);
-        }
-    );
-    
-    $pdo->beginTransaction();
-    
-    foreach ($statements as $statement) {
-        if (trim($statement)) {
-            echo "Executing: " . substr(trim($statement), 0, 50) . "...\n";
-            $pdo->exec($statement);
-        }
+
+    $migrationFiles = glob($migrationsDir . '/*.sql') ?: [];
+    sort($migrationFiles, SORT_NATURAL);
+
+    if (empty($migrationFiles)) {
+        throw new Exception("No migration files found in: {$migrationsDir}");
     }
-    
-    $pdo->commit();
-    
-    echo "Migration completed successfully!\n";
-    
+
+    foreach ($migrationFiles as $migrationFile) {
+        $base = basename($migrationFile);
+        echo "--- {$base} ---\n";
+
+        $sql = file_get_contents($migrationFile);
+        if ($sql === false) {
+            throw new Exception("Failed to read migration file: {$migrationFile}");
+        }
+
+        $sql = $stripSqlComments($sql);
+
+        // Split SQL into individual statements (simple splitter; keep migrations free of stored procedures)
+        $statements = array_filter(
+            array_map('trim', explode(';', $sql)),
+            static function ($stmt) {
+                return $stmt !== '';
+            }
+        );
+
+        foreach ($statements as $statement) {
+            $statement = trim($statement);
+            if ($statement === '') {
+                continue;
+            }
+
+            try {
+                $pdo->exec($statement);
+            } catch (PDOException $e) {
+                $msg = $e->getMessage();
+
+                // Idempotency: ignore harmless "already exists" / "duplicate" errors
+                $isIgnorable =
+                    stripos($msg, 'already exists') !== false ||
+                    stripos($msg, 'Duplicate') !== false ||
+                    stripos($msg, 'duplicate entry') !== false ||
+                    stripos($msg, 'Duplicate column name') !== false;
+
+                if ($isIgnorable) {
+                    continue;
+                }
+
+                throw $e;
+            }
+        }
+
+        echo "✓ {$base} applied\n\n";
+    }
+
+    echo "All migrations completed.\n";
+
 } catch (Exception $e) {
-    if (isset($pdo) && $pdo->inTransaction()) {
-        $pdo->rollback();
-    }
     echo "Migration failed: " . $e->getMessage() . "\n";
     exit(1);
 }

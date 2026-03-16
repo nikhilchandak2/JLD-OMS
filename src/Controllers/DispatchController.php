@@ -69,7 +69,7 @@ class DispatchController
         
         // Check permissions
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Insufficient permissions']);
             return;
@@ -170,7 +170,7 @@ class DispatchController
         
         // Check permissions
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Insufficient permissions']);
             return;

@@ -1,160 +1,120 @@
-<!-- CRM – Customer Relationship Management. -->
-<div class="page-header">
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+<!-- CRM Dashboard – 5-stage funnel (company-based pipeline) -->
+<div class="page-header mb-4">
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-3">
         <div>
-            <h1 class="page-title">
-                <i class="bi bi-person-lines-fill me-2"></i>CRM
-            </h1>
-            <p class="page-subtitle">Customer Relationship Management – leads, deals, contacts, and activities. Uses Parties as customer accounts.</p>
+            <h1 class="page-title mb-1">CRM Dashboard</h1>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <a href="/crm/parties/new" class="btn btn-success px-3"><i class="bi bi-plus-lg me-1"></i>Add New</a>
+            <a href="/admin/parties" class="btn btn-primary px-4" title="<?= isset($user) ? htmlspecialchars(ucfirst($user['role'] ?? 'User')) : 'User' ?>"><i class="bi bi-person-circle me-2"></i>Parties</a>
+            <a href="/crm/funnel" class="btn btn-primary px-4">
+                <i class="bi bi-funnel me-2"></i>Open Funnel
+            </a>
         </div>
     </div>
 </div>
 
-<div id="error-container" class="error-message"></div>
+<div id="error-container" class="error-message mb-3"></div>
 
-<div class="alert alert-info border-0 mb-4">
-    <strong><i class="bi bi-info-circle me-2"></i>CRM section</strong><br>
-    Manage leads, deals, samples/trials, and receivables. Go to <strong>Administration → Parties</strong>, then click <strong>CRM</strong> on any party to open its full profile (company profile, contacts, deals, samples &amp; trials, receivables, activities).
-</div>
-
-<!-- Summary cards (loaded via API) -->
-<div class="row g-4 mb-4" id="crmSummaryRow">
-    <div class="col-md-3">
-        <div class="card bg-primary text-white">
+<div class="row g-3 mt-0">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Recent activity</span>
+                <div class="d-flex gap-2 align-items-center">
+                    <small class="text-muted" id="activityFeedStatus">Live</small>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshActivityFeed">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
             <div class="card-body">
-                <h6 class="card-title">Leads</h6>
-                <p class="mb-0 display-6" id="summaryTotalLeads">–</p>
+                <div id="activityFeedList"><p class="text-muted small mb-0">Loading…</p></div>
             </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-success text-white">
-            <div class="card-body">
-                <h6 class="card-title">Deals</h6>
-                <p class="mb-0 display-6" id="summaryTotalDeals">–</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-info text-white">
-            <div class="card-body">
-                <h6 class="card-title">Activities today</h6>
-                <p class="mb-0 display-6" id="summaryActivitiesToday">–</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card h-100">
-            <div class="card-body text-center">
-                <i class="bi bi-building display-5 text-primary mb-2"></i>
-                <h6>Customers (Parties)</h6>
-                <a href="/admin/parties" class="btn btn-outline-primary btn-sm mt-2">Open Parties</a>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-4">
-    <div class="col-md-4">
-        <div class="card h-100 clickable-card" onclick="window.location.href='/crm/leads'" style="cursor: pointer;">
-            <div class="card-body text-center">
-                <i class="bi bi-lightning-charge display-5 text-warning mb-3"></i>
-                <h5 class="card-title">Leads</h5>
-                <p class="card-text text-muted small">Incoming opportunities – track and convert to deals.</p>
-                <a href="/crm/leads" class="btn btn-outline-primary btn-sm">View leads</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card h-100 clickable-card" onclick="window.location.href='/crm/deals'" style="cursor: pointer;">
-            <div class="card-body text-center">
-                <i class="bi bi-graph-up-arrow display-5 text-success mb-3"></i>
-                <h5 class="card-title">Deals</h5>
-                <p class="card-text text-muted small">Sales pipeline – qualified, proposal, won/lost.</p>
-                <a href="/crm/deals" class="btn btn-outline-primary btn-sm">View deals</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card h-100">
-            <div class="card-body text-center">
-                <i class="bi bi-telephone display-5 text-info mb-3"></i>
-                <h5 class="card-title">Activities</h5>
-                <p class="card-text text-muted small">Calls, meetings, notes – log from party or deal detail.</p>
-                <a href="/admin/parties" class="btn btn-outline-primary btn-sm">Parties → CRM view</a>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="card mt-4">
-    <div class="card-header"><i class="bi bi-link-45deg me-2"></i>Quick links</div>
-    <div class="card-body">
-        <div class="row g-2">
-            <div class="col-auto">
-                <a href="/crm/leads/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus me-1"></i>New lead</a>
-            </div>
-            <div class="col-auto">
-                <a href="/crm/deals/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus me-1"></i>New deal</a>
-            </div>
-            <div class="col-auto">
-                <a href="/admin/parties" class="btn btn-outline-primary btn-sm"><i class="bi bi-building me-1"></i>Parties</a>
-            </div>
-            <div class="col-auto">
-                <a href="/orders" class="btn btn-outline-primary btn-sm"><i class="bi bi-clipboard-check me-1"></i>Orders</a>
-            </div>
-            <div class="col-auto">
-                <a href="#" class="btn btn-outline-primary btn-sm" id="linkReceivablesAging"><i class="bi bi-currency-rupee me-1"></i>Receivables aging</a>
-            </div>
-        </div>
-        <div class="mt-3" id="receivablesAgingBox" style="display:none;">
-            <h6 class="text-primary">Receivables (outstanding by party)</h6>
-            <div id="receivablesAgingList"></div>
         </div>
     </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', async function() {
-    try {
-        const r = await apiCall('/api/crm/summary');
-        if (r.success && r.data) {
-            document.getElementById('summaryTotalLeads').textContent = r.data.total_leads ?? 0;
-            document.getElementById('summaryTotalDeals').textContent = r.data.total_deals ?? 0;
-            document.getElementById('summaryActivitiesToday').textContent = r.data.activities_today ?? 0;
-        }
-    } catch (e) {
-        document.getElementById('summaryTotalLeads').textContent = '0';
-        document.getElementById('summaryTotalDeals').textContent = '0';
-        document.getElementById('summaryActivitiesToday').textContent = '0';
-    }
-});
+let lastActivityId = 0;
+let activityFeedTimer = null;
 
-document.getElementById('linkReceivablesAging').addEventListener('click', async function(e) {
-    e.preventDefault();
-    const box = document.getElementById('receivablesAgingBox');
-    const list = document.getElementById('receivablesAgingList');
-    if (box.style.display === 'none') {
-        try {
-            const r = await apiCall('/api/crm/receivables/aging');
-            if (r.success && r.data && r.data.length) {
-                list.innerHTML = '<table class="table table-sm"><thead><tr><th>Party</th><th>Outstanding</th><th>Status</th></tr></thead><tbody>' +
-                    r.data.map(p => `<tr><td><a href="/crm/parties/${p.party_id}">${escapeHtml(p.party_name)}</a></td><td>₹${Number(p.outstanding).toLocaleString()}</td><td>${p.over_limit ? '<span class="badge bg-danger">Over limit</span>' : '–'}</td></tr>`).join('') + '</tbody></table>';
-            } else {
-                list.innerHTML = '<p class="text-muted mb-0">No outstanding receivables.</p>';
-            }
-        } catch (err) {
-            list.innerHTML = '<p class="text-muted mb-0">Unable to load.</p>';
-        }
-        box.style.display = 'block';
-    } else {
-        box.style.display = 'none';
-    }
+document.addEventListener('DOMContentLoaded', async function() {
+    document.getElementById('btnRefreshActivityFeed').addEventListener('click', function() {
+        loadActivityFeed(true);
+    });
+    loadActivityFeed(true);
+    activityFeedTimer = setInterval(loadActivityFeed, 6000);
 });
 function escapeHtml(s) {
     if (s == null) return '';
     const d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+}
+
+function timeAgo(iso) {
+    if (!iso) return '';
+    const dt = new Date(iso.replace(' ', 'T'));
+    if (isNaN(dt.getTime())) return iso;
+    const sec = Math.floor((Date.now() - dt.getTime()) / 1000);
+    if (sec < 60) return sec + 's ago';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm ago';
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h ago';
+    const d = Math.floor(hr / 24);
+    return d + 'd ago';
+}
+
+async function loadActivityFeed(force = false) {
+    const el = document.getElementById('activityFeedList');
+    const statusEl = document.getElementById('activityFeedStatus');
+    try {
+        statusEl.textContent = 'Live';
+        const r = await apiCall('/api/crm/activities?limit=15');
+        const list = (r.data || []);
+        if (!list.length) {
+            el.innerHTML = '<p class="text-muted small mb-0">No activities yet.</p>';
+            lastActivityId = 0;
+            return;
+        }
+        const newestId = list[0].id || 0;
+        if (!force && newestId === lastActivityId) return;
+        lastActivityId = newestId;
+
+        const icon = (t) => ({
+            call: 'telephone',
+            meeting: 'people',
+            visit: 'geo-alt',
+            whatsapp: 'whatsapp',
+            email: 'envelope',
+            note: 'journal-text'
+        }[t] || 'journal-text');
+
+        el.innerHTML = list.map(a => {
+            const party = a.party_name || (a.created_by_name || 'User');
+            const subject = a.subject ? escapeHtml(a.subject) : '<span class="text-muted">(no subject)</span>';
+            const who = a.created_by_name ? escapeHtml(a.created_by_name) : 'User';
+            const when = timeAgo(a.activity_date || a.created_at);
+            const desc = a.description ? ('<div class="text-muted small mt-1">' + escapeHtml(a.description).slice(0, 160) + (a.description.length > 160 ? '…' : '') + '</div>') : '';
+            return (
+                '<div class="d-flex gap-2 py-2 border-bottom">' +
+                '<div class="text-primary" style="width:22px;"><i class="bi bi-' + icon(a.type) + '"></i></div>' +
+                '<div class="flex-grow-1">' +
+                '<div class="d-flex justify-content-between gap-2">' +
+                '<div><a href="/crm/parties/' + a.party_id + '" class="text-decoration-none fw-semibold">' + escapeHtml(party) + '</a> · ' + subject + '</div>' +
+                '<small class="text-muted">' + escapeHtml(when) + '</small>' +
+                '</div>' +
+                '<div class="text-muted small">' + escapeHtml(a.type || 'note') + ' · ' + who + '</div>' +
+                desc +
+                '</div>' +
+                '</div>'
+            );
+        }).join('') + '<div class="pt-2"><a class="small text-decoration-none" href="/crm/funnel">Open funnel</a></div>';
+    } catch (e) {
+        statusEl.textContent = 'Offline';
+        el.innerHTML = '<p class="text-muted small mb-0">Unable to load activity feed.</p>';
+    }
 }
 </script>

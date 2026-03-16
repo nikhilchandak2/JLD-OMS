@@ -16,8 +16,9 @@ class CrmActivityRepository
 
     public function findAll(array $filters = []): array
     {
-        $sql = "SELECT a.*, u.name AS created_by_name FROM crm_activities a
+        $sql = "SELECT a.*, u.name AS created_by_name, p.name AS party_name FROM crm_activities a
                 LEFT JOIN users u ON a.created_by = u.id
+                LEFT JOIN parties p ON a.party_id = p.id
                 WHERE 1=1";
         $params = [];
         if (!empty($filters['party_id'])) {
@@ -41,6 +42,9 @@ class CrmActivityRepository
             $params[] = $filters['to_date'];
         }
         $sql .= " ORDER BY a.activity_date DESC";
+        if (isset($filters['limit']) && (int)$filters['limit'] > 0) {
+            $sql .= " LIMIT " . (int)$filters['limit'];
+        }
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute($params);
         $list = [];
@@ -52,8 +56,9 @@ class CrmActivityRepository
 
     public function findById(int $id): ?CrmActivity
     {
-        $sql = "SELECT a.*, u.name AS created_by_name FROM crm_activities a
+        $sql = "SELECT a.*, u.name AS created_by_name, p.name AS party_name FROM crm_activities a
                 LEFT JOIN users u ON a.created_by = u.id
+                LEFT JOIN parties p ON a.party_id = p.id
                 WHERE a.id = ?";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$id]);

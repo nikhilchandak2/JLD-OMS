@@ -1,0 +1,120 @@
+/**
+ * JLD Design system – single source of truth for theme and base UI.
+ * Link this file first so layout and page styles can override if needed.
+ */
+
+:root {
+    --jld-primary: #2b235e;
+    --jld-primary-hover: #1e1a4a;
+    --jld-secondary: #ed1d25;
+    --jld-secondary-hover: #c91621;
+    --jld-white: #ffffff;
+    --jld-light-gray: #f8f9fa;
+    --jld-gray: #6c757d;
+    --jld-dark-gray: #495057;
+    --jld-border: #e9ecef;
+    --jld-shadow: 0 0.125rem 0.25rem rgba(43, 35, 94, 0.075);
+    --jld-shadow-lg: 0 0.5rem 1rem rgba(43, 35, 94, 0.15);
+    --jld-radius: 0.75rem;
+    --jld-radius-sm: 0.5rem;
+}
+
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+    background-color: var(--jld-light-gray);
+    color: var(--jld-dark-gray);
+    font-weight: 400;
+    line-height: 1.6;
+}
+
+/* Bootstrap overrides – use design tokens */
+.btn-primary {
+    background-color: var(--jld-primary);
+    border-color: var(--jld-primary);
+    font-weight: 500;
+}
+.btn-primary:hover,
+.btn-primary:focus {
+    background-color: var(--jld-primary-hover);
+    border-color: var(--jld-primary-hover);
+}
+
+.btn-danger {
+    background-color: var(--jld-secondary);
+    border-color: var(--jld-secondary);
+}
+.btn-danger:hover,
+.btn-danger:focus {
+    background-color: var(--jld-secondary-hover);
+    border-color: var(--jld-secondary-hover);
+}
+
+.text-primary { color: var(--jld-primary) !important; }
+.text-danger { color: var(--jld-secondary) !important; }
+.bg-primary { background-color: var(--jld-primary) !important; }
+.bg-danger { background-color: var(--jld-secondary) !important; }
+.border-primary { border-color: var(--jld-primary) !important; }
+
+.btn-outline-primary {
+    color: var(--jld-primary);
+    border-color: var(--jld-primary);
+}
+.btn-outline-primary:hover {
+    background-color: var(--jld-primary);
+    border-color: var(--jld-primary);
+    color: #fff;
+}
+
+.btn-outline-danger {
+    color: var(--jld-secondary);
+    border-color: var(--jld-secondary);
+}
+.btn-outline-danger:hover {
+    background-color: var(--jld-secondary);
+    border-color: var(--jld-secondary);
+    color: #fff;
+}
+
+/* Base page structure */
+.page-title {
+    color: var(--jld-primary);
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+.page-subtitle {
+    color: var(--jld-gray);
+    font-weight: 400;
+    margin-bottom: 0;
+}
+
+.card {
+    border: none;
+    border-radius: var(--jld-radius);
+    box-shadow: var(--jld-shadow);
+    background: var(--jld-white);
+}
+.card-header {
+    background: var(--jld-white);
+    border-bottom: 1px solid var(--jld-border);
+    font-weight: 600;
+    color: var(--jld-primary);
+    padding: 1.25rem 1.5rem;
+    border-radius: var(--jld-radius) var(--jld-radius) 0 0;
+}
+.card-body {
+    padding: 1.5rem;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--jld-primary);
+    box-shadow: 0 0 0 0.2rem rgba(43, 35, 94, 0.25);
+}
+.form-label {
+    font-weight: 500;
+    color: var(--jld-primary);
+    margin-bottom: 0.5rem;
+}

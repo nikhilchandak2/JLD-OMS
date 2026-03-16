@@ -23,7 +23,7 @@ class ProductController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;
@@ -48,7 +48,7 @@ class ProductController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;
@@ -85,7 +85,7 @@ class ProductController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;
@@ -143,7 +143,7 @@ class ProductController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;
@@ -221,7 +221,7 @@ class ProductController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;

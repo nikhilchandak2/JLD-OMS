@@ -75,6 +75,13 @@ A secure, role-based PHP web application for managing orders (truck counts), rec
    }
    ```
 
+   **PHP built-in server (local testing only)**  
+   From the project root, run:
+   ```bash
+   php -S localhost:8000 -t public public/router.php
+   ```
+   Then open **http://localhost:8000** in your browser. Use `http://localhost:8000` as `APP_URL` in `.env` for local dev.
+
 7. **Access the application**
    - URL: `http://your-domain.com`
    - Default admin: `admin@example.com` / `Passw0rd!`

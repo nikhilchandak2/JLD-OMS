@@ -3,13 +3,16 @@
     <div class="d-flex justify-content-between align-items-start">
         <div>
             <h1 class="page-title">
-                <i class="bi bi-building me-2"></i>Party Management
+                <i class="bi bi-person-circle me-2"></i>Party Management
             </h1>
             <p class="page-subtitle">Manage customer and supplier information</p>
         </div>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#partyModal" onclick="openPartyModal()">
-            <i class="bi bi-plus-circle me-1"></i> Add New Party
-        </button>
+        <div class="d-flex gap-2">
+            <a href="/admin/parties/import" class="btn btn-outline-primary"><i class="bi bi-upload me-1"></i> Import from CSV</a>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#partyModal" onclick="openPartyModal()">
+                <i class="bi bi-plus-circle me-1"></i> Add New Party
+            </button>
+        </div>
     </div>
 </div>
 
@@ -24,11 +27,8 @@
                             <thead>
                                 <tr>
                                     <th>Name</th>
-                                    <th>Contact Person</th>
-                                    <th>Phone</th>
-                                    <th>Email</th>
                                     <th>Status</th>
-                                    <th>Actions</th>
+                                    <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -140,24 +140,11 @@ function renderPartiesTable() {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${escapeHtml(party.name)}</td>
-            <td>${escapeHtml(party.contact_person || '')}</td>
-            <td>${escapeHtml(party.phone || '')}</td>
-            <td>${escapeHtml(party.email || '')}</td>
-            <td>
-                <span class="badge ${party.is_active ? 'bg-success' : 'bg-secondary'}">
-                    ${party.is_active ? 'Active' : 'Inactive'}
-                </span>
-            </td>
-            <td>
-                <a href="/crm/parties/${party.id}" class="btn btn-sm btn-outline-success me-1" title="CRM view (profile, samples, receivables)">
-                    <i class="bi bi-person-lines-fill"></i> CRM
-                </a>
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="editParty(${party.id})">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteParty(${party.id})">
-                    <i class="fas fa-trash"></i>
-                </button>
+            <td><span class="badge ${party.is_active ? 'bg-success' : 'bg-secondary'}">${party.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td class="text-end">
+                <a href="/crm/parties/${party.id}" class="btn btn-sm btn-outline-success me-1" title="CRM view (profile, samples, receivables)"><i class="bi bi-person-lines-fill"></i> CRM</a>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editParty(${party.id})"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteParty(${party.id})"><i class="fas fa-trash"></i></button>
             </td>
         `;
         tbody.appendChild(row);
