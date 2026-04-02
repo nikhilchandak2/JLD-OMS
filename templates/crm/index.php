@@ -22,22 +22,44 @@
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span>Recent activity</span>
                 <div class="d-flex gap-2 align-items-center flex-wrap">
-                    <select class="form-select form-select-sm" id="activityPartyFilter" style="min-width: 220px;">
-                        <option value="">All companies</option>
-                    </select>
-                    <?php if (($user['role'] ?? '') === 'admin'): ?>
-                        <select class="form-select form-select-sm" id="activityOwnerFilter" style="min-width: 220px;">
-                            <option value="">All sales owners</option>
-                        </select>
-                    <?php else: ?>
-                        <select class="form-select form-select-sm" id="activityOwnerFilter" style="min-width: 220px;" disabled>
-                            <option value="<?= (int)($user['id'] ?? 0) ?>">Myself</option>
-                        </select>
-                    <?php endif; ?>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnClearActivityFilter" title="Clear filter">
-                        <i class="bi bi-x-circle"></i>
-                    </button>
-                    <small class="text-muted" id="activityFeedStatus">Live</small>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="btnActivityFilter"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-funnel me-1"></i>Filter
+                        </button>
+                        <div class="dropdown-menu p-3" style="min-width: 320px;" aria-labelledby="btnActivityFilter" data-bs-auto-close="outside">
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">Company</label>
+                                <select class="form-select form-select-sm" id="activityPartyFilter">
+                                    <option value="">All companies</option>
+                                </select>
+                            </div>
+
+                            <?php if (($user['role'] ?? '') === 'admin'): ?>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Sales owner</label>
+                                    <select class="form-select form-select-sm" id="activityOwnerFilter">
+                                        <option value="">All sales owners</option>
+                                    </select>
+                                </div>
+                            <?php else: ?>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Sales owner</label>
+                                    <select class="form-select form-select-sm" id="activityOwnerFilter" disabled>
+                                        <option value="<?= (int)($user['id'] ?? 0) ?>">Myself</option>
+                                    </select>
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="d-flex justify-content-between align-items-center gap-2 mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnClearActivityFilter" title="Clear filter">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                                <small class="text-muted" id="activityFeedStatus">Live</small>
+                            </div>
+                        </div>
+                    </div>
+
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshActivityFeed">
                         <i class="bi bi-arrow-clockwise"></i>
                     </button>
