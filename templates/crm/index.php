@@ -270,9 +270,13 @@ async function loadTasks(force = false) {
                 ? '<span class="badge bg-success">Completed</span>'
                 : '<span class="badge bg-warning text-dark">Pending</span>';
 
+            const deleteBtn = isAdmin
+                ? '<button type="button" class="btn btn-sm btn-outline-danger btn-delete-task" data-task-id="' + t.id + '">Delete</button>'
+                : '';
+
             const actionBtn = t.status === 'completed'
-                ? ''
-                : '<button type="button" class="btn btn-sm btn-success btn-mark-done" data-task-id="' + t.id + '">Mark done</button>';
+                ? deleteBtn
+                : '<button type="button" class="btn btn-sm btn-success btn-mark-done" data-task-id="' + t.id + '">Mark done</button> ' + deleteBtn;
 
             return (
                 '<div class="d-flex gap-2 py-2 border-bottom align-items-start">' +
@@ -289,7 +293,7 @@ async function loadTasks(force = false) {
             );
         }).join('');
 
-        // Attach click handlers for "Mark done" buttons
+        // Attach click handlers for "Mark done" and "Delete" buttons
         el.querySelectorAll('.btn-mark-done').forEach(btn => {
             btn.addEventListener('click', async function() {
                 const id = this.getAttribute('data-task-id');
@@ -303,6 +307,23 @@ async function loadTasks(force = false) {
                     showSuccess('Task marked as completed.');
                 } catch (e) {
                     showError(e.message || 'Failed to update task');
+                }
+            });
+        });
+
+        el.querySelectorAll('.btn-delete-task').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const id = this.getAttribute('data-task-id');
+                if (!id) return;
+                if (!confirm('Delete this task?')) return;
+                try {
+                    await apiCall('/api/crm/tasks/' + encodeURIComponent(id), {
+                        method: 'DELETE'
+                    });
+                    await loadTasks(true);
+                    showSuccess('Task deleted.');
+                } catch (e) {
+                    showError(e.message || 'Failed to delete task');
                 }
             });
         });

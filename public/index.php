@@ -202,6 +202,7 @@ $router->group('/api', function($router) {
         $router->get('/crm/tasks', 'CrmTaskController@index');
         $router->post('/crm/tasks', 'CrmTaskController@create');
         $router->put('/crm/tasks/{id}', 'CrmTaskController@update');
+        $router->delete('/crm/tasks/{id}', 'CrmTaskController@delete');
         $router->get('/crm/samples', 'CrmSampleController@index');
         $router->get('/crm/samples/{id}', 'CrmSampleController@show');
         $router->post('/crm/samples', 'CrmSampleController@create');

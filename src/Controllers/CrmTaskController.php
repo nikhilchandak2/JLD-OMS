@@ -226,5 +226,35 @@ class CrmTaskController
             'data' => $updated ? $updated->toArray() : null
         ]);
     }
+
+    /**
+     * DELETE /api/crm/tasks/{id}
+     * Admin can delete any task (pending or completed).
+     */
+    public function delete(int $id): void
+    {
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'DELETE') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user || !$this->authService->hasRole('admin')) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Admin access required']);
+            return;
+        }
+
+        $deleted = $this->taskRepo->delete($id);
+        if (!$deleted) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Task not found']);
+            return;
+        }
+
+        echo json_encode(['success' => true, 'message' => 'Task deleted']);
+    }
 }
 

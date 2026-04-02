@@ -127,5 +127,13 @@ class CrmTaskRepository
 
         return $this->findById($id);
     }
+
+    public function delete(int $id): bool
+    {
+        $sql = "DELETE FROM crm_tasks WHERE id = ?";
+        $stmt = $this->database->getConnection()->prepare($sql);
+        $stmt->execute([$id]);
+        return $stmt->rowCount() > 0;
+    }
 }
 
