@@ -35,10 +35,18 @@ class CrmActivityController
     {
         header('Content-Type: application/json');
         if (!$this->requireCrmAccess()) return;
+        $user = $this->authService->getCurrentUser();
         $filters = [];
         if (!empty($_GET['party_id'])) $filters['party_id'] = (int)$_GET['party_id'];
         if (!empty($_GET['deal_id'])) $filters['deal_id'] = (int)$_GET['deal_id'];
         if (!empty($_GET['type'])) $filters['type'] = $_GET['type'];
+        if (!empty($_GET['created_by'])) {
+            $requestedCreatedBy = (int)$_GET['created_by'];
+            if ($requestedCreatedBy > 0) {
+                // Non-admin users should only be able to view their own activities
+                $filters['created_by'] = $this->authService->hasRole('admin') ? $requestedCreatedBy : (int)($user['id'] ?? 0);
+            }
+        }
         if (!empty($_GET['from_date'])) $filters['from_date'] = $_GET['from_date'];
         if (!empty($_GET['to_date'])) $filters['to_date'] = $_GET['to_date'];
         if (isset($_GET['limit']) && $_GET['limit'] !== '') $filters['limit'] = (int)$_GET['limit'];

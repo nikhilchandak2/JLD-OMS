@@ -33,6 +33,10 @@ class CrmActivityRepository
             $sql .= " AND a.type = ?";
             $params[] = $filters['type'];
         }
+        if (!empty($filters['created_by'])) {
+            $sql .= " AND a.created_by = ?";
+            $params[] = $filters['created_by'];
+        }
         if (!empty($filters['from_date'])) {
             $sql .= " AND DATE(a.activity_date) >= ?";
             $params[] = $filters['from_date'];

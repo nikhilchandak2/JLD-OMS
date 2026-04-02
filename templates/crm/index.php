@@ -25,6 +25,15 @@
                     <select class="form-select form-select-sm" id="activityPartyFilter" style="min-width: 220px;">
                         <option value="">All companies</option>
                     </select>
+                    <?php if (($user['role'] ?? '') === 'admin'): ?>
+                        <select class="form-select form-select-sm" id="activityOwnerFilter" style="min-width: 220px;">
+                            <option value="">All sales owners</option>
+                        </select>
+                    <?php else: ?>
+                        <select class="form-select form-select-sm" id="activityOwnerFilter" style="min-width: 220px;" disabled>
+                            <option value="<?= (int)($user['id'] ?? 0) ?>">Myself</option>
+                        </select>
+                    <?php endif; ?>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="btnClearActivityFilter" title="Clear filter">
                         <i class="bi bi-x-circle"></i>
                     </button>
@@ -100,9 +109,11 @@ let lastActivityId = 0;
 let activityFeedTimer = null;
 let tasksTimer = null;
 const isAdmin = <?= (($user['role'] ?? '') === 'admin') ? 'true' : 'false' ?>;
+const currentUserId = <?= (int)($user['id'] ?? 0) ?>;
 
 document.addEventListener('DOMContentLoaded', async function() {
     const activityPartyFilter = document.getElementById('activityPartyFilter');
+    const activityOwnerFilter = document.getElementById('activityOwnerFilter');
     const btnClearActivityFilter = document.getElementById('btnClearActivityFilter');
 
     // Load party list for filtering activities (company-wise updates)
@@ -120,9 +131,26 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 
+    // Load sales owner list for admin (non-admin already has "Myself" and is disabled)
+    if (activityOwnerFilter && isAdmin) {
+        try {
+            const r = await apiCall('/api/crm/users/options');
+            const list = (r.data || []);
+            activityOwnerFilter.innerHTML = '<option value="">All sales owners</option>' + list.map(u => {
+                return '<option value="' + u.id + '">' + escapeHtml(u.name || 'User') + '</option>';
+            }).join('');
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
     if (btnClearActivityFilter) {
         btnClearActivityFilter.addEventListener('click', function() {
             if (activityPartyFilter) activityPartyFilter.value = '';
+            if (activityOwnerFilter) {
+                if (isAdmin) activityOwnerFilter.value = '';
+                else activityOwnerFilter.value = String(currentUserId);
+            }
             lastActivityId = 0;
             loadActivityFeed(true);
         });
@@ -130,6 +158,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     if (activityPartyFilter) {
         activityPartyFilter.addEventListener('change', function() {
+            lastActivityId = 0;
+            loadActivityFeed(true);
+        });
+    }
+    if (activityOwnerFilter) {
+        activityOwnerFilter.addEventListener('change', function() {
             lastActivityId = 0;
             loadActivityFeed(true);
         });
@@ -180,11 +214,15 @@ async function loadActivityFeed(force = false) {
     try {
         const partyFilterEl = document.getElementById('activityPartyFilter');
         const partyId = partyFilterEl ? partyFilterEl.value : '';
-        statusEl.textContent = partyId ? 'Filtered' : 'Live';
-        const limit = partyId ? 200 : 15; // show more updates when a company is selected
-        const url = partyId
-            ? '/api/crm/activities?party_id=' + encodeURIComponent(partyId) + '&limit=' + limit
-            : '/api/crm/activities?limit=' + limit;
+        const ownerFilterEl = document.getElementById('activityOwnerFilter');
+        const ownerId = ownerFilterEl ? ownerFilterEl.value : '';
+
+        statusEl.textContent = (partyId || ownerId) ? 'Filtered' : 'Live';
+        const limit = (partyId || ownerId) ? 200 : 15; // show more updates when filters are selected
+
+        let url = '/api/crm/activities?limit=' + limit;
+        if (partyId) url += '&party_id=' + encodeURIComponent(partyId);
+        if (ownerId) url += '&created_by=' + encodeURIComponent(ownerId);
         const r = await apiCall(url);
         const list = (r.data || []);
         if (!list.length) {
