@@ -137,6 +137,8 @@ $router->group('/api', function($router) {
         // Orders
         $router->get('/orders', 'OrderController@index');
         $router->get('/orders/{id}', 'OrderController@show');
+        $router->get('/orders/credit-approvals/pending', 'OrderController@creditApprovalsPending');
+        $router->post('/orders/credit-approvals/{id}/decide', 'OrderController@decideCreditApproval');
         $router->post('/orders', 'OrderController@create');
         $router->put('/orders/{id}', 'OrderController@update');
         $router->delete('/orders/{id}', 'OrderController@delete');
@@ -196,6 +198,10 @@ $router->group('/api', function($router) {
         $router->post('/crm/activities', 'CrmActivityController@create');
         $router->put('/crm/activities/{id}', 'CrmActivityController@update');
         $router->delete('/crm/activities/{id}', 'CrmActivityController@delete');
+        // CRM tasks (sales-owner task panel)
+        $router->get('/crm/tasks', 'CrmTaskController@index');
+        $router->post('/crm/tasks', 'CrmTaskController@create');
+        $router->put('/crm/tasks/{id}', 'CrmTaskController@update');
         $router->get('/crm/samples', 'CrmSampleController@index');
         $router->get('/crm/samples/{id}', 'CrmSampleController@show');
         $router->post('/crm/samples', 'CrmSampleController@create');
@@ -220,10 +226,12 @@ $router->get('/orders/new', 'WebController@newOrder');
 $router->get('/orders/{id}', 'WebController@orderDetail');
 $router->get('/reports', 'WebController@reports');
 $router->get('/admin/users', 'WebController@users');
+$router->get('/admin/credit-approvals', 'WebController@creditApprovalsPage');
 $router->get('/admin/parties/import', 'WebController@partiesImport');
 $router->get('/admin/parties', 'WebController@parties');
 $router->get('/admin/products', 'WebController@products');
 $router->get('/admin/reminders', 'WebController@reminders');
+$router->get('/admin/bills/import', 'WebController@adminImportBills');
 $router->get('/analytics/orders', 'WebController@analyticsOrders');
 $router->get('/analytics/dispatches', 'WebController@analyticsDispatches');
 $router->get('/analytics/pending', 'WebController@analyticsPending');

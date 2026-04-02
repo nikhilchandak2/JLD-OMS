@@ -372,6 +372,14 @@
             border-color: var(--jld-primary);
             box-shadow: 0 2px 8px rgba(43, 35, 94, 0.12);
         }
+        .crm-company-card.dragging {
+            opacity: 0.6;
+            transform: scale(0.99);
+        }
+        .crm-funnel-column-cards.drag-over {
+            outline: 2px dashed rgba(43, 35, 94, 0.55);
+            background: rgba(43, 35, 94, 0.02);
+        }
         .crm-company-card .company-name { font-weight: 600; font-size: 0.875rem; margin-bottom: 0.25rem; }
         .crm-company-card .company-meta { font-size: 0.75rem; color: var(--jld-gray); }
         .crm-company-card .company-value { font-size: 0.8125rem; font-weight: 600; color: var(--jld-primary); margin-top: 0.35rem; }
@@ -1113,6 +1121,11 @@
                             <i class="bi bi-envelope-check"></i> Reminders
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/bills/import') === 0 ? 'active' : '' ?>" href="/admin/bills/import">
+                            <i class="bi bi-upload"></i> Import Bills (Busy)
+                        </a>
+                    </li>
                     <?php endif; ?>
                     <?php endif; ?>
 
@@ -1120,6 +1133,11 @@
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/users') === 0 ? 'active' : '' ?>" href="/admin/users">
                             <i class="bi bi-people"></i> Users
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/credit-approvals') === 0 ? 'active' : '' ?>" href="/admin/credit-approvals">
+                            <i class="bi bi-shield-check"></i> Credit Approvals
                         </a>
                     </li>
                     <li class="nav-item">
