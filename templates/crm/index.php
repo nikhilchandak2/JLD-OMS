@@ -19,9 +19,15 @@
 <div class="row g-3 mt-0">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span>Recent activity</span>
-                <div class="d-flex gap-2 align-items-center">
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <select class="form-select form-select-sm" id="activityPartyFilter" style="min-width: 220px;">
+                        <option value="">All companies</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnClearActivityFilter" title="Clear filter">
+                        <i class="bi bi-x-circle"></i>
+                    </button>
                     <small class="text-muted" id="activityFeedStatus">Live</small>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshActivityFeed">
                         <i class="bi bi-arrow-clockwise"></i>
@@ -96,11 +102,44 @@ let tasksTimer = null;
 const isAdmin = <?= (($user['role'] ?? '') === 'admin') ? 'true' : 'false' ?>;
 
 document.addEventListener('DOMContentLoaded', async function() {
+    const activityPartyFilter = document.getElementById('activityPartyFilter');
+    const btnClearActivityFilter = document.getElementById('btnClearActivityFilter');
+
+    // Load party list for filtering activities (company-wise updates)
+    if (activityPartyFilter) {
+        try {
+            const r = await apiCall('/api/parties');
+            const parties = (r.data || []);
+            activityPartyFilter.innerHTML = '<option value="">All companies</option>' + parties.map(p => {
+                const id = p.id;
+                const name = escapeHtml(p.name || 'Unnamed');
+                return '<option value="' + id + '">' + name + '</option>';
+            }).join('');
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    if (btnClearActivityFilter) {
+        btnClearActivityFilter.addEventListener('click', function() {
+            if (activityPartyFilter) activityPartyFilter.value = '';
+            lastActivityId = 0;
+            loadActivityFeed(true);
+        });
+    }
+
+    if (activityPartyFilter) {
+        activityPartyFilter.addEventListener('change', function() {
+            lastActivityId = 0;
+            loadActivityFeed(true);
+        });
+    }
+
     document.getElementById('btnRefreshActivityFeed').addEventListener('click', function() {
         loadActivityFeed(true);
     });
     loadActivityFeed(true);
-    activityFeedTimer = setInterval(loadActivityFeed, 6000);
+    activityFeedTimer = setInterval(() => loadActivityFeed(false), 6000);
 
     document.getElementById('btnRefreshTasks').addEventListener('click', function() {
         loadTasks(true);
@@ -139,8 +178,14 @@ async function loadActivityFeed(force = false) {
     const el = document.getElementById('activityFeedList');
     const statusEl = document.getElementById('activityFeedStatus');
     try {
-        statusEl.textContent = 'Live';
-        const r = await apiCall('/api/crm/activities?limit=15');
+        const partyFilterEl = document.getElementById('activityPartyFilter');
+        const partyId = partyFilterEl ? partyFilterEl.value : '';
+        statusEl.textContent = partyId ? 'Filtered' : 'Live';
+        const limit = partyId ? 200 : 15; // show more updates when a company is selected
+        const url = partyId
+            ? '/api/crm/activities?party_id=' + encodeURIComponent(partyId) + '&limit=' + limit
+            : '/api/crm/activities?limit=' + limit;
+        const r = await apiCall(url);
         const list = (r.data || []);
         if (!list.length) {
             el.innerHTML = '<p class="text-muted small mb-0">No activities yet.</p>';
