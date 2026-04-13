@@ -61,7 +61,7 @@
                 <form id="geofenceForm">
                     <input type="hidden" id="geofenceId">
                     <div class="row g-3">
-                        <div class="col-lg-4">
+                        <div class="col-lg-4" id="geofenceFormColumn">
                             <div class="mb-3">
                                 <label class="form-label">Name *</label>
                                 <input type="text" class="form-control" id="geofenceName" required>
@@ -120,7 +120,7 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="col-lg-8">
+                        <div class="col-lg-8" id="geofenceMapColumn">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <label class="form-label mb-0">Draw Boundary on Map</label>
                                 <div class="d-flex gap-2">
@@ -204,6 +204,33 @@
     #geofenceMapContainer.map-pseudo-fullscreen #geofenceMap {
         height: calc(100vh - 1rem) !important;
     }
+    #geofenceModal.map-modal-fullscreen .modal-dialog {
+        width: 100vw;
+        max-width: 100vw;
+        height: 100vh;
+        margin: 0;
+    }
+    #geofenceModal.map-modal-fullscreen .modal-content {
+        height: 100vh;
+        border-radius: 0;
+    }
+    #geofenceModal.map-modal-fullscreen .modal-body {
+        overflow: hidden;
+    }
+    #geofenceModal.map-modal-fullscreen #geofenceFormColumn {
+        display: none;
+    }
+    #geofenceModal.map-modal-fullscreen #geofenceMapColumn {
+        width: 100%;
+        max-width: 100%;
+        flex: 0 0 100%;
+    }
+    #geofenceModal.map-modal-fullscreen #geofenceMapContainer {
+        height: calc(100vh - 150px);
+    }
+    #geofenceModal.map-modal-fullscreen #geofenceMap {
+        height: 100%;
+    }
 </style>
 
 <script>
@@ -213,6 +240,7 @@ let drawnItems;
 let drawControl;
 let currentShapeLayer = null;
 let geofenceSearchMarker = null;
+let geofenceModalPseudoFullscreen = false;
 
 const defaultMapCenter = [23.0225, 72.5714];
 const defaultMapZoom = 14;
@@ -559,49 +587,15 @@ function searchGeofenceCoordinates() {
 }
 
 function toggleGeofenceMapFullscreen() {
-    const container = document.getElementById('geofenceMapContainer');
-    if (isGeofenceMapFullscreen(container)) {
-        if (!exitAnyFullscreen()) {
-            container.classList.remove('map-pseudo-fullscreen');
-        }
-        setTimeout(() => geofenceMap?.invalidateSize(), 120);
-        return;
-    }
-
-    if (!requestElementFullscreen(container)) {
-        container.classList.add('map-pseudo-fullscreen');
-    }
+    setGeofenceModalPseudoFullscreen(!geofenceModalPseudoFullscreen);
     setTimeout(() => geofenceMap?.invalidateSize(), 120);
 }
 
-function isGeofenceMapFullscreen(container) {
-    return document.fullscreenElement === container
-        || document.webkitFullscreenElement === container
-        || container.classList.contains('map-pseudo-fullscreen');
-}
-
-function requestElementFullscreen(element) {
-    if (element.requestFullscreen) {
-        element.requestFullscreen();
-        return true;
-    }
-    if (element.webkitRequestFullscreen) {
-        element.webkitRequestFullscreen();
-        return true;
-    }
-    return false;
-}
-
-function exitAnyFullscreen() {
-    if (document.fullscreenElement && document.exitFullscreen) {
-        document.exitFullscreen();
-        return true;
-    }
-    if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-        return true;
-    }
-    return false;
+function setGeofenceModalPseudoFullscreen(enabled) {
+    const modal = document.getElementById('geofenceModal');
+    geofenceModalPseudoFullscreen = !!enabled;
+    modal.classList.toggle('map-modal-fullscreen', geofenceModalPseudoFullscreen);
+    document.body.classList.toggle('overflow-hidden', geofenceModalPseudoFullscreen);
 }
 
 function geofenceMapSupportsRotation() {
@@ -751,13 +745,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (geofenceMap) {
             setTimeout(() => geofenceMap.invalidateSize(), 120);
         }
-        const container = document.getElementById('geofenceMapContainer');
-        const nativeFullscreenActive = document.fullscreenElement === container || document.webkitFullscreenElement === container;
-        if (!nativeFullscreenActive) {
-            container.classList.remove('map-pseudo-fullscreen');
-        }
     };
     document.addEventListener('fullscreenchange', onFullscreenChanged);
     document.addEventListener('webkitfullscreenchange', onFullscreenChanged);
+    document.getElementById('geofenceModal').addEventListener('hidden.bs.modal', () => {
+        if (geofenceModalPseudoFullscreen) {
+            setGeofenceModalPseudoFullscreen(false);
+        }
+    });
 });
 </script>
