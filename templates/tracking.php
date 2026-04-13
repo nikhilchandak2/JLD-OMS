@@ -27,11 +27,43 @@
     <i class="bi bi-info-circle me-1"></i> <strong>Route update status:</strong> <span id="route-update-status-text">—</span>
 </div>
 
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <input
+                type="text"
+                id="trackingCoordInput"
+                class="form-control form-control-sm"
+                style="max-width: 320px;"
+                placeholder="Search coordinates: 23.0225, 72.5714"
+            >
+            <button class="btn btn-sm btn-outline-primary" type="button" onclick="searchTrackingCoordinates()">
+                <i class="bi bi-search me-1"></i>Go To Coordinates
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="toggleTrackingMapFullscreen()">
+                <i class="bi bi-arrows-fullscreen me-1"></i>Fullscreen
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="rotateTrackingMap(-15)">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Rotate Left
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="rotateTrackingMap(15)">
+                <i class="bi bi-arrow-clockwise me-1"></i>Rotate Right
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="resetTrackingMapRotation()">
+                Reset Rotation
+            </button>
+            <span class="small text-muted">Enter latitude, longitude to jump and pin location.</span>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-md-9">
         <div class="card">
             <div class="card-body" style="height: 600px; padding: 0;">
-                <div id="map" style="width: 100%; height: 100%;"></div>
+                <div id="trackingMapContainer" style="width: 100%; height: 100%;">
+                    <div id="map" style="width: 100%; height: 100%;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -51,6 +83,16 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+<style>
+    #trackingMapContainer:fullscreen {
+        background: #fff;
+        padding: 0.5rem;
+    }
+    #trackingMapContainer:fullscreen #map {
+        height: calc(100vh - 1rem) !important;
+    }
+</style>
 <script>
 const mapboxToken = <?= json_encode($mapbox_token ?? '') ?>;
 let map;
@@ -63,6 +105,7 @@ let sessionPathByVehicle = {};
 /** Ignore stale map-matching results when a newer refresh has already run */
 let pathUpdateGeneration = 0;
 let autoRefreshInterval = null;
+let trackingSearchMarker = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
 const DEFAULT_ZOOM = 19;
@@ -70,28 +113,85 @@ const MIN_ZOOM = 18;
 let mapboxStreetLayer, mapboxSatelliteLayer;
 
 function initMap() {
-    map = L.map('map', { zoomControl: true }).setView([23.0225, 72.5714], DEFAULT_ZOOM);
+    map = L.map('map', { zoomControl: true, rotate: true, touchRotate: true, bearing: 0, maxZoom: 22 }).setView([23.0225, 72.5714], DEFAULT_ZOOM);
 
     if (mapboxToken) {
         mapboxStreetLayer = L.tileLayer(
             'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=' + mapboxToken,
-            { attribution: '© Mapbox', maxZoom: 22 }
+            { attribution: '© Mapbox', maxNativeZoom: 22, maxZoom: 22 }
         );
         mapboxSatelliteLayer = L.tileLayer(
             'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}?access_token=' + mapboxToken,
-            { attribution: '© Mapbox', maxZoom: 22 }
+            { attribution: '© Mapbox', maxNativeZoom: 22, maxZoom: 22 }
         );
-        mapboxSatelliteLayer.addTo(map);
+        const mapboxSatelliteLabelledLayer = L.tileLayer(
+            'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}?access_token=' + mapboxToken,
+            { attribution: '© Mapbox', maxNativeZoom: 22, maxZoom: 22 }
+        );
+        mapboxSatelliteLabelledLayer.addTo(map);
         L.control.layers(
-            { 'Mapbox Satellite': mapboxSatelliteLayer, 'Mapbox Street': mapboxStreetLayer },
+            {
+                'Mapbox Satellite + Labels': mapboxSatelliteLabelledLayer,
+                'Mapbox Satellite': mapboxSatelliteLayer,
+                'Mapbox Street': mapboxStreetLayer
+            },
             null,
             { position: 'topright' }
         ).addTo(map);
     } else {
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap',
-            maxZoom: 19
-        }).addTo(map);
+        const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxNativeZoom: 19,
+            maxZoom: 22
+        });
+        const osmHot = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors, HOT',
+            maxNativeZoom: 19,
+            maxZoom: 22
+        });
+        const cartoVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors, © CARTO',
+            maxNativeZoom: 20,
+            maxZoom: 22
+        });
+        const esriStreets = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri',
+            maxNativeZoom: 19,
+            maxZoom: 22
+        });
+        const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri',
+            maxNativeZoom: 19,
+            maxZoom: 22
+        });
+        const esriLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Labels © Esri',
+            maxNativeZoom: 19,
+            maxZoom: 22
+        });
+        const esriTopo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri',
+            maxNativeZoom: 19,
+            maxZoom: 22
+        });
+        const esriHybrid = L.layerGroup([esriSatellite, esriLabels]);
+
+        osmStandard.addTo(map);
+        L.control.layers(
+            {
+                'OpenStreetMap': osmStandard,
+                'OSM Humanitarian': osmHot,
+                'Carto Voyager': cartoVoyager,
+                'Esri Streets': esriStreets,
+                'Esri Topographic': esriTopo,
+                'Esri Satellite': esriSatellite,
+                'Esri Hybrid (Satellite + Labels)': esriHybrid
+            },
+            {
+                'Place Labels': esriLabels
+            },
+            { position: 'topright' }
+        ).addTo(map);
     }
 }
 
@@ -224,6 +324,67 @@ function syncFromWheelsEyeQuiet() {
         });
 }
 
+function parseCoordinates(input) {
+    if (!input) return null;
+    const parts = String(input).trim().split(/[,\s]+/).filter(Boolean);
+    if (parts.length < 2) return null;
+    const lat = Number(parts[0]);
+    const lng = Number(parts[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return null;
+    }
+    return { lat, lng };
+}
+
+function searchTrackingCoordinates() {
+    const input = document.getElementById('trackingCoordInput');
+    const parsed = parseCoordinates(input.value);
+    if (!parsed) {
+        showError('Invalid coordinates. Use format: latitude, longitude');
+        return;
+    }
+
+    if (trackingSearchMarker && map.hasLayer(trackingSearchMarker)) {
+        map.removeLayer(trackingSearchMarker);
+    }
+    trackingSearchMarker = L.marker([parsed.lat, parsed.lng]).addTo(map);
+    trackingSearchMarker.bindPopup(
+        `<strong>Searched Coordinates</strong><br>Lat: ${parsed.lat.toFixed(8)}<br>Lng: ${parsed.lng.toFixed(8)}`
+    ).openPopup();
+    map.setView([parsed.lat, parsed.lng], Math.max(map.getZoom(), 16));
+}
+
+function toggleTrackingMapFullscreen() {
+    const container = document.getElementById('trackingMapContainer');
+    if (!document.fullscreenElement) {
+        container.requestFullscreen?.();
+    } else if (document.fullscreenElement === container) {
+        document.exitFullscreen?.();
+    }
+}
+
+function trackingMapSupportsRotation() {
+    return map && typeof map.setBearing === 'function' && typeof map.getBearing === 'function';
+}
+
+function rotateTrackingMap(deltaDegrees) {
+    if (!trackingMapSupportsRotation()) {
+        showError('Map rotation is not supported in this browser.');
+        return;
+    }
+    const current = Number(map.getBearing()) || 0;
+    const next = (current + deltaDegrees + 360) % 360;
+    map.setBearing(next);
+}
+
+function resetTrackingMapRotation() {
+    if (!trackingMapSupportsRotation()) {
+        showError('Map rotation is not supported in this browser.');
+        return;
+    }
+    map.setBearing(0);
+}
+
 async function updateMap(vehicles, geofences) {
     pathUpdateGeneration++;
     const thisUpdateGen = pathUpdateGeneration;
@@ -247,19 +408,35 @@ async function updateMap(vehicles, geofences) {
         const lat = Number(g.latitude);
         const lng = Number(g.longitude);
         const radius = Number(g.radius_meters) || 100;
+        const shapeType = g.shape_type || 'circle';
         if (isNaN(lat) || isNaN(lng)) return;
         const isPit = g.geofence_type === 'pit';
         const color = isPit ? '#2563eb' : '#059669';
-        const circle = L.circle([lat, lng], {
-            radius: radius,
-            color: color,
-            fillColor: color,
-            fillOpacity: 0.12,
-            weight: 2,
-        }).addTo(map);
-        circle.bindPopup('<strong>' + escapeHtml(g.name || 'Geofence') + '</strong><br>' +
-            (g.geofence_type ? escapeHtml(g.geofence_type) : '') + (g.material_type ? ' – ' + escapeHtml(g.material_type) : '') + '<br>Radius: ' + radius + ' m');
-        geofenceLayers.push(circle);
+        let geofenceLayer = null;
+
+        if (shapeType === 'polygon' && Array.isArray(g.polygon_points) && g.polygon_points.length >= 3) {
+            const latLngs = g.polygon_points.map(p => [Number(p.lat), Number(p.lng)]);
+            geofenceLayer = L.polygon(latLngs, {
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.12,
+                weight: 2
+            }).addTo(map);
+            geofenceLayer.bindPopup('<strong>' + escapeHtml(g.name || 'Geofence') + '</strong><br>' +
+                (g.geofence_type ? escapeHtml(g.geofence_type) : '') + (g.material_type ? ' – ' + escapeHtml(g.material_type) : '') + '<br>Boundary: ' + g.polygon_points.length + ' points');
+        } else {
+            geofenceLayer = L.circle([lat, lng], {
+                radius: radius,
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.12,
+                weight: 2,
+            }).addTo(map);
+            geofenceLayer.bindPopup('<strong>' + escapeHtml(g.name || 'Geofence') + '</strong><br>' +
+                (g.geofence_type ? escapeHtml(g.geofence_type) : '') + (g.material_type ? ' – ' + escapeHtml(g.material_type) : '') + '<br>Radius: ' + radius + ' m');
+        }
+
+        geofenceLayers.push(geofenceLayer);
     });
     
     // Build path per vehicle: merge API path_points with session buffer and current position (so path draws in real time)
@@ -475,5 +652,17 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTracking();
     loadSyncStatus();
     toggleAutoRefresh();
+    const coordInput = document.getElementById('trackingCoordInput');
+    coordInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            searchTrackingCoordinates();
+        }
+    });
+    document.addEventListener('fullscreenchange', () => {
+        if (map) {
+            setTimeout(() => map.invalidateSize(), 120);
+        }
+    });
 });
 </script>

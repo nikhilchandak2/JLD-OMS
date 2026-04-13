@@ -84,10 +84,14 @@ class GeofenceController
         try {
             $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
             
+            $shapeType = ($input['shape_type'] ?? 'circle') === 'polygon' ? 'polygon' : 'circle';
+            $hasCircleFields = isset($input['latitude'], $input['longitude'], $input['radius_meters']);
+            $hasPolygon = isset($input['polygon_points']) && is_array($input['polygon_points']) && count($input['polygon_points']) >= 3;
+
             // Validate required fields
-            if (empty($input['name']) || empty($input['geofence_type']) || 
-                !isset($input['latitude']) || !isset($input['longitude']) || 
-                !isset($input['radius_meters'])) {
+            if (empty($input['name']) || empty($input['geofence_type']) ||
+                ($shapeType === 'circle' && !$hasCircleFields) ||
+                ($shapeType === 'polygon' && !$hasPolygon)) {
                 http_response_code(400);
                 echo json_encode(['error' => 'Missing required fields']);
                 return;
@@ -119,6 +123,17 @@ class GeofenceController
         
         try {
             $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+            $shapeType = ($input['shape_type'] ?? 'circle') === 'polygon' ? 'polygon' : 'circle';
+            $hasCircleFields = isset($input['latitude'], $input['longitude'], $input['radius_meters']);
+            $hasPolygon = isset($input['polygon_points']) && is_array($input['polygon_points']) && count($input['polygon_points']) >= 3;
+
+            if (empty($input['name']) || empty($input['geofence_type']) ||
+                ($shapeType === 'circle' && !$hasCircleFields) ||
+                ($shapeType === 'polygon' && !$hasPolygon)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Missing required fields']);
+                return;
+            }
             
             $this->geofenceService->updateGeofence($id, $input);
             
