@@ -121,6 +121,9 @@ class GPSFuelWebhookController
             
             // Save tracking data
             $this->gpsTrackingRepository->create($trackingData);
+
+            // WheelsEye may send fuel values in the same GPS payload.
+            $this->ingestFuelFromPayload($vehicle, $deviceId, $input);
             
             // Trigger trip detection
             $this->tripDetectionService->processTrackingData($vehicle->id, $trackingData);
@@ -246,6 +249,79 @@ class GPSFuelWebhookController
         } else {
             return 'stationary';
         }
+    }
+
+    /**
+     * Persist fuel reading when the GPS payload also contains fuel metrics.
+     */
+    private function ingestFuelFromPayload(\App\Models\Vehicle $vehicle, string $deviceId, array $input): void
+    {
+        $fuelLevel = $this->firstNumeric($input, [
+            'fuel_level', 'fuelLevel', 'fuel', 'level', 'tank_level', 'tankLevel', 'fuel_liters', 'fuelLiters'
+        ]);
+        $fuelPercentage = $this->firstNumeric($input, [
+            'fuel_percentage', 'fuelPercentage', 'percentage', 'fuel_percent', 'fuelPercent'
+        ]);
+        $temperature = $this->firstNumeric($input, ['temperature', 'temp', 'fuel_temp', 'fuelTemperature']);
+        $voltage = $this->firstNumeric($input, ['voltage', 'battery_voltage', 'sensor_voltage']);
+
+        // Skip if there is no fuel signal in this payload.
+        if ($fuelLevel === null && $fuelPercentage === null && $temperature === null && $voltage === null) {
+            return;
+        }
+
+        $sensorId = (string)($input['sensor_id'] ?? $input['fuel_sensor_id'] ?? $input['device_id'] ?? $input['imei'] ?? $deviceId);
+        if ($sensorId === '') {
+            $sensorId = 'vehicle-' . $vehicle->id . '-fuel';
+        }
+
+        $fuelSensor = $this->fuelSensorRepository->findBySensorId($sensorId);
+        if (!$fuelSensor) {
+            $fuelSensor = new \App\Models\FuelSensor([
+                'sensor_id' => $sensorId,
+                'sensor_type' => 'ultrasonic',
+                'status' => 'active'
+            ]);
+            $fuelSensor->id = $this->fuelSensorRepository->create($fuelSensor);
+        }
+        $this->fuelSensorRepository->updateLastSeen($sensorId);
+
+        // Auto-link sensor to vehicle so Fuel Management lists this vehicle consistently.
+        if (empty($vehicle->fuelSensorId)) {
+            $db = new \App\Core\Database();
+            $db->execute("UPDATE vehicles SET fuel_sensor_id = ? WHERE id = ?", [$fuelSensor->id, $vehicle->id]);
+            $vehicle->fuelSensorId = $fuelSensor->id;
+        }
+
+        $fuelData = new FuelReadingData([
+            'vehicle_id' => $vehicle->id,
+            'sensor_id' => $sensorId,
+            'fuel_level' => $fuelLevel ?? 0,
+            'fuel_percentage' => $fuelPercentage,
+            'temperature' => $temperature,
+            'voltage' => $voltage,
+            'timestamp' => $input['timestamp'] ?? $input['time'] ?? date('Y-m-d H:i:s'),
+            'raw_data' => $input
+        ]);
+
+        $this->fuelReadingRepository->create($fuelData);
+        $this->fuelAlertService->checkFuelAlerts($vehicle->id, $fuelData);
+    }
+
+    /**
+     * Return first numeric value from provided keys.
+     */
+    private function firstNumeric(array $input, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $input) || $input[$key] === '' || $input[$key] === null) {
+                continue;
+            }
+            if (is_numeric($input[$key])) {
+                return (float)$input[$key];
+            }
+        }
+        return null;
     }
     
     private function validateApiKey(): bool

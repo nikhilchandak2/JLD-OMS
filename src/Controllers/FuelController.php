@@ -45,15 +45,17 @@ class FuelController
             
             $result = [];
             foreach ($vehicles as $vehicle) {
-                if ($vehicle->fuelSensorId) {
-                    $latestReading = $this->fuelReadingRepository->getLatestForVehicle($vehicle->id);
-                    $alerts = $this->fuelAlertService->getUnresolvedAlerts($vehicle->id);
-                    
-                    $vehicleData = $vehicle->toArray();
-                    $vehicleData['latest_fuel_reading'] = $latestReading ? $latestReading->toArray() : null;
-                    $vehicleData['fuel_alerts'] = $alerts;
-                    $result[] = $vehicleData;
+                $latestReading = $this->fuelReadingRepository->getLatestForVehicle($vehicle->id);
+                // Show vehicles that have a linked fuel sensor OR already have fuel readings.
+                if (!$vehicle->fuelSensorId && !$latestReading) {
+                    continue;
                 }
+                $alerts = $this->fuelAlertService->getUnresolvedAlerts($vehicle->id);
+                
+                $vehicleData = $vehicle->toArray();
+                $vehicleData['latest_fuel_reading'] = $latestReading ? $latestReading->toArray() : null;
+                $vehicleData['fuel_alerts'] = $alerts;
+                $result[] = $vehicleData;
             }
             
             echo json_encode([
