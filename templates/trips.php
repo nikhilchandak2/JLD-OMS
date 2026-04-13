@@ -5,7 +5,7 @@
             <h1 class="page-title">
                 <i class="bi bi-arrow-left-right me-2"></i>Trips
             </h1>
-            <p class="page-subtitle">Track vehicle trips from pit to stockpile</p>
+            <p class="page-subtitle">Track trips from pit to destination geofences</p>
         </div>
     </div>
 </div>
@@ -111,7 +111,7 @@ function loadTrips() {
             document.getElementById('loading').style.display = 'none';
             if (data.success) {
                 renderStatistics(data.statistics);
-                renderTrips(data.data);
+                renderTrips(data.data, data.destination_breakdown_by_vehicle || {});
             } else {
                 showError(data.error || 'Failed to load trips');
             }
@@ -160,7 +160,7 @@ function renderStatistics(stats) {
     `;
 }
 
-function renderTrips(trips) {
+function renderTrips(trips, breakdownByVehicle = {}) {
     const container = document.getElementById('tripsByVehicleList');
     if (!container) return;
     container.innerHTML = '';
@@ -179,13 +179,17 @@ function renderTrips(trips) {
 
     Object.keys(byVehicle).forEach((vehicleId, idx) => {
         const v = byVehicle[vehicleId];
+        const destinationLabel = formatDestinationCountsFromBreakdown(breakdownByVehicle[vehicleId] || []);
         const collapseId = 'trips-vehicle-' + vehicleId;
         const card = document.createElement('div');
         card.className = 'card mb-2';
         card.innerHTML = `
             <div class="card-header d-flex justify-content-between align-items-center py-3" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="${idx === 0}">
                 <strong>${escapeHtml(v.vehicle_number)}</strong>
-                <span class="badge bg-primary">${v.trips.length} trip(s)</span>
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="badge bg-primary">${v.trips.length} trip(s)</span>
+                    <span class="badge bg-light text-dark">${escapeHtml(destinationLabel)}</span>
+                </div>
             </div>
             <div id="${collapseId}" class="collapse ${idx === 0 ? 'show' : ''}">
                 <div class="card-body p-0">
@@ -194,7 +198,7 @@ function renderTrips(trips) {
                             <thead>
                                 <tr>
                                     <th>Entered Pit (Start)</th>
-                                    <th>Entered Stockpile (End)</th>
+                                    <th>Exited Destination (End)</th>
                                     <th>Source</th>
                                     <th>Destination</th>
                                     <th>Material</th>
@@ -235,6 +239,11 @@ function tripRow(trip) {
             <td><span class="badge bg-${trip.status === 'completed' ? 'success' : trip.status === 'in_progress' ? 'warning' : 'secondary'}">${escapeHtml(trip.status)}</span></td>
         </tr>
     `;
+}
+
+function formatDestinationCountsFromBreakdown(rows) {
+    const labels = rows.map(row => `${row.destination_name}: ${row.trip_count}`);
+    return labels.length ? labels.join(' | ') : 'No completed destination trips';
 }
 
 function escapeHtml(text) {

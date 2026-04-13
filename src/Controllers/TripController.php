@@ -89,11 +89,15 @@ class TripController
                 'status' => $_GET['status'] ?? null,
             ];
             $stats = $this->getTripStatistics($filters);
+            $destinationBreakdown = $this->getDestinationBreakdown($filters);
+            $destinationBreakdownByVehicle = $this->getDestinationBreakdownByVehicle($filters);
             
             echo json_encode([
                 'success' => true,
                 'data' => $trips,
-                'statistics' => $stats
+                'statistics' => $stats,
+                'destination_breakdown' => $destinationBreakdown,
+                'destination_breakdown_by_vehicle' => $destinationBreakdownByVehicle
             ]);
         } catch (\Exception $e) {
             http_response_code(500);
@@ -141,12 +145,16 @@ class TripController
             
             // Get vehicle-specific statistics
             $stats = $this->getVehicleTripStatistics($id);
+            $destinationBreakdown = $this->getDestinationBreakdown([
+                'vehicle_id' => $id
+            ]);
             
             echo json_encode([
                 'success' => true,
                 'vehicle' => $vehicle->toArray(),
                 'data' => $trips,
-                'statistics' => $stats
+                'statistics' => $stats,
+                'destination_breakdown' => $destinationBreakdown
             ]);
         } catch (\Exception $e) {
             http_response_code(500);
@@ -204,29 +212,7 @@ class TripController
     
     private function getTripStatistics(array $filters): array
     {
-        $whereClause = "WHERE 1=1";
-        $statParams = [];
-        if (!empty($filters['vehicle_id'])) {
-            $whereClause .= " AND vehicle_id = ?";
-            $statParams[] = $filters['vehicle_id'];
-        }
-        if (!empty($filters['start_date'])) {
-            $whereClause .= " AND start_time >= ?";
-            $statParams[] = strlen($filters['start_date']) <= 10 ? $filters['start_date'] . ' 00:00:00' : $filters['start_date'];
-        }
-        if (!empty($filters['end_date'])) {
-            $whereClause .= " AND start_time <= ?";
-            $endDate = $filters['end_date'];
-            $statParams[] = strlen($endDate) <= 10 ? $endDate . ' 23:59:59' : $endDate;
-        }
-        if (!empty($filters['material_type'])) {
-            $whereClause .= " AND material_type = ?";
-            $statParams[] = $filters['material_type'];
-        }
-        if (!empty($filters['status'])) {
-            $whereClause .= " AND status = ?";
-            $statParams[] = $filters['status'];
-        }
+        [$whereClause, $statParams] = $this->buildTripFilterClause($filters);
         $sql = "
             SELECT 
                 COUNT(*) as total_trips,
@@ -234,7 +220,7 @@ class TripController
                 SUM(distance_km) as total_distance,
                 SUM(fuel_consumed_liters) as total_fuel_consumed,
                 AVG(duration_minutes) as avg_duration
-            FROM vehicle_trips
+            FROM vehicle_trips t
             {$whereClause}
         ";
         return $this->database->fetch($sql, $statParams) ?? [];
@@ -271,5 +257,90 @@ class TripController
         ";
         
         return $this->database->fetch($sql, [$stockpileId]) ?? [];
+    }
+
+    private function getDestinationBreakdown(array $filters): array
+    {
+        [$whereClause, $params] = $this->buildTripFilterClause($filters);
+
+        $whereClause .= " AND t.status = 'completed' AND t.destination_geofence_id IS NOT NULL";
+        $sql = "
+            SELECT
+                t.destination_geofence_id,
+                COALESCE(dg.name, 'Unassigned') AS destination_name,
+                COUNT(*) AS trip_count
+            FROM vehicle_trips t
+            LEFT JOIN geofences dg ON t.destination_geofence_id = dg.id
+            {$whereClause}
+            GROUP BY t.destination_geofence_id, dg.name
+            ORDER BY trip_count DESC, destination_name ASC
+        ";
+
+        return $this->database->fetchAll($sql, $params);
+    }
+
+    private function getDestinationBreakdownByVehicle(array $filters): array
+    {
+        [$whereClause, $params] = $this->buildTripFilterClause($filters);
+
+        $whereClause .= " AND t.status = 'completed' AND t.destination_geofence_id IS NOT NULL";
+        $sql = "
+            SELECT
+                t.vehicle_id,
+                t.destination_geofence_id,
+                COALESCE(dg.name, 'Unassigned') AS destination_name,
+                COUNT(*) AS trip_count
+            FROM vehicle_trips t
+            LEFT JOIN geofences dg ON t.destination_geofence_id = dg.id
+            {$whereClause}
+            GROUP BY t.vehicle_id, t.destination_geofence_id, dg.name
+            ORDER BY t.vehicle_id ASC, trip_count DESC, destination_name ASC
+        ";
+
+        $rows = $this->database->fetchAll($sql, $params);
+        $grouped = [];
+        foreach ($rows as $row) {
+            $vehicleId = (int)$row['vehicle_id'];
+            if (!isset($grouped[$vehicleId])) {
+                $grouped[$vehicleId] = [];
+            }
+            $grouped[$vehicleId][] = [
+                'destination_geofence_id' => $row['destination_geofence_id'],
+                'destination_name' => $row['destination_name'],
+                'trip_count' => $row['trip_count'],
+            ];
+        }
+
+        return $grouped;
+    }
+
+    private function buildTripFilterClause(array $filters): array
+    {
+        $whereClause = "WHERE 1=1";
+        $params = [];
+
+        if (!empty($filters['vehicle_id'])) {
+            $whereClause .= " AND t.vehicle_id = ?";
+            $params[] = $filters['vehicle_id'];
+        }
+        if (!empty($filters['start_date'])) {
+            $whereClause .= " AND t.start_time >= ?";
+            $params[] = strlen($filters['start_date']) <= 10 ? $filters['start_date'] . ' 00:00:00' : $filters['start_date'];
+        }
+        if (!empty($filters['end_date'])) {
+            $whereClause .= " AND t.start_time <= ?";
+            $endDate = $filters['end_date'];
+            $params[] = strlen($endDate) <= 10 ? $endDate . ' 23:59:59' : $endDate;
+        }
+        if (!empty($filters['material_type'])) {
+            $whereClause .= " AND t.material_type = ?";
+            $params[] = $filters['material_type'];
+        }
+        if (!empty($filters['status'])) {
+            $whereClause .= " AND t.status = ?";
+            $params[] = $filters['status'];
+        }
+
+        return [$whereClause, $params];
     }
 }

@@ -60,9 +60,24 @@ class TripDetectionService
         if ($eventType === 'entry' && $geofence['geofence_type'] === 'pit') {
             // Vehicle entered pit - start new trip
             $this->startTrip($vehicleId, $geofenceId, $trackingData);
-        } elseif ($eventType === 'entry' && $geofence['geofence_type'] === 'stockpile') {
-            // Vehicle entered stockpile - complete trip
-            $this->completeTrip($vehicleId, $geofenceId, $trackingData);
+            return;
+        }
+
+        if (!$this->isDestinationGeofence($geofence)) {
+            return;
+        }
+
+        $activeTrip = $this->getActiveTrip($vehicleId);
+        if (!$activeTrip) {
+            return;
+        }
+
+        if ($eventType === 'entry') {
+            // Store the destination geofence on entry, trip completes on exit.
+            $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId);
+        } elseif ($eventType === 'exit' && (int)($activeTrip['destination_geofence_id'] ?? 0) === $geofenceId) {
+            // Complete only when exiting the same destination geofence.
+            $this->completeTrip($activeTrip, $geofenceId, $trackingData);
         }
     }
     
@@ -96,18 +111,14 @@ class TripDetectionService
     }
     
     /**
-     * Complete a trip (vehicle entered stockpile)
+     * Complete a trip when vehicle exits the selected destination geofence.
      */
-    private function completeTrip(int $vehicleId, int $stockpileGeofenceId, $trackingData): void
+    private function completeTrip(array $activeTrip, int $destinationGeofenceId, $trackingData): void
     {
-        $activeTrip = $this->getActiveTrip($vehicleId);
-        
-        if (!$activeTrip) {
-            return; // No active trip to complete
-        }
-        
+        $vehicleId = (int)$activeTrip['vehicle_id'];
+
         // Get geofence details for material type
-        $geofence = $this->geofenceService->getGeofenceById($stockpileGeofenceId);
+        $geofence = $this->geofenceService->getGeofenceById($destinationGeofenceId);
         $materialType = $geofence['material_type'] ?? null;
         
         // Calculate distance and duration
@@ -141,7 +152,7 @@ class TripDetectionService
         ";
 
         $this->database->execute($sql, [
-            $stockpileGeofenceId,
+            $destinationGeofenceId,
             $materialType,
             $trackingData->timestamp,
             $trackingData->latitude,
@@ -173,6 +184,28 @@ class TripDetectionService
                 $activeTrip['id']
             ]);
         }
+    }
+
+    /**
+     * Persist destination geofence when vehicle enters a valid destination.
+     */
+    private function markDestinationEntry(int $tripId, int $destinationGeofenceId): void
+    {
+        $sql = "
+            UPDATE vehicle_trips
+            SET destination_geofence_id = ?
+            WHERE id = ? AND status = 'in_progress'
+        ";
+        $this->database->execute($sql, [$destinationGeofenceId, $tripId]);
+    }
+
+    /**
+     * Destination geofences are every geofence except pits.
+     */
+    private function isDestinationGeofence(array $geofence): bool
+    {
+        $type = strtolower((string)($geofence['geofence_type'] ?? ''));
+        return in_array($type, ['stockpile', 'other', 'others', 'parking'], true);
     }
     
     /**
