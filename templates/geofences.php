@@ -187,8 +187,21 @@
     #geofenceMapContainer:fullscreen {
         background: #fff;
         padding: 0.5rem;
+        z-index: 2000;
     }
     #geofenceMapContainer:fullscreen #geofenceMap {
+        height: calc(100vh - 1rem) !important;
+    }
+    #geofenceMapContainer.map-pseudo-fullscreen {
+        position: fixed !important;
+        inset: 0;
+        width: 100vw !important;
+        height: 100vh !important;
+        background: #fff;
+        padding: 0.5rem;
+        z-index: 2000;
+    }
+    #geofenceMapContainer.map-pseudo-fullscreen #geofenceMap {
         height: calc(100vh - 1rem) !important;
     }
 </style>
@@ -547,11 +560,48 @@ function searchGeofenceCoordinates() {
 
 function toggleGeofenceMapFullscreen() {
     const container = document.getElementById('geofenceMapContainer');
-    if (!document.fullscreenElement) {
-        container.requestFullscreen?.();
-    } else if (document.fullscreenElement === container) {
-        document.exitFullscreen?.();
+    if (isGeofenceMapFullscreen(container)) {
+        if (!exitAnyFullscreen()) {
+            container.classList.remove('map-pseudo-fullscreen');
+        }
+        setTimeout(() => geofenceMap?.invalidateSize(), 120);
+        return;
     }
+
+    if (!requestElementFullscreen(container)) {
+        container.classList.add('map-pseudo-fullscreen');
+    }
+    setTimeout(() => geofenceMap?.invalidateSize(), 120);
+}
+
+function isGeofenceMapFullscreen(container) {
+    return document.fullscreenElement === container
+        || document.webkitFullscreenElement === container
+        || container.classList.contains('map-pseudo-fullscreen');
+}
+
+function requestElementFullscreen(element) {
+    if (element.requestFullscreen) {
+        element.requestFullscreen();
+        return true;
+    }
+    if (element.webkitRequestFullscreen) {
+        element.webkitRequestFullscreen();
+        return true;
+    }
+    return false;
+}
+
+function exitAnyFullscreen() {
+    if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen();
+        return true;
+    }
+    if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+        return true;
+    }
+    return false;
 }
 
 function geofenceMapSupportsRotation() {
@@ -697,10 +747,17 @@ document.addEventListener('DOMContentLoaded', () => {
             searchGeofenceCoordinates();
         }
     });
-    document.addEventListener('fullscreenchange', () => {
+    const onFullscreenChanged = () => {
         if (geofenceMap) {
             setTimeout(() => geofenceMap.invalidateSize(), 120);
         }
-    });
+        const container = document.getElementById('geofenceMapContainer');
+        const nativeFullscreenActive = document.fullscreenElement === container || document.webkitFullscreenElement === container;
+        if (!nativeFullscreenActive) {
+            container.classList.remove('map-pseudo-fullscreen');
+        }
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChanged);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChanged);
 });
 </script>

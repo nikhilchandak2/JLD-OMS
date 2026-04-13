@@ -88,8 +88,21 @@
     #trackingMapContainer:fullscreen {
         background: #fff;
         padding: 0.5rem;
+        z-index: 9999;
     }
     #trackingMapContainer:fullscreen #map {
+        height: calc(100vh - 1rem) !important;
+    }
+    #trackingMapContainer.map-pseudo-fullscreen {
+        position: fixed !important;
+        inset: 0;
+        width: 100vw !important;
+        height: 100vh !important;
+        background: #fff;
+        padding: 0.5rem;
+        z-index: 9999;
+    }
+    #trackingMapContainer.map-pseudo-fullscreen #map {
         height: calc(100vh - 1rem) !important;
     }
 </style>
@@ -356,11 +369,48 @@ function searchTrackingCoordinates() {
 
 function toggleTrackingMapFullscreen() {
     const container = document.getElementById('trackingMapContainer');
-    if (!document.fullscreenElement) {
-        container.requestFullscreen?.();
-    } else if (document.fullscreenElement === container) {
-        document.exitFullscreen?.();
+    if (isTrackingMapFullscreen(container)) {
+        if (!exitAnyFullscreen()) {
+            container.classList.remove('map-pseudo-fullscreen');
+        }
+        setTimeout(() => map?.invalidateSize(), 120);
+        return;
     }
+
+    if (!requestElementFullscreen(container)) {
+        container.classList.add('map-pseudo-fullscreen');
+    }
+    setTimeout(() => map?.invalidateSize(), 120);
+}
+
+function isTrackingMapFullscreen(container) {
+    return document.fullscreenElement === container
+        || document.webkitFullscreenElement === container
+        || container.classList.contains('map-pseudo-fullscreen');
+}
+
+function requestElementFullscreen(element) {
+    if (element.requestFullscreen) {
+        element.requestFullscreen();
+        return true;
+    }
+    if (element.webkitRequestFullscreen) {
+        element.webkitRequestFullscreen();
+        return true;
+    }
+    return false;
+}
+
+function exitAnyFullscreen() {
+    if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen();
+        return true;
+    }
+    if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+        return true;
+    }
+    return false;
 }
 
 function trackingMapSupportsRotation() {
@@ -659,10 +709,17 @@ document.addEventListener('DOMContentLoaded', () => {
             searchTrackingCoordinates();
         }
     });
-    document.addEventListener('fullscreenchange', () => {
+    const onFullscreenChanged = () => {
         if (map) {
             setTimeout(() => map.invalidateSize(), 120);
         }
-    });
+        const container = document.getElementById('trackingMapContainer');
+        const nativeFullscreenActive = document.fullscreenElement === container || document.webkitFullscreenElement === container;
+        if (!nativeFullscreenActive) {
+            container.classList.remove('map-pseudo-fullscreen');
+        }
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChanged);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChanged);
 });
 </script>
