@@ -241,6 +241,7 @@ let drawControl;
 let currentShapeLayer = null;
 let geofenceSearchMarker = null;
 let geofenceModalPseudoFullscreen = false;
+let referenceGeofenceLayers = [];
 
 const defaultMapCenter = [23.0225, 72.5714];
 const defaultMapZoom = 14;
@@ -363,6 +364,7 @@ function loadGeofences() {
             if (data.success) {
                 geofences = data.data;
                 renderGeofences();
+                renderReferenceGeofences();
             } else {
                 showError(data.error || 'Failed to load geofences');
             }
@@ -421,7 +423,9 @@ function showAddGeofenceModal() {
     document.getElementById('shapeType').value = 'circle';
     updateShapeFieldVisibility('circle');
     clearDrawnShape();
-    showModalAndPrepareMap();
+    showModalAndPrepareMap(() => {
+        renderReferenceGeofences();
+    });
 }
 
 function editGeofence(id) {
@@ -634,6 +638,62 @@ function clearDrawnShape() {
     updatePolygonPreview([]);
 }
 
+function clearReferenceGeofences() {
+    if (!geofenceMap) {
+        return;
+    }
+    referenceGeofenceLayers.forEach(layer => {
+        if (geofenceMap.hasLayer(layer)) {
+            geofenceMap.removeLayer(layer);
+        }
+    });
+    referenceGeofenceLayers = [];
+}
+
+function getGeofenceGeometryLayer(geofence, styleOptions = {}) {
+    const lat = Number(geofence.latitude);
+    const lng = Number(geofence.longitude);
+    const radius = Number(geofence.radius_meters) || 100;
+    const shapeType = geofence.shape_type || 'circle';
+
+    if (shapeType === 'polygon' && Array.isArray(geofence.polygon_points) && geofence.polygon_points.length >= 3) {
+        const latLngs = geofence.polygon_points.map(point => [Number(point.lat), Number(point.lng)]);
+        return L.polygon(latLngs, styleOptions);
+    }
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return null;
+    }
+    return L.circle([lat, lng], { ...styleOptions, radius });
+}
+
+function renderReferenceGeofences(excludeGeofenceId = null) {
+    if (!geofenceMap) {
+        return;
+    }
+    clearReferenceGeofences();
+
+    geofences.forEach(geofence => {
+        if (excludeGeofenceId && Number(geofence.id) === Number(excludeGeofenceId)) {
+            return;
+        }
+
+        const layer = getGeofenceGeometryLayer(geofence, {
+            color: '#6c757d',
+            fillColor: '#6c757d',
+            fillOpacity: 0.08,
+            weight: 1.5,
+            dashArray: '6 4'
+        });
+        if (!layer) {
+            return;
+        }
+        layer.addTo(geofenceMap);
+        layer.bindPopup(`<strong>${escapeHtml(geofence.name || 'Geofence')}</strong><br>Type: ${escapeHtml(geofence.geofence_type || '-')}`);
+        referenceGeofenceLayers.push(layer);
+    });
+}
+
 function applyDrawnLayer(layer) {
     if (!drawnItems) return;
     drawnItems.clearLayers();
@@ -681,21 +741,12 @@ function loadShapeOnMap(geofence) {
     if (!geofenceMap || !drawnItems) return;
 
     clearDrawnShape();
-    const shapeType = geofence.shape_type || 'circle';
-    if (shapeType === 'polygon' && Array.isArray(geofence.polygon_points) && geofence.polygon_points.length >= 3) {
-        const latLngs = geofence.polygon_points.map(point => [Number(point.lat), Number(point.lng)]);
-        const polygon = L.polygon(latLngs);
-        applyDrawnLayer(polygon);
-        geofenceMap.fitBounds(polygon.getBounds(), { padding: [20, 20] });
-        return;
-    }
+    renderReferenceGeofences(geofence.id);
 
-    if (geofence.latitude != null && geofence.longitude != null && geofence.radius_meters != null) {
-        const circle = L.circle([Number(geofence.latitude), Number(geofence.longitude)], {
-            radius: Number(geofence.radius_meters)
-        });
-        applyDrawnLayer(circle);
-        geofenceMap.fitBounds(circle.getBounds(), { padding: [20, 20] });
+    const editableLayer = getGeofenceGeometryLayer(geofence);
+    if (editableLayer) {
+        applyDrawnLayer(editableLayer);
+        geofenceMap.fitBounds(editableLayer.getBounds(), { padding: [20, 20] });
     }
 }
 
