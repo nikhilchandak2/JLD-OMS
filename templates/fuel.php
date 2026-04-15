@@ -69,6 +69,8 @@ function loadFuelData() {
             renderVehicles(vehiclesData.data);
             if (vehiclesData.sync_result && vehiclesData.sync_result.success === false) {
                 showError('WheelsEye sync warning: ' + (vehiclesData.sync_result.message || 'Unable to sync latest data'));
+            } else if (vehiclesData.sync_result && Number(vehiclesData.sync_result.synced || 0) > 0 && Number(vehiclesData.sync_result.fuel_saved || 0) === 0) {
+                showError('WheelsEye synced vehicle locations, but no fuel values were found in the vendor payload. Please enable fuel fields in WheelsEye API/webhook.');
             }
         }
         

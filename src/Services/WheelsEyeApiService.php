@@ -45,7 +45,7 @@ class WheelsEyeApiService
      * Fetch current locations from WheelsEye and save to database.
      * Matches vehicles by vehicle_number or by device IMEI (deviceNumber).
      *
-     * @return array{success: bool, message: string, synced: int, skipped: int, errors: array}
+     * @return array{success: bool, message: string, synced: int, skipped: int, fuel_saved: int, fuel_missing: int, errors: array}
      */
     public function syncCurrentLocations(): array
     {
@@ -79,6 +79,8 @@ class WheelsEyeApiService
         $list = $json['data']['list'];
         $synced = 0;
         $skipped = 0;
+        $fuelSaved = 0;
+        $fuelMissing = 0;
         $errors = [];
 
         foreach ($list as $item) {
@@ -136,7 +138,12 @@ class WheelsEyeApiService
             ]);
 
             $this->gpsTrackingRepository->create($tracking);
-            $this->ingestFuelFromPayload($vehicle, $deviceId, $item, $timestamp);
+            $fuelSavedForVehicle = $this->ingestFuelFromPayload($vehicle, $deviceId, $item, $timestamp);
+            if ($fuelSavedForVehicle) {
+                $fuelSaved++;
+            } else {
+                $fuelMissing++;
+            }
             $this->tripDetectionService->processTrackingData($vehicle->id, $tracking);
             $synced++;
         }
@@ -146,6 +153,8 @@ class WheelsEyeApiService
             'message' => 'Synced ' . $synced . ' location(s) from WheelsEye',
             'synced' => $synced,
             'skipped' => $skipped,
+            'fuel_saved' => $fuelSaved,
+            'fuel_missing' => $fuelMissing,
             'errors' => $errors,
         ];
     }
@@ -153,7 +162,7 @@ class WheelsEyeApiService
     /**
      * Persist fuel reading when WheelsEye current location payload contains fuel metrics.
      */
-    private function ingestFuelFromPayload(\App\Models\Vehicle $vehicle, string $deviceId, array $input, string $timestamp): void
+    private function ingestFuelFromPayload(\App\Models\Vehicle $vehicle, string $deviceId, array $input, string $timestamp): bool
     {
         $fuelLevel = $this->extractNumericValue($input, [
             'fuel_level', 'fuellevel', 'fuel', 'level', 'tank_level', 'tanklevel', 'fuel_liters', 'fuelliters',
@@ -167,13 +176,19 @@ class WheelsEyeApiService
 
         if ($fuelLevel === null) {
             $fuelLevel = $this->extractNumericByKeyword($input, ['fuel', 'diesel', 'tank']);
+            if ($fuelLevel === null) {
+                $fuelLevel = $this->extractNumericByNestedKeywordPath($input, ['fuel', 'diesel', 'tank']);
+            }
         }
         if ($fuelPercentage === null) {
             $fuelPercentage = $this->extractNumericByKeyword($input, ['percent']);
+            if ($fuelPercentage === null) {
+                $fuelPercentage = $this->extractNumericByNestedKeywordPath($input, ['percent']);
+            }
         }
 
         if ($fuelLevel === null && $fuelPercentage === null && $temperature === null && $voltage === null) {
-            return;
+            return false;
         }
 
         $sensorId = (string)($input['sensor_id'] ?? $input['fuel_sensor_id'] ?? $input['device_id'] ?? $input['imei'] ?? $deviceId);
@@ -211,6 +226,7 @@ class WheelsEyeApiService
 
         $this->fuelReadingRepository->create($fuelData);
         $this->fuelAlertService->checkFuelAlerts($vehicle->id, $fuelData);
+        return true;
     }
 
     private function extractNumericValue(array $payload, array $targetKeys): ?float
@@ -248,11 +264,17 @@ class WheelsEyeApiService
 
     private function parseNumeric(string $value): ?float
     {
-        $clean = trim(str_replace('%', '', $value));
-        if ($clean === '' || !is_numeric($clean)) {
+        $clean = trim(str_replace([',', '%'], ['', ''], $value));
+        if ($clean === '') {
             return null;
         }
-        return (float)$clean;
+        if (is_numeric($clean)) {
+            return (float)$clean;
+        }
+        if (preg_match('/-?\d+(?:\.\d+)?/', $clean, $matches) === 1) {
+            return (float)$matches[0];
+        }
+        return null;
     }
 
     private function extractIntegerValue(array $payload, array $targetKeys): ?int
@@ -325,6 +347,50 @@ class WheelsEyeApiService
                 if ($parsed !== null) {
                     return $parsed;
                 }
+            }
+        }
+        return null;
+    }
+
+    private function extractNumericByNestedKeywordPath(array $payload, array $keywords): ?float
+    {
+        $normalizedKeywords = array_map(fn(string $k) => $this->normalizeKey($k), $keywords);
+        return $this->extractNumericByNestedKeywordPathRecursive($payload, $normalizedKeywords, []);
+    }
+
+    private function extractNumericByNestedKeywordPathRecursive(array $payload, array $normalizedKeywords, array $parents): ?float
+    {
+        foreach ($payload as $key => $value) {
+            $nextParents = $parents;
+            $nextParents[] = $this->normalizeKey((string)$key);
+            if (is_array($value)) {
+                $nested = $this->extractNumericByNestedKeywordPathRecursive($value, $normalizedKeywords, $nextParents);
+                if ($nested !== null) {
+                    return $nested;
+                }
+                continue;
+            }
+            if (!is_scalar($value)) {
+                continue;
+            }
+            $hasKeywordInPath = false;
+            foreach ($normalizedKeywords as $keyword) {
+                if ($keyword === '') {
+                    continue;
+                }
+                foreach ($nextParents as $pathKey) {
+                    if (str_contains($pathKey, $keyword)) {
+                        $hasKeywordInPath = true;
+                        break 2;
+                    }
+                }
+            }
+            if (!$hasKeywordInPath) {
+                continue;
+            }
+            $parsed = $this->parseNumeric((string)$value);
+            if ($parsed !== null) {
+                return $parsed;
             }
         }
         return null;
