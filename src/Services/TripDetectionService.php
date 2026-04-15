@@ -63,7 +63,9 @@ class TripDetectionService
             return;
         }
 
-        if (!$this->isDestinationGeofence($geofence)) {
+        $isDestination = $this->isDestinationGeofence($geofence);
+        $isParking = $this->isParkingGeofence($geofence);
+        if (!$isDestination && !$isParking) {
             return;
         }
 
@@ -72,12 +74,24 @@ class TripDetectionService
             return;
         }
 
-        if ($eventType === 'entry') {
-            // Store the destination geofence on entry, trip completes on exit.
-            $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId);
-        } elseif ($eventType === 'exit' && (int)($activeTrip['destination_geofence_id'] ?? 0) === $geofenceId) {
+        $currentDestinationId = (int)($activeTrip['destination_geofence_id'] ?? 0);
+
+        if ($eventType === 'entry' && $isDestination) {
+            // Lock first destination entry; do not overwrite it later.
+            $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId, $currentDestinationId);
+            return;
+        }
+
+        if ($eventType === 'exit' && $currentDestinationId === $geofenceId) {
             // Complete only when exiting the same destination geofence.
             $this->completeTrip($activeTrip, $geofenceId, $trackingData);
+            return;
+        }
+
+        if ($eventType === 'entry' && $currentDestinationId > 0 && $geofenceId !== $currentDestinationId) {
+            // Fallback: if we already had a destination and moved into another zone (for example parking),
+            // finalize the trip against the previously selected destination.
+            $this->completeTrip($activeTrip, $currentDestinationId, $trackingData);
         }
     }
     
@@ -189,8 +203,11 @@ class TripDetectionService
     /**
      * Persist destination geofence when vehicle enters a valid destination.
      */
-    private function markDestinationEntry(int $tripId, int $destinationGeofenceId): void
+    private function markDestinationEntry(int $tripId, int $destinationGeofenceId, int $currentDestinationId = 0): void
     {
+        if ($currentDestinationId > 0) {
+            return;
+        }
         $sql = "
             UPDATE vehicle_trips
             SET destination_geofence_id = ?
@@ -205,7 +222,13 @@ class TripDetectionService
     private function isDestinationGeofence(array $geofence): bool
     {
         $type = strtolower((string)($geofence['geofence_type'] ?? ''));
-        return in_array($type, ['stockpile', 'other', 'others', 'parking'], true);
+        return in_array($type, ['stockpile', 'other', 'others'], true);
+    }
+
+    private function isParkingGeofence(array $geofence): bool
+    {
+        $type = strtolower((string)($geofence['geofence_type'] ?? ''));
+        return $type === 'parking';
     }
     
     /**

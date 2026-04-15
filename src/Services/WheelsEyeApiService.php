@@ -3,10 +3,14 @@
 namespace App\Services;
 
 use App\Models\GPSTrackingData;
+use App\Models\FuelReadingData;
 use App\Repositories\VehicleRepository;
 use App\Repositories\GPSDeviceRepository;
 use App\Repositories\GPSTrackingRepository;
+use App\Repositories\FuelSensorRepository;
+use App\Repositories\FuelReadingRepository;
 use App\Services\TripDetectionService;
+use App\Services\FuelAlertService;
 
 /**
  * Fetches current vehicle locations from WheelsEye API (vendor pull API)
@@ -22,6 +26,9 @@ class WheelsEyeApiService
     private GPSDeviceRepository $gpsDeviceRepository;
     private GPSTrackingRepository $gpsTrackingRepository;
     private TripDetectionService $tripDetectionService;
+    private FuelSensorRepository $fuelSensorRepository;
+    private FuelReadingRepository $fuelReadingRepository;
+    private FuelAlertService $fuelAlertService;
 
     public function __construct()
     {
@@ -29,6 +36,9 @@ class WheelsEyeApiService
         $this->gpsDeviceRepository = new GPSDeviceRepository();
         $this->gpsTrackingRepository = new GPSTrackingRepository();
         $this->tripDetectionService = new TripDetectionService();
+        $this->fuelSensorRepository = new FuelSensorRepository();
+        $this->fuelReadingRepository = new FuelReadingRepository();
+        $this->fuelAlertService = new FuelAlertService();
     }
 
     /**
@@ -95,7 +105,7 @@ class WheelsEyeApiService
             }
 
             $epoch = $item['dttimeInEpoch'] ?? $item['createdDate'] ?? time();
-            $timestamp = date('Y-m-d H:i:s', (int)$epoch);
+            $timestamp = date('Y-m-d H:i:s', $this->normalizeEpochToSeconds($epoch));
             $deviceId = $deviceNumber !== '' ? $deviceNumber : ($vehicle->gpsDeviceImei ?? 'wheelseye-api');
 
             $tracking = new GPSTrackingData([
@@ -112,6 +122,7 @@ class WheelsEyeApiService
             ]);
 
             $this->gpsTrackingRepository->create($tracking);
+            $this->ingestFuelFromPayload($vehicle, $deviceId, $item, $timestamp);
             $this->tripDetectionService->processTrackingData($vehicle->id, $tracking);
             $synced++;
         }
@@ -123,5 +134,123 @@ class WheelsEyeApiService
             'skipped' => $skipped,
             'errors' => $errors,
         ];
+    }
+
+    /**
+     * Persist fuel reading when WheelsEye current location payload contains fuel metrics.
+     */
+    private function ingestFuelFromPayload(\App\Models\Vehicle $vehicle, string $deviceId, array $input, string $timestamp): void
+    {
+        $fuelLevel = $this->extractNumericValue($input, [
+            'fuel_level', 'fuellevel', 'fuel', 'level', 'tank_level', 'tanklevel', 'fuel_liters', 'fuelliters'
+        ]);
+        $fuelPercentage = $this->extractNumericValue($input, [
+            'fuel_percentage', 'fuelpercentage', 'percentage', 'fuel_percent', 'fuelpercent'
+        ]);
+        $temperature = $this->extractNumericValue($input, ['temperature', 'temp', 'fuel_temp', 'fueltemperature']);
+        $voltage = $this->extractNumericValue($input, ['voltage', 'battery_voltage', 'sensor_voltage']);
+
+        if ($fuelLevel === null && $fuelPercentage === null && $temperature === null && $voltage === null) {
+            return;
+        }
+
+        $sensorId = (string)($input['sensor_id'] ?? $input['fuel_sensor_id'] ?? $input['device_id'] ?? $input['imei'] ?? $deviceId);
+        if ($sensorId === '') {
+            $sensorId = 'vehicle-' . $vehicle->id . '-fuel';
+        }
+
+        $fuelSensor = $this->fuelSensorRepository->findBySensorId($sensorId);
+        if (!$fuelSensor) {
+            $fuelSensor = new \App\Models\FuelSensor([
+                'sensor_id' => $sensorId,
+                'sensor_type' => 'ultrasonic',
+                'status' => 'active'
+            ]);
+            $fuelSensor->id = $this->fuelSensorRepository->create($fuelSensor);
+        }
+        $this->fuelSensorRepository->updateLastSeen($sensorId);
+
+        if (empty($vehicle->fuelSensorId)) {
+            $db = new \App\Core\Database();
+            $db->execute("UPDATE vehicles SET fuel_sensor_id = ? WHERE id = ?", [$fuelSensor->id, $vehicle->id]);
+            $vehicle->fuelSensorId = $fuelSensor->id;
+        }
+
+        $fuelData = new FuelReadingData([
+            'vehicle_id' => $vehicle->id,
+            'sensor_id' => $sensorId,
+            'fuel_level' => $fuelLevel ?? 0,
+            'fuel_percentage' => $fuelPercentage,
+            'temperature' => $temperature,
+            'voltage' => $voltage,
+            'timestamp' => $timestamp,
+            'raw_data' => $input
+        ]);
+
+        $this->fuelReadingRepository->create($fuelData);
+        $this->fuelAlertService->checkFuelAlerts($vehicle->id, $fuelData);
+    }
+
+    private function extractNumericValue(array $payload, array $targetKeys): ?float
+    {
+        $lookup = [];
+        foreach ($targetKeys as $key) {
+            $lookup[$this->normalizeKey($key)] = true;
+        }
+
+        $stack = [$payload];
+        while ($stack) {
+            $current = array_pop($stack);
+            foreach ($current as $key => $value) {
+                if (is_array($value)) {
+                    $stack[] = $value;
+                }
+                if (!is_scalar($value)) {
+                    continue;
+                }
+                if (isset($lookup[$this->normalizeKey((string)$key)])) {
+                    $parsed = $this->parseNumeric((string)$value);
+                    if ($parsed !== null) {
+                        return $parsed;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private function normalizeKey(string $key): string
+    {
+        return preg_replace('/[^a-z0-9]/', '', strtolower($key)) ?? strtolower($key);
+    }
+
+    private function parseNumeric(string $value): ?float
+    {
+        $clean = trim(str_replace('%', '', $value));
+        if ($clean === '' || !is_numeric($clean)) {
+            return null;
+        }
+        return (float)$clean;
+    }
+
+    /**
+     * WheelsEye can send epoch in seconds, milliseconds, or date string.
+     */
+    private function normalizeEpochToSeconds($value): int
+    {
+        if (is_numeric($value)) {
+            $epoch = (int)$value;
+            if ($epoch > 9999999999) {
+                $epoch = (int)floor($epoch / 1000);
+            }
+            return $epoch > 0 ? $epoch : time();
+        }
+        if (is_string($value) && trim($value) !== '') {
+            $parsed = strtotime($value);
+            if ($parsed !== false) {
+                return $parsed;
+            }
+        }
+        return time();
     }
 }

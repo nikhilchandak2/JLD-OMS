@@ -11,7 +11,7 @@
             <button class="btn btn-outline-primary me-2" id="syncBtn" onclick="syncFromWheelsEye()" title="Fetch current locations from WheelsEye API">
                 <i class="bi bi-cloud-download me-1"></i> Sync from WheelsEye
             </button>
-            <button class="btn btn-primary" onclick="loadTracking()">
+            <button class="btn btn-primary" onclick="doAutoRefreshCycle()">
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
             <label class="ms-3">
@@ -113,6 +113,7 @@ let markers = {};
 let pathLayers = {};
 let pathStartMarkers = {};
 let geofenceLayers = [];
+let geofenceRenderSignature = '';
 /** Per-vehicle path built in real time from each refresh (so path is always drawn as it grows) */
 let sessionPathByVehicle = {};
 /** Ignore stale map-matching results when a newer refresh has already run */
@@ -209,9 +210,10 @@ function initMap() {
 }
 
 function loadTracking() {
+    const cacheBust = Date.now();
     Promise.all([
-        fetch('/api/tracking/live?path_hours=24&path_limit=500', { credentials: 'same-origin' }).then(r => r.json()),
-        fetch('/api/geofences', { credentials: 'same-origin' }).then(r => r.json())
+        fetch('/api/tracking/live?path_hours=24&path_limit=500&_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json()),
+        fetch('/api/geofences?_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json())
     ]).then(([trackingRes, geofencesRes]) => {
         if (trackingRes.success) {
             const geofences = (geofencesRes.success && geofencesRes.data) ? geofencesRes.data : [];
@@ -439,21 +441,153 @@ async function updateMap(vehicles, geofences) {
     pathUpdateGeneration++;
     const thisUpdateGen = pathUpdateGeneration;
     geofences = geofences || [];
-    // Clear existing geofence circles
+    renderGeofences(geofences);
+    
+    // Build path per vehicle: merge API path_points with session buffer and current position (so path draws in real time)
+    vehicles.forEach(vehicle => {
+        const pathPoints = vehicle.path_points || [];
+        const latest = vehicle.latest_tracking;
+        const current = (latest && latest.latitude != null && latest.longitude != null)
+            ? [Number(latest.latitude), Number(latest.longitude)] : null;
+        let points = sessionPathByVehicle[vehicle.id] || [];
+        if (pathPoints.length >= 2) {
+            const apiPoints = pathPoints.map(p => [Number(p.lat), Number(p.lng)]);
+            if (apiPoints.length > points.length) points = apiPoints;
+        }
+        if (current) {
+            const last = points[points.length - 1];
+            if (!last || last[0] !== current[0] || last[1] !== current[1]) {
+                points.push(current);
+            }
+        }
+        if (points.length > 2000) points = points.slice(-1500);
+        sessionPathByVehicle[vehicle.id] = points;
+    });
+    // Draw/update paths: raw line first (visible immediately), then snap to roads when Mapbox token is set
+    const activePathVehicleIds = new Set();
+    vehicles.forEach((vehicle, idx) => {
+        const points = sessionPathByVehicle[vehicle.id] || [];
+        if (points.length < 2) return;
+        activePathVehicleIds.add(String(vehicle.id));
+        const color = PATH_COLORS[idx % PATH_COLORS.length];
+        if (!pathLayers[vehicle.id]) {
+            const polyline = L.polyline(points, {
+                color: color,
+                weight: 5,
+                opacity: 0.9,
+            }).addTo(map);
+            polyline.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – route (live)');
+            pathLayers[vehicle.id] = polyline;
+        } else {
+            pathLayers[vehicle.id].setLatLngs(points);
+        }
+        const startLatLng = points[0];
+        if (!pathStartMarkers[vehicle.id]) {
+            const startIcon = L.divIcon({
+                className: 'path-start-marker',
+                html: '<div style="background:#22c55e; color:#fff; width:24px; height:24px; border-radius:50%; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold;">S</div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+            const startMarker = L.marker(startLatLng, { icon: startIcon }).addTo(map);
+            startMarker.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – Start');
+            pathStartMarkers[vehicle.id] = startMarker;
+        } else {
+            pathStartMarkers[vehicle.id].setLatLng(startLatLng);
+        }
+        // Snap path to roads (Mapbox Map Matching) only when the result is good (don't replace with a bad/short match)
+        if (mapboxToken) {
+            const rawPointCount = points.length;
+            getMapMatchedPath(points, mapboxToken).then(matched => {
+                if (thisUpdateGen !== pathUpdateGeneration) return;
+                if (!pathLayers[vehicle.id] || !map.hasLayer(pathLayers[vehicle.id])) return;
+                if (!matched || matched.length < 2) return;
+                const minPoints = Math.max(2, Math.floor(rawPointCount * 0.15));
+                if (matched.length < minPoints) return;
+                const rawStart = points[0], rawEnd = points[points.length - 1];
+                const matchedStart = matched[0], matchedEnd = matched[matched.length - 1];
+                const distStart = Math.abs(matchedStart[0] - rawStart[0]) + Math.abs(matchedStart[1] - rawStart[1]);
+                const distEnd = Math.abs(matchedEnd[0] - rawEnd[0]) + Math.abs(matchedEnd[1] - rawEnd[1]);
+                if (distStart > 0.05 || distEnd > 0.05) return;
+                pathLayers[vehicle.id].setLatLngs(matched);
+            });
+        }
+    });
+
+    Object.keys(pathLayers).forEach(vehicleId => {
+        if (!activePathVehicleIds.has(String(vehicleId))) {
+            if (map.hasLayer(pathLayers[vehicleId])) map.removeLayer(pathLayers[vehicleId]);
+            delete pathLayers[vehicleId];
+        }
+    });
+    Object.keys(pathStartMarkers).forEach(vehicleId => {
+        if (!activePathVehicleIds.has(String(vehicleId))) {
+            if (map.hasLayer(pathStartMarkers[vehicleId])) map.removeLayer(pathStartMarkers[vehicleId]);
+            delete pathStartMarkers[vehicleId];
+        }
+    });
+
+    const activeMarkerVehicleIds = new Set();
+    vehicles.forEach((vehicle, idx) => {
+        if (vehicle.latest_tracking && vehicle.latest_tracking.latitude && vehicle.latest_tracking.longitude) {
+            const lat = vehicle.latest_tracking.latitude;
+            const lng = vehicle.latest_tracking.longitude;
+            activeMarkerVehicleIds.add(String(vehicle.id));
+            const color = PATH_COLORS[idx % PATH_COLORS.length];
+            
+            const icon = L.divIcon({
+                className: 'vehicle-marker',
+                html: `<div style="background: ${color}; width: 22px; height: 22px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
+                iconSize: [22, 22]
+            });
+            
+            const popup = `
+                <strong>${escapeHtml(vehicle.vehicle_number)}</strong><br>
+                Type: ${escapeHtml(vehicle.vehicle_type)}<br>
+                Speed: ${vehicle.latest_tracking.speed ? vehicle.latest_tracking.speed + ' km/h' : 'N/A'}<br>
+                Status: ${escapeHtml(vehicle.status)}<br>
+                Last Update: ${new Date(vehicle.latest_tracking.timestamp).toLocaleString()}
+            `;
+            if (!markers[vehicle.id]) {
+                const marker = L.marker([lat, lng], { icon }).addTo(map);
+                marker.bindPopup(popup);
+                markers[vehicle.id] = marker;
+            } else {
+                markers[vehicle.id].setLatLng([lat, lng]);
+                markers[vehicle.id].setIcon(icon);
+                markers[vehicle.id].setPopupContent(popup);
+            }
+        }
+    });
+
+    Object.keys(markers).forEach(vehicleId => {
+        if (!activeMarkerVehicleIds.has(String(vehicleId))) {
+            if (map.hasLayer(markers[vehicleId])) map.removeLayer(markers[vehicleId]);
+            delete markers[vehicleId];
+        }
+    });
+}
+
+function renderGeofences(geofences) {
+    const signature = JSON.stringify((geofences || []).map(g => ({
+        id: g.id,
+        shape_type: g.shape_type || 'circle',
+        latitude: g.latitude,
+        longitude: g.longitude,
+        radius_meters: g.radius_meters,
+        polygon_points: g.polygon_points,
+        geofence_type: g.geofence_type,
+        material_type: g.material_type,
+        name: g.name
+    })));
+    if (signature === geofenceRenderSignature) {
+        return;
+    }
+    geofenceRenderSignature = signature;
+
     geofenceLayers.forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
     geofenceLayers = [];
-    // Clear existing path polylines and path start markers
-    Object.values(pathLayers).forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
-    pathLayers = {};
-    Object.values(pathStartMarkers).forEach(m => { if (map.hasLayer(m)) map.removeLayer(m); });
-    pathStartMarkers = {};
-    // Clear existing markers
-    Object.values(markers).forEach(marker => map.removeLayer(marker));
-    markers = {};
-    
-    const vehicleViewPoints = [];
-    
-    // Draw geofences (active only, from API) – do NOT use for map view so we stay focused on vehicle
+
     geofences.forEach(g => {
         const lat = Number(g.latitude);
         const lng = Number(g.longitude);
@@ -488,107 +622,6 @@ async function updateMap(vehicles, geofences) {
 
         geofenceLayers.push(geofenceLayer);
     });
-    
-    // Build path per vehicle: merge API path_points with session buffer and current position (so path draws in real time)
-    vehicles.forEach(vehicle => {
-        const pathPoints = vehicle.path_points || [];
-        const latest = vehicle.latest_tracking;
-        const current = (latest && latest.latitude != null && latest.longitude != null)
-            ? [Number(latest.latitude), Number(latest.longitude)] : null;
-        let points = sessionPathByVehicle[vehicle.id] || [];
-        if (pathPoints.length >= 2) {
-            const apiPoints = pathPoints.map(p => [Number(p.lat), Number(p.lng)]);
-            if (apiPoints.length > points.length) points = apiPoints;
-        }
-        if (current) {
-            const last = points[points.length - 1];
-            if (!last || last[0] !== current[0] || last[1] !== current[1]) {
-                points.push(current);
-            }
-        }
-        if (points.length > 2000) points = points.slice(-1500);
-        sessionPathByVehicle[vehicle.id] = points;
-    });
-    // Draw paths: raw line first (visible immediately), then snap to roads when Mapbox token is set
-    vehicles.forEach((vehicle, idx) => {
-        const points = sessionPathByVehicle[vehicle.id] || [];
-        if (points.length < 2) return;
-        const color = PATH_COLORS[idx % PATH_COLORS.length];
-        const polyline = L.polyline(points, {
-            color: color,
-            weight: 5,
-            opacity: 0.9,
-        }).addTo(map);
-        polyline.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – route (live)');
-        pathLayers[vehicle.id] = polyline;
-        const startLatLng = points[0];
-        const startIcon = L.divIcon({
-            className: 'path-start-marker',
-            html: '<div style="background:#22c55e; color:#fff; width:24px; height:24px; border-radius:50%; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold;">S</div>',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
-        });
-        const startMarker = L.marker(startLatLng, { icon: startIcon }).addTo(map);
-        startMarker.bindPopup('<strong>' + escapeHtml(vehicle.vehicle_number) + '</strong> – Start');
-        pathStartMarkers[vehicle.id] = startMarker;
-        // Snap path to roads (Mapbox Map Matching) only when the result is good (don't replace with a bad/short match)
-        if (mapboxToken) {
-            const rawPointCount = points.length;
-            getMapMatchedPath(points, mapboxToken).then(matched => {
-                if (thisUpdateGen !== pathUpdateGeneration) return;
-                if (!pathLayers[vehicle.id] || !map.hasLayer(pathLayers[vehicle.id])) return;
-                if (!matched || matched.length < 2) return;
-                const minPoints = Math.max(2, Math.floor(rawPointCount * 0.15));
-                if (matched.length < minPoints) return;
-                const rawStart = points[0], rawEnd = points[points.length - 1];
-                const matchedStart = matched[0], matchedEnd = matched[matched.length - 1];
-                const distStart = Math.abs(matchedStart[0] - rawStart[0]) + Math.abs(matchedStart[1] - rawStart[1]);
-                const distEnd = Math.abs(matchedEnd[0] - rawEnd[0]) + Math.abs(matchedEnd[1] - rawEnd[1]);
-                if (distStart > 0.05 || distEnd > 0.05) return;
-                pathLayers[vehicle.id].setLatLngs(matched);
-            });
-        }
-    });
-    
-    vehicles.forEach((vehicle, idx) => {
-        if (vehicle.latest_tracking && vehicle.latest_tracking.latitude && vehicle.latest_tracking.longitude) {
-            const lat = vehicle.latest_tracking.latitude;
-            const lng = vehicle.latest_tracking.longitude;
-            vehicleViewPoints.push([lat, lng]);
-            const color = PATH_COLORS[idx % PATH_COLORS.length];
-            
-            const icon = L.divIcon({
-                className: 'vehicle-marker',
-                html: `<div style="background: ${color}; width: 22px; height: 22px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
-                iconSize: [22, 22]
-            });
-            
-            const marker = L.marker([lat, lng], { icon }).addTo(map);
-            
-            const popup = `
-                <strong>${escapeHtml(vehicle.vehicle_number)}</strong><br>
-                Type: ${escapeHtml(vehicle.vehicle_type)}<br>
-                Speed: ${vehicle.latest_tracking.speed ? vehicle.latest_tracking.speed + ' km/h' : 'N/A'}<br>
-                Status: ${escapeHtml(vehicle.status)}<br>
-                Last Update: ${new Date(vehicle.latest_tracking.timestamp).toLocaleString()}
-            `;
-            marker.bindPopup(popup);
-            
-            markers[vehicle.id] = marker;
-        }
-    });
-    
-    // View follows vehicle(s) only – stay zoomed in, pan as vehicle moves (no path/geofence in view calc)
-    if (vehicleViewPoints.length > 0) {
-        const bounds = L.latLngBounds(vehicleViewPoints);
-        const center = bounds.getCenter();
-        if (vehicleViewPoints.length === 1 || bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 0.005) {
-            map.setView(center, DEFAULT_ZOOM);
-        } else {
-            map.fitBounds(bounds.pad(0.2), { maxZoom: DEFAULT_ZOOM });
-            if (map.getZoom() < MIN_ZOOM) map.setZoom(MIN_ZOOM);
-        }
-    }
 }
 
 function updateVehiclesList(vehicles) {
@@ -663,11 +696,16 @@ function doAutoRefreshCycle() {
     syncFromWheelsEyeQuiet().then(() => loadTracking());
 }
 
-function toggleAutoRefresh() {
+function toggleAutoRefresh(runImmediate = true) {
     const enabled = document.getElementById('autoRefresh').checked;
     
     if (enabled) {
-        doAutoRefreshCycle(); // run once immediately
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+        if (runImmediate) {
+            doAutoRefreshCycle();
+        }
         autoRefreshInterval = setInterval(doAutoRefreshCycle, 15000); // then every 15s: sync from WheelsEye then refresh map
     } else {
         if (autoRefreshInterval) {
@@ -699,9 +737,9 @@ function showError(msg) {
 // Initialize map and load data
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
-    loadTracking();
+    doAutoRefreshCycle();
     loadSyncStatus();
-    toggleAutoRefresh();
+    toggleAutoRefresh(false);
     const coordInput = document.getElementById('trackingCoordInput');
     coordInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
