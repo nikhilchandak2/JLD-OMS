@@ -59,7 +59,7 @@ function loadFuelData() {
     document.getElementById('loading').style.display = 'flex';
     
     Promise.all([
-        fetch('/api/fuel/vehicles').then(r => r.json()),
+        fetch('/api/fuel/vehicles?sync_now=1').then(r => r.json()),
         fetch('/api/fuel/alerts').then(r => r.json())
     ])
     .then(([vehiclesData, alertsData]) => {
@@ -67,6 +67,9 @@ function loadFuelData() {
         
         if (vehiclesData.success) {
             renderVehicles(vehiclesData.data);
+            if (vehiclesData.sync_result && vehiclesData.sync_result.success === false) {
+                showError('WheelsEye sync warning: ' + (vehiclesData.sync_result.message || 'Unable to sync latest data'));
+            }
         }
         
         if (alertsData.success) {

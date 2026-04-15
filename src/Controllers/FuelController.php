@@ -7,6 +7,7 @@ use App\Core\Database;
 use App\Repositories\VehicleRepository;
 use App\Repositories\FuelReadingRepository;
 use App\Services\FuelAlertService;
+use App\Services\WheelsEyeApiService;
 
 class FuelController
 {
@@ -41,6 +42,12 @@ class FuelController
         }
         
         try {
+            $syncResult = null;
+            if (isset($_GET['sync_now']) && (int)$_GET['sync_now'] === 1) {
+                $wheelsEye = new WheelsEyeApiService();
+                $syncResult = $wheelsEye->syncCurrentLocations();
+            }
+
             $vehicles = $this->vehicleRepository->findAll(['status' => 'active']);
             
             $result = [];
@@ -60,7 +67,8 @@ class FuelController
             
             echo json_encode([
                 'success' => true,
-                'data' => $result
+                'data' => $result,
+                'sync_result' => $syncResult
             ]);
         } catch (\Exception $e) {
             http_response_code(500);

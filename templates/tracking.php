@@ -121,6 +121,8 @@ let pathUpdateGeneration = 0;
 let autoRefreshInterval = null;
 let trackingSearchMarker = null;
 const PATH_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
+// In mining areas map-matching can distort actual off-road movement; keep raw GPS path by default.
+const ENABLE_MAP_MATCHING = false;
 
 const DEFAULT_ZOOM = 19;
 const MIN_ZOOM = 18;
@@ -511,7 +513,7 @@ async function updateMap(vehicles, geofences) {
             pathStartMarkers[vehicle.id].setLatLng(startLatLng);
         }
         // Snap path to roads (Mapbox Map Matching) only when the result is good (don't replace with a bad/short match)
-        if (mapboxToken) {
+        if (mapboxToken && ENABLE_MAP_MATCHING) {
             const rawPointCount = points.length;
             getMapMatchedPath(points, mapboxToken).then(matched => {
                 if (thisUpdateGen !== pathUpdateGeneration) return;
@@ -560,6 +562,7 @@ async function updateMap(vehicles, geofences) {
                 <strong>${escapeHtml(vehicle.vehicle_number)}</strong><br>
                 Type: ${escapeHtml(vehicle.vehicle_type)}<br>
                 Speed: ${vehicle.latest_tracking.speed ? vehicle.latest_tracking.speed + ' km/h' : 'N/A'}<br>
+                Ignition: ${vehicle.latest_tracking.ignition_status === null ? 'N/A' : (vehicle.latest_tracking.ignition_status ? 'ON' : 'OFF')}<br>
                 Status: ${escapeHtml(vehicle.status)}<br>
                 Last Update: ${new Date(vehicle.latest_tracking.timestamp).toLocaleString()}
             `;
@@ -676,6 +679,7 @@ function vehicleListItem(v) {
             <div class="text-muted small mt-1">
                 ${hasLocation ?
                     `<i class="bi bi-geo-alt"></i> ${v.latest_tracking.speed ? v.latest_tracking.speed + ' km/h' : 'Stationary'}<br>
+                     <small>Ignition: ${v.latest_tracking.ignition_status === null ? 'N/A' : (v.latest_tracking.ignition_status ? 'ON' : 'OFF')}</small><br>
                      <small>${new Date(v.latest_tracking.timestamp).toLocaleString()}</small>` :
                     '<span class="text-muted">No location data</span>'
                 }

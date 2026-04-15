@@ -84,8 +84,8 @@ class WheelsEyeApiService
         foreach ($list as $item) {
             $vehicleNumber = $item['vehicleNumber'] ?? null;
             $deviceNumber = (string)($item['deviceNumber'] ?? '');
-            $lat = isset($item['latitude']) ? (float)$item['latitude'] : 0.0;
-            $lng = isset($item['longitude']) ? (float)$item['longitude'] : 0.0;
+            $lat = $this->extractNumericValue($item, ['latitude', 'lat']) ?? 0.0;
+            $lng = $this->extractNumericValue($item, ['longitude', 'lng', 'lon', 'long']) ?? 0.0;
             if ($lat === 0.0 && $lng === 0.0) {
                 $skipped++;
                 continue;
@@ -107,17 +107,31 @@ class WheelsEyeApiService
             $epoch = $item['dttimeInEpoch'] ?? $item['createdDate'] ?? time();
             $timestamp = date('Y-m-d H:i:s', $this->normalizeEpochToSeconds($epoch));
             $deviceId = $deviceNumber !== '' ? $deviceNumber : ($vehicle->gpsDeviceImei ?? 'wheelseye-api');
+            $speed = $this->extractNumericValue($item, ['speed', 'gps_speed', 'vehicle_speed']);
+            $heading = $this->extractNumericValue($item, ['angle', 'heading', 'course', 'direction']);
+            $altitude = $this->extractNumericValue($item, ['altitude', 'alt']);
+            $accuracy = $this->extractNumericValue($item, ['accuracy', 'hdop']);
+            $satelliteCount = $this->extractIntegerValue($item, ['satellites', 'satellite_count', 'satellite']);
+            $odometer = $this->extractNumericValue($item, ['odometer', 'odometer_reading', 'mileage', 'distance']);
+            $ignitionStatus = $this->extractBooleanValue($item, [
+                'ignition', 'ignition_status', 'ignition_status_flag', 'acc', 'acc_status', 'engine_status', 'engine'
+            ]);
+            $movementStatus = $this->extractMovementStatus($item, $speed);
 
             $tracking = new GPSTrackingData([
                 'vehicle_id' => $vehicle->id,
                 'device_id' => $deviceId,
                 'latitude' => $lat,
                 'longitude' => $lng,
-                'speed' => isset($item['speed']) ? (float)$item['speed'] : null,
-                'heading' => isset($item['angle']) ? (float)$item['angle'] : null,
+                'altitude' => $altitude,
+                'speed' => $speed,
+                'heading' => $heading,
+                'accuracy' => $accuracy,
+                'satellite_count' => $satelliteCount,
                 'timestamp' => $timestamp,
-                'ignition_status' => isset($item['ignition']) ? (bool)$item['ignition'] : null,
-                'movement_status' => (!empty($item['speed']) && (float)$item['speed'] > 0) ? 'moving' : 'stationary',
+                'ignition_status' => $ignitionStatus,
+                'movement_status' => $movementStatus,
+                'odometer' => $odometer,
                 'raw_data' => $item,
             ]);
 
@@ -142,13 +156,21 @@ class WheelsEyeApiService
     private function ingestFuelFromPayload(\App\Models\Vehicle $vehicle, string $deviceId, array $input, string $timestamp): void
     {
         $fuelLevel = $this->extractNumericValue($input, [
-            'fuel_level', 'fuellevel', 'fuel', 'level', 'tank_level', 'tanklevel', 'fuel_liters', 'fuelliters'
+            'fuel_level', 'fuellevel', 'fuel', 'level', 'tank_level', 'tanklevel', 'fuel_liters', 'fuelliters',
+            'diesel', 'diesel_level', 'current_fuel', 'currentfuel', 'fuel_qty', 'fuelquantity'
         ]);
         $fuelPercentage = $this->extractNumericValue($input, [
-            'fuel_percentage', 'fuelpercentage', 'percentage', 'fuel_percent', 'fuelpercent'
+            'fuel_percentage', 'fuelpercentage', 'percentage', 'fuel_percent', 'fuelpercent', 'fuel_pct', 'fuellevelpercent'
         ]);
         $temperature = $this->extractNumericValue($input, ['temperature', 'temp', 'fuel_temp', 'fueltemperature']);
         $voltage = $this->extractNumericValue($input, ['voltage', 'battery_voltage', 'sensor_voltage']);
+
+        if ($fuelLevel === null) {
+            $fuelLevel = $this->extractNumericByKeyword($input, ['fuel', 'diesel', 'tank']);
+        }
+        if ($fuelPercentage === null) {
+            $fuelPercentage = $this->extractNumericByKeyword($input, ['percent']);
+        }
 
         if ($fuelLevel === null && $fuelPercentage === null && $temperature === null && $voltage === null) {
             return;
@@ -179,7 +201,7 @@ class WheelsEyeApiService
         $fuelData = new FuelReadingData([
             'vehicle_id' => $vehicle->id,
             'sensor_id' => $sensorId,
-            'fuel_level' => $fuelLevel ?? 0,
+            'fuel_level' => $fuelLevel ?? ($fuelPercentage ?? 0),
             'fuel_percentage' => $fuelPercentage,
             'temperature' => $temperature,
             'voltage' => $voltage,
@@ -231,6 +253,131 @@ class WheelsEyeApiService
             return null;
         }
         return (float)$clean;
+    }
+
+    private function extractIntegerValue(array $payload, array $targetKeys): ?int
+    {
+        $numeric = $this->extractNumericValue($payload, $targetKeys);
+        return $numeric === null ? null : (int)round($numeric);
+    }
+
+    private function extractBooleanValue(array $payload, array $targetKeys): ?bool
+    {
+        $lookup = [];
+        foreach ($targetKeys as $key) {
+            $lookup[$this->normalizeKey($key)] = true;
+        }
+        $stack = [$payload];
+        while ($stack) {
+            $current = array_pop($stack);
+            foreach ($current as $key => $value) {
+                if (is_array($value)) {
+                    $stack[] = $value;
+                    continue;
+                }
+                if (!isset($lookup[$this->normalizeKey((string)$key)])) {
+                    continue;
+                }
+                $normalized = strtolower(trim((string)$value));
+                if ($normalized === '') {
+                    continue;
+                }
+                if (in_array($normalized, ['1', 'true', 'on', 'yes', 'y', 'open'], true)) {
+                    return true;
+                }
+                if (in_array($normalized, ['0', 'false', 'off', 'no', 'n', 'close'], true)) {
+                    return false;
+                }
+                if (is_numeric($normalized)) {
+                    return ((float)$normalized) > 0;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function extractNumericByKeyword(array $payload, array $keywords): ?float
+    {
+        $normalizedKeywords = array_map(fn(string $k) => $this->normalizeKey($k), $keywords);
+        $stack = [$payload];
+        while ($stack) {
+            $current = array_pop($stack);
+            foreach ($current as $key => $value) {
+                if (is_array($value)) {
+                    $stack[] = $value;
+                    continue;
+                }
+                if (!is_scalar($value)) {
+                    continue;
+                }
+                $normalizedKey = $this->normalizeKey((string)$key);
+                $matched = false;
+                foreach ($normalizedKeywords as $keyword) {
+                    if ($keyword !== '' && str_contains($normalizedKey, $keyword)) {
+                        $matched = true;
+                        break;
+                    }
+                }
+                if (!$matched) {
+                    continue;
+                }
+                $parsed = $this->parseNumeric((string)$value);
+                if ($parsed !== null) {
+                    return $parsed;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function extractMovementStatus(array $payload, ?float $speed): string
+    {
+        $movement = $this->extractStringValue($payload, ['movement_status', 'movement', 'status', 'motion_status']);
+        if ($movement !== null) {
+            $normalized = strtolower(trim($movement));
+            if (in_array($normalized, ['moving', 'movement', 'running', 'drive'], true)) {
+                return 'moving';
+            }
+            if (in_array($normalized, ['idle', 'idling'], true)) {
+                return 'idle';
+            }
+            if (in_array($normalized, ['stop', 'stopped', 'stationary', 'parked', 'parking'], true)) {
+                return 'stationary';
+            }
+        }
+        if ($speed !== null) {
+            return $speed > 3 ? 'moving' : ($speed > 0 ? 'idle' : 'stationary');
+        }
+        return 'stationary';
+    }
+
+    private function extractStringValue(array $payload, array $targetKeys): ?string
+    {
+        $lookup = [];
+        foreach ($targetKeys as $key) {
+            $lookup[$this->normalizeKey($key)] = true;
+        }
+        $stack = [$payload];
+        while ($stack) {
+            $current = array_pop($stack);
+            foreach ($current as $key => $value) {
+                if (is_array($value)) {
+                    $stack[] = $value;
+                    continue;
+                }
+                if (!is_scalar($value)) {
+                    continue;
+                }
+                if (!isset($lookup[$this->normalizeKey((string)$key)])) {
+                    continue;
+                }
+                $stringValue = trim((string)$value);
+                if ($stringValue !== '') {
+                    return $stringValue;
+                }
+            }
+        }
+        return null;
     }
 
     /**
