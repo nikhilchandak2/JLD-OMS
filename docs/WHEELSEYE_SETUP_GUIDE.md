@@ -31,7 +31,23 @@ The system will automatically register the GPS device when you save the vehicle.
    - **URL**: `https://oms.jldminerals.com/api/gps/webhook`
    - **Method**: `POST`
    - **Content Type**: `application/json`
-   - **Frequency**: Real-time or every 30 seconds (recommended)
+   - **Frequency**: **Near real-time (recommended 5-10 seconds)**.
+     - If your plan supports only fixed presets, choose the smallest available interval.
+     - Avoid intervals above 30 seconds if you need accurate moving path visibility.
+
+### Recommended WheelsEye tracking profile (for accurate live path)
+
+Set these values in WheelsEye device settings (names may vary by device model):
+
+- **Push interval while moving**: `5-10 sec`
+- **Push interval while idle/stationary**: `30-60 sec`
+- **Minimum distance filter**: `off` or lowest possible (do not suppress short moves)
+- **Heading/angle filter**: `on` (if available)
+- **Ignition-based update**: `on` (if available)
+
+If you use WheelsEye support/vendor team for configuration, share this exact instruction:
+
+> "Please set our device data forwarding webhook interval to near real-time (5-10 sec while moving) to OMS endpoint `https://oms.jldminerals.com/api/gps/webhook`, with no aggressive distance suppression."
 
 ### Option B: Via SMS Configuration (if supported)
 

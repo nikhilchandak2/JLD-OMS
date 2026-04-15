@@ -36,6 +36,23 @@ class TrackingController
         }
         
         try {
+            $syncResult = null;
+            if (isset($_GET['sync_now']) && (int)$_GET['sync_now'] === 1) {
+                try {
+                    $service = new WheelsEyeApiService();
+                    $syncResult = $service->syncCurrentLocations();
+                    $this->saveSyncStatus(array_merge($syncResult, ['last_run' => date('Y-m-d H:i:s')]));
+                } catch (\Exception $syncException) {
+                    $syncResult = [
+                        'success' => false,
+                        'message' => $syncException->getMessage(),
+                        'synced' => 0,
+                        'skipped' => 0,
+                        'errors' => []
+                    ];
+                }
+            }
+
             $vehicles = $this->vehicleRepository->findAll(['status' => 'active']);
             $latestTracking = $this->gpsTrackingRepository->getLatestForAllVehicles();
             
@@ -81,7 +98,8 @@ class TrackingController
             echo json_encode([
                 'success' => true,
                 'data' => $result,
-                'timestamp' => date('Y-m-d H:i:s')
+                'timestamp' => date('Y-m-d H:i:s'),
+                'sync_result' => $syncResult
             ]);
         } catch (\Exception $e) {
             http_response_code(500);

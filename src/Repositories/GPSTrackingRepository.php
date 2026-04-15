@@ -60,14 +60,16 @@ class GPSTrackingRepository
     public function getLatestForAllVehicles(): array
     {
         $sql = "
-            SELECT t1.*
-            FROM gps_tracking_data t1
-            INNER JOIN (
-                SELECT vehicle_id, MAX(timestamp) as max_timestamp
-                FROM gps_tracking_data
-                GROUP BY vehicle_id
-            ) t2 ON t1.vehicle_id = t2.vehicle_id AND t1.timestamp = t2.max_timestamp
-            ORDER BY t1.timestamp DESC
+            SELECT t.*
+            FROM gps_tracking_data t
+            WHERE t.id = (
+                SELECT t2.id
+                FROM gps_tracking_data t2
+                WHERE t2.vehicle_id = t.vehicle_id
+                ORDER BY t2.timestamp DESC, t2.id DESC
+                LIMIT 1
+            )
+            ORDER BY t.timestamp DESC
         ";
         
         $results = $this->database->fetchAll($sql);

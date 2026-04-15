@@ -212,13 +212,19 @@ function initMap() {
 function loadTracking() {
     const cacheBust = Date.now();
     Promise.all([
-        fetch('/api/tracking/live?path_hours=24&path_limit=500&_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json()),
+        fetch('/api/tracking/live?sync_now=1&path_hours=24&path_limit=2000&_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json()),
         fetch('/api/geofences?_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json())
     ]).then(([trackingRes, geofencesRes]) => {
         if (trackingRes.success) {
             const geofences = (geofencesRes.success && geofencesRes.data) ? geofencesRes.data : [];
             updateMap(trackingRes.data, geofences);
             updateVehiclesList(trackingRes.data);
+            if (trackingRes.sync_result) {
+                updateRouteUpdateStatus({
+                    ...trackingRes.sync_result,
+                    last_run: new Date().toISOString().slice(0, 19).replace('T', ' ')
+                });
+            }
         } else {
             showError(trackingRes.error || 'Failed to load tracking data');
         }
@@ -266,25 +272,53 @@ function formatTimeAgo(iso) {
     } catch (e) { return iso || '—'; }
 }
 
-// Mapbox Map Matching: snap GPS path to roads (max 100 points per request). Points: array of [lat, lng] or {lat, lng}.
+// Mapbox Map Matching: snap GPS breadcrumbs to roads in chunks (to preserve path precision).
 function getMapMatchedPath(pathPoints, token) {
     if (!pathPoints || pathPoints.length < 2 || !token) return Promise.resolve(null);
-    let points = pathPoints.map(p => Array.isArray(p) ? { lat: p[0], lng: p[1] } : p);
-    if (points.length > 100) {
-        const step = Math.ceil(points.length / 100);
-        points = points.filter((_, i) => i % step === 0 || i === points.length - 1);
+
+    const points = pathPoints.map(p => Array.isArray(p) ? { lat: p[0], lng: p[1] } : p);
+    const chunks = [];
+    for (let i = 0; i < points.length; i += 90) {
+        const chunk = points.slice(i, i + 100);
+        if (chunk.length >= 2) {
+            chunks.push(chunk);
+        }
     }
-    const coords = points.map(p => p.lng + ',' + p.lat).join(';');
-    const url = 'https://api.mapbox.com/matching/v5/mapbox/driving/' + encodeURIComponent(coords) + '.json?access_token=' + encodeURIComponent(token) + '&geometries=geojson';
-    return fetch(url)
-        .then(r => r.json())
-        .then(data => {
-            if (data.matchings && data.matchings[0] && data.matchings[0].geometry && data.matchings[0].geometry.coordinates) {
-                return data.matchings[0].geometry.coordinates.map(c => [c[1], c[0]]);
+
+    const requests = chunks.map(chunk => {
+        const coords = chunk.map(p => p.lng + ',' + p.lat).join(';');
+        const url = 'https://api.mapbox.com/matching/v5/mapbox/driving/' + encodeURIComponent(coords)
+            + '.json?access_token=' + encodeURIComponent(token)
+            + '&geometries=geojson&overview=full&steps=false';
+        return fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                if (data.matchings && data.matchings[0] && data.matchings[0].geometry && data.matchings[0].geometry.coordinates) {
+                    return data.matchings[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                }
+                return null;
+            })
+            .catch(() => null);
+    });
+
+    return Promise.all(requests)
+        .then(parts => {
+            const merged = [];
+            parts.forEach(part => {
+                if (!part || part.length < 2) {
+                    return;
+                }
+                if (merged.length > 0 && merged[merged.length - 1][0] === part[0][0] && merged[merged.length - 1][1] === part[0][1]) {
+                    merged.push(...part.slice(1));
+                } else {
+                    merged.push(...part);
+                }
+            });
+            if (merged.length >= 2) {
+                return merged;
             }
             return null;
-        })
-        .catch(() => null);
+        });
 }
 
 function syncFromWheelsEye() {
@@ -317,25 +351,6 @@ function syncFromWheelsEye() {
         .finally(() => {
             btn.disabled = false;
             btn.innerHTML = origHtml;
-        });
-}
-
-// Quiet sync (no alert, no button change) – used by auto-refresh every 15s to pull fresh data from WheelsEye
-function syncFromWheelsEyeQuiet() {
-    return fetch('/api/tracking/sync', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' }
-    })
-        .then(r => r.json())
-        .then(data => {
-            updateRouteUpdateStatus({ ...data, last_run: new Date().toISOString().slice(0, 19).replace('T', ' ') });
-            if (!data.success) showError(data.message || data.error || 'Sync failed');
-            return data;
-        })
-        .catch(e => {
-            showError('Sync failed: ' + e.message);
-            return { success: false };
         });
 }
 
@@ -452,7 +467,7 @@ async function updateMap(vehicles, geofences) {
         let points = sessionPathByVehicle[vehicle.id] || [];
         if (pathPoints.length >= 2) {
             const apiPoints = pathPoints.map(p => [Number(p.lat), Number(p.lng)]);
-            if (apiPoints.length > points.length) points = apiPoints;
+            points = apiPoints;
         }
         if (current) {
             const last = points[points.length - 1];
@@ -693,7 +708,7 @@ function getStatusBadgeColor(status) {
 }
 
 function doAutoRefreshCycle() {
-    syncFromWheelsEyeQuiet().then(() => loadTracking());
+    loadTracking();
 }
 
 function toggleAutoRefresh(runImmediate = true) {
@@ -706,7 +721,7 @@ function toggleAutoRefresh(runImmediate = true) {
         if (runImmediate) {
             doAutoRefreshCycle();
         }
-        autoRefreshInterval = setInterval(doAutoRefreshCycle, 15000); // then every 15s: sync from WheelsEye then refresh map
+        autoRefreshInterval = setInterval(doAutoRefreshCycle, 10000); // every 10s fetch live synced data
     } else {
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);
