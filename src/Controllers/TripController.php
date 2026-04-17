@@ -91,13 +91,17 @@ class TripController
             $stats = $this->getTripStatistics($filters);
             $destinationBreakdown = $this->getDestinationBreakdown($filters);
             $destinationBreakdownByVehicle = $this->getDestinationBreakdownByVehicle($filters);
+            $stoppageSummaryByVehicle = $this->getStoppageSummaryByVehicle($filters);
+            $todayStoppageSummary = $this->getTodayStoppageSummary();
             
             echo json_encode([
                 'success' => true,
                 'data' => $trips,
                 'statistics' => $stats,
                 'destination_breakdown' => $destinationBreakdown,
-                'destination_breakdown_by_vehicle' => $destinationBreakdownByVehicle
+                'destination_breakdown_by_vehicle' => $destinationBreakdownByVehicle,
+                'stoppage_summary_by_vehicle' => $stoppageSummaryByVehicle,
+                'today_stoppage_summary' => $todayStoppageSummary
             ]);
         } catch (\Exception $e) {
             http_response_code(500);
@@ -161,6 +165,61 @@ class TripController
             echo json_encode(['error' => $e->getMessage()]);
         }
     }
+
+    /**
+     * Date-wise stoppage timeline for a vehicle.
+     * GET /api/trips/vehicle/{id}/stoppage-timeline?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+     */
+    public function vehicleStoppageTimeline(int $id): void
+    {
+        header('Content-Type: application/json');
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        try {
+            $vehicle = $this->vehicleRepository->findById($id);
+            if (!$vehicle) {
+                http_response_code(404);
+                echo json_encode(['error' => 'Vehicle not found']);
+                return;
+            }
+
+            $startDateInput = $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
+            $endDateInput = $_GET['end_date'] ?? date('Y-m-d');
+
+            $startDate = strlen($startDateInput) <= 10 ? $startDateInput . ' 00:00:00' : $startDateInput;
+            $endDate = strlen($endDateInput) <= 10 ? $endDateInput . ' 23:59:59' : $endDateInput;
+
+            $sql = "
+                SELECT
+                    DATE(ts.start_time) AS stop_date,
+                    COUNT(*) AS stop_count,
+                    COALESCE(SUM(ts.duration_minutes), 0) AS total_stoppage_minutes
+                FROM trip_stoppages ts
+                JOIN vehicle_trips t ON ts.trip_id = t.id
+                WHERE t.vehicle_id = ?
+                  AND ts.start_time BETWEEN ? AND ?
+                GROUP BY DATE(ts.start_time)
+                ORDER BY stop_date ASC
+            ";
+
+            $rows = $this->database->fetchAll($sql, [$id, $startDate, $endDate]);
+
+            echo json_encode([
+                'success' => true,
+                'vehicle' => $vehicle->toArray(),
+                'data' => $rows
+            ]);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
     
     /**
      * Get trips for a specific stockpile
@@ -203,6 +262,55 @@ class TripController
                 'success' => true,
                 'data' => $trips,
                 'statistics' => $stats
+            ]);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Get detailed stoppages for a trip (start/end/duration/location).
+     * GET /api/trips/{id}/stoppages
+     */
+    public function tripStoppages(int $id): void
+    {
+        header('Content-Type: application/json');
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        try {
+            $tripSql = "
+                SELECT t.id, t.vehicle_id, v.vehicle_number, t.start_time, t.end_time, t.stoppage_count, t.total_stoppage_minutes
+                FROM vehicle_trips t
+                JOIN vehicles v ON t.vehicle_id = v.id
+                WHERE t.id = ?
+                LIMIT 1
+            ";
+            $trip = $this->database->fetch($tripSql, [$id]);
+            if (!$trip) {
+                http_response_code(404);
+                echo json_encode(['error' => 'Trip not found']);
+                return;
+            }
+
+            $stoppageSql = "
+                SELECT id, trip_id, start_time, end_time, duration_minutes, latitude, longitude
+                FROM trip_stoppages
+                WHERE trip_id = ?
+                ORDER BY start_time ASC
+            ";
+            $stoppages = $this->database->fetchAll($stoppageSql, [$id]);
+
+            echo json_encode([
+                'success' => true,
+                'trip' => $trip,
+                'data' => $stoppages
             ]);
         } catch (\Exception $e) {
             http_response_code(500);
@@ -342,5 +450,53 @@ class TripController
         }
 
         return [$whereClause, $params];
+    }
+
+    /**
+     * Aggregate stoppage metrics by vehicle for current filter range.
+     */
+    private function getStoppageSummaryByVehicle(array $filters): array
+    {
+        [$whereClause, $params] = $this->buildTripFilterClause($filters);
+        $sql = "
+            SELECT
+                t.vehicle_id,
+                v.vehicle_number,
+                COALESCE(SUM(COALESCE(t.stoppage_count, 0)), 0) AS total_stops,
+                COALESCE(SUM(COALESCE(t.total_stoppage_minutes, 0)), 0) AS total_stoppage_minutes,
+                COUNT(*) AS trip_count
+            FROM vehicle_trips t
+            JOIN vehicles v ON t.vehicle_id = v.id
+            {$whereClause}
+            GROUP BY t.vehicle_id, v.vehicle_number
+            ORDER BY total_stoppage_minutes DESC, total_stops DESC, v.vehicle_number ASC
+        ";
+
+        return $this->database->fetchAll($sql, $params);
+    }
+
+    /**
+     * Today's global stoppage totals (all vehicles).
+     */
+    private function getTodayStoppageSummary(): array
+    {
+        $start = date('Y-m-d 00:00:00');
+        $end = date('Y-m-d 23:59:59');
+        $sql = "
+            SELECT
+                COALESCE(SUM(COALESCE(stoppage_count, 0)), 0) AS total_stops,
+                COALESCE(SUM(COALESCE(total_stoppage_minutes, 0)), 0) AS total_stoppage_minutes,
+                COUNT(*) AS trip_count,
+                COUNT(DISTINCT vehicle_id) AS vehicle_count
+            FROM vehicle_trips
+            WHERE start_time BETWEEN ? AND ?
+        ";
+
+        return $this->database->fetch($sql, [$start, $end]) ?? [
+            'total_stops' => 0,
+            'total_stoppage_minutes' => 0,
+            'trip_count' => 0,
+            'vehicle_count' => 0,
+        ];
     }
 }

@@ -88,7 +88,9 @@ $router->group('/api', function($router) {
         // Trips
         $router->get('/trips', 'TripController@index');
         $router->get('/trips/vehicle/{id}', 'TripController@vehicleTrips');
+        $router->get('/trips/vehicle/{id}/stoppage-timeline', 'TripController@vehicleStoppageTimeline');
         $router->get('/trips/stockpile/{id}', 'TripController@stockpileTrips');
+        $router->get('/trips/{id}/stoppages', 'TripController@tripStoppages');
         
         // Geofences
         $router->get('/geofences', 'GeofenceController@index');

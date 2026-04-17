@@ -62,6 +62,52 @@
     <!-- Will be populated by JavaScript -->
 </div>
 
+<!-- Daily / Vehicle Stoppage Summary -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-stopwatch me-2"></i>Start/Stop Summary</span>
+        <span class="small text-muted">Based on current filters + today overall</span>
+    </div>
+    <div class="card-body">
+        <div id="stoppageTodaySummary" class="row g-3 mb-3">
+            <!-- Populated by JavaScript -->
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-sm">
+                <thead>
+                    <tr>
+                        <th>Vehicle</th>
+                        <th>Trips</th>
+                        <th>Start/Stop Count</th>
+                        <th>Total Stopped (min)</th>
+                        <th>Avg Stop Duration (min)</th>
+                    </tr>
+                </thead>
+                <tbody id="stoppageSummaryTableBody">
+                    <tr><td colspan="5" class="text-center text-muted">Loading summary...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Date-wise Stoppage Timeline -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-graph-up-arrow me-2"></i>Date-wise Stop Timeline</span>
+        <div class="d-flex align-items-center gap-2">
+            <label for="timelineVehicleSelect" class="small text-muted mb-0">Vehicle:</label>
+            <select class="form-select form-select-sm" id="timelineVehicleSelect" style="min-width: 220px;">
+                <option value="">Select vehicle</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="small text-muted mb-2" id="timelineInfo">Select a vehicle to view date-wise stop trend.</div>
+        <canvas id="stoppageTimelineChart" height="95"></canvas>
+    </div>
+</div>
+
 <div id="loading" class="loading">
     <div class="spinner-border" role="status"></div>
     <p>Loading trips...</p>
@@ -72,8 +118,43 @@
     <!-- Populated by JavaScript: vehicle cards with collapse per vehicle -->
 </div>
 
+<!-- Trip Stoppages Modal -->
+<div class="modal fade" id="stoppagesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stoppagesModalTitle">Trip Stoppages</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="stoppagesSummary" class="mb-3 small text-muted"></div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Stop Start Time</th>
+                                <th>Stop End Time</th>
+                                <th>Duration (min)</th>
+                                <th>Location</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stoppagesTableBody">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">No stoppages found</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 let tripsAutoRefreshInterval = null;
+let stoppagesModalInstance = null;
+let stoppageTimelineChart = null;
 
 function toggleTripsAutoRefresh() {
     const enabled = document.getElementById('autoRefreshTrips').checked;
@@ -111,6 +192,8 @@ function loadTrips() {
             document.getElementById('loading').style.display = 'none';
             if (data.success) {
                 renderStatistics(data.statistics);
+                renderStoppageSummary(data.stoppage_summary_by_vehicle || [], data.today_stoppage_summary || {});
+                updateTimelineVehicleOptions(data.stoppage_summary_by_vehicle || []);
                 renderTrips(data.data, data.destination_breakdown_by_vehicle || {});
             } else {
                 showError(data.error || 'Failed to load trips');
@@ -219,11 +302,185 @@ function renderTrips(trips, breakdownByVehicle = {}) {
     });
 }
 
+function renderStoppageSummary(rows, todaySummary) {
+    const todayContainer = document.getElementById('stoppageTodaySummary');
+    const totalStops = Number(todaySummary.total_stops || 0);
+    const totalMinutes = Number(todaySummary.total_stoppage_minutes || 0);
+    const totalTrips = Number(todaySummary.trip_count || 0);
+    const totalVehicles = Number(todaySummary.vehicle_count || 0);
+
+    todayContainer.innerHTML = `
+        <div class="col-md-3">
+            <div class="border rounded p-2 text-center bg-light">
+                <div class="small text-muted">Today Stops</div>
+                <div class="h5 mb-0">${totalStops}</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="border rounded p-2 text-center bg-light">
+                <div class="small text-muted">Today Stopped (min)</div>
+                <div class="h5 mb-0">${totalMinutes.toFixed(1)}</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="border rounded p-2 text-center bg-light">
+                <div class="small text-muted">Today Trips</div>
+                <div class="h5 mb-0">${totalTrips}</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="border rounded p-2 text-center bg-light">
+                <div class="small text-muted">Vehicles Active Today</div>
+                <div class="h5 mb-0">${totalVehicles}</div>
+            </div>
+        </div>
+    `;
+
+    const tbody = document.getElementById('stoppageSummaryTableBody');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No start/stop data found for selected filters.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = rows.map(row => {
+        const stopCount = Number(row.total_stops || 0);
+        const stopMinutes = Number(row.total_stoppage_minutes || 0);
+        const avgStop = stopCount > 0 ? (stopMinutes / stopCount) : 0;
+        return `
+            <tr>
+                <td><strong>${escapeHtml(row.vehicle_number)}</strong></td>
+                <td>${Number(row.trip_count || 0)}</td>
+                <td>${stopCount}</td>
+                <td>${stopMinutes.toFixed(1)}</td>
+                <td>${avgStop.toFixed(2)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function updateTimelineVehicleOptions(rows) {
+    const select = document.getElementById('timelineVehicleSelect');
+    const currentValue = select.value;
+    const options = rows.map(row => ({
+        id: String(row.vehicle_id),
+        label: row.vehicle_number
+    }));
+
+    select.innerHTML = '<option value="">Select vehicle</option>' + options
+        .map(o => `<option value="${o.id}">${escapeHtml(o.label)}</option>`)
+        .join('');
+
+    if (options.length === 0) {
+        select.value = '';
+        renderStoppageTimeline([]);
+        document.getElementById('timelineInfo').textContent = 'No vehicles available for the selected filters.';
+        return;
+    }
+
+    const selected = options.some(o => o.id === currentValue) ? currentValue : options[0].id;
+    select.value = selected;
+    loadStoppageTimelineForVehicle(selected);
+}
+
+function loadStoppageTimelineForVehicle(vehicleId) {
+    if (!vehicleId) {
+        renderStoppageTimeline([]);
+        document.getElementById('timelineInfo').textContent = 'Select a vehicle to view date-wise stop trend.';
+        return;
+    }
+
+    const params = new URLSearchParams();
+    if (document.getElementById('filterStartDate').value) {
+        params.append('start_date', document.getElementById('filterStartDate').value);
+    }
+    if (document.getElementById('filterEndDate').value) {
+        params.append('end_date', document.getElementById('filterEndDate').value);
+    }
+
+    fetch(`/api/trips/vehicle/${vehicleId}/stoppage-timeline?${params.toString()}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to load timeline');
+            }
+            const v = data.vehicle?.vehicle_number || 'Vehicle';
+            document.getElementById('timelineInfo').textContent = `${v}: date-wise stop count and stopped minutes`;
+            renderStoppageTimeline(data.data || []);
+        })
+        .catch(e => {
+            document.getElementById('timelineInfo').textContent = `Unable to load timeline: ${e.message}`;
+            renderStoppageTimeline([]);
+        });
+}
+
+function renderStoppageTimeline(rows) {
+    const canvas = document.getElementById('stoppageTimelineChart');
+    if (!canvas) return;
+
+    const labels = rows.map(r => r.stop_date);
+    const stopCounts = rows.map(r => Number(r.stop_count || 0));
+    const stopMinutes = rows.map(r => Number(r.total_stoppage_minutes || 0));
+
+    if (stoppageTimelineChart) {
+        stoppageTimelineChart.destroy();
+    }
+
+    stoppageTimelineChart = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'Stop Count',
+                    data: stopCounts,
+                    backgroundColor: 'rgba(13, 110, 253, 0.45)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1,
+                    yAxisID: 'yStops'
+                },
+                {
+                    type: 'line',
+                    label: 'Stopped Minutes',
+                    data: stopMinutes,
+                    borderColor: 'rgba(220, 53, 69, 1)',
+                    backgroundColor: 'rgba(220, 53, 69, 0.15)',
+                    borderWidth: 2,
+                    tension: 0.25,
+                    fill: false,
+                    pointRadius: 3,
+                    yAxisID: 'yMinutes'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                yStops: {
+                    beginAtZero: true,
+                    position: 'left',
+                    title: { display: true, text: 'Stop Count' }
+                },
+                yMinutes: {
+                    beginAtZero: true,
+                    position: 'right',
+                    grid: { drawOnChartArea: false },
+                    title: { display: true, text: 'Stopped Minutes' }
+                }
+            },
+            plugins: {
+                legend: { position: 'top' }
+            }
+        }
+    });
+}
+
 function tripRow(trip) {
     const stopCount = trip.stoppage_count != null && trip.stoppage_count !== '' ? Number(trip.stoppage_count) : null;
     const stopMin = trip.total_stoppage_minutes != null && trip.total_stoppage_minutes !== '' ? Number(trip.total_stoppage_minutes) : null;
     const stoppageText = (stopCount != null && stopCount > 0)
-        ? `${stopCount} (${(stopMin ?? 0).toFixed(1)} min)`
+        ? `<button class="btn btn-sm btn-outline-secondary" onclick="viewTripStoppages(${trip.id}); event.stopPropagation();">${stopCount} (${(stopMin ?? 0).toFixed(1)} min)</button>`
         : (stopCount === 0 ? '0' : '-');
     return `
         <tr>
@@ -259,7 +516,62 @@ function showError(msg) {
     setTimeout(() => container.style.display = 'none', 5000);
 }
 
+function viewTripStoppages(tripId) {
+    if (!stoppagesModalInstance) {
+        stoppagesModalInstance = new bootstrap.Modal(document.getElementById('stoppagesModal'));
+    }
+    document.getElementById('stoppagesTableBody').innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading stoppages...</td></tr>';
+    document.getElementById('stoppagesSummary').textContent = '';
+    document.getElementById('stoppagesModalTitle').textContent = `Trip #${tripId} Stoppages`;
+    stoppagesModalInstance.show();
+
+    fetch(`/api/trips/${tripId}/stoppages`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to load stoppages');
+            }
+            renderTripStoppages(data.trip, data.data || []);
+        })
+        .catch(e => {
+            document.getElementById('stoppagesTableBody').innerHTML = `<tr><td colspan="5" class="text-center text-danger">${escapeHtml(e.message)}</td></tr>`;
+        });
+}
+
+function renderTripStoppages(trip, stoppages) {
+    const title = trip?.vehicle_number
+        ? `${trip.vehicle_number} - Trip #${trip.id} Stoppages`
+        : `Trip #${trip.id} Stoppages`;
+    document.getElementById('stoppagesModalTitle').textContent = title;
+    document.getElementById('stoppagesSummary').textContent =
+        `Count: ${trip?.stoppage_count ?? 0} | Total stopped: ${Number(trip?.total_stoppage_minutes || 0).toFixed(1)} min`;
+
+    const tbody = document.getElementById('stoppagesTableBody');
+    if (!stoppages.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No detailed stoppages found for this trip.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = stoppages.map((stop, idx) => {
+        const location = (stop.latitude != null && stop.longitude != null)
+            ? `${Number(stop.latitude).toFixed(6)}, ${Number(stop.longitude).toFixed(6)}`
+            : '-';
+        return `
+            <tr>
+                <td>${idx + 1}</td>
+                <td>${new Date(stop.start_time).toLocaleString()}</td>
+                <td>${new Date(stop.end_time).toLocaleString()}</td>
+                <td>${Number(stop.duration_minutes).toFixed(2)}</td>
+                <td>${location}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('timelineVehicleSelect').addEventListener('change', function() {
+        loadStoppageTimelineForVehicle(this.value);
+    });
     loadTrips();
     toggleTripsAutoRefresh();
 });
