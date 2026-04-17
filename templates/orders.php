@@ -7,7 +7,7 @@
             </h1>
             <p class="page-subtitle">Manage and track all customer orders</p>
         </div>
-        <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
+        <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin'])): ?>
         <a href="/orders/new" class="btn btn-primary">
             <i class="bi bi-plus-circle me-1"></i> New Order
         </a>
@@ -204,38 +204,46 @@ function updateOrdersTable(orders) {
         return;
     }
     
-    const rows = orders.map(order => `
+    const rows = orders.map(order => {
+        const orderId = Number(order.id) || 0;
+        const safeOrderNo = escapeHtml(order.order_no);
+        const safeCompany = escapeHtml(order.company_name);
+        const safeParty = escapeHtml(order.party_name);
+        const safeProduct = escapeHtml(order.product_name);
+        const safeOrderNoJs = JSON.stringify(String(order.order_no ?? ''));
+        return `
         <tr>
             <td>
-                <strong>${order.order_no}</strong>
+                <strong>${safeOrderNo}</strong>
                 ${order.is_recurring ? '<span class="badge bg-info ms-1">Recurring</span>' : ''}
             </td>
             <td>${formatDate(order.order_date)}</td>
-            <td><span class="badge bg-primary">${order.company_name}</span></td>
-            <td>${order.party_name}</td>
-            <td>${order.product_name}</td>
+            <td><span class="badge bg-primary">${safeCompany}</span></td>
+            <td>${safeParty}</td>
+            <td>${safeProduct}</td>
             <td class="text-end">${order.order_qty_trucks}</td>
             <td class="text-end">${order.total_dispatched}</td>
             <td class="text-end">${order.pending_trucks}</td>
             <td>${formatPriority(order.priority)}</td>
             <td>${formatStatus(order.status)}</td>
             <td>
-                <a href="/orders/${order.id}?return=${encodeURIComponent(window.location.pathname + window.location.search)}" class="btn btn-sm btn-outline-primary">
+                <a href="/orders/${orderId}?return=${encodeURIComponent(window.location.pathname + window.location.search)}" class="btn btn-sm btn-outline-primary">
                     <i class="bi bi-eye"></i> View
                 </a>
                 ${order.status !== 'completed' && '<?= $user["role"] ?>' !== 'view' ? `
-                    <button class="btn btn-sm btn-outline-warning" onclick="editOrder(${order.id})">
+                    <button class="btn btn-sm btn-outline-warning" onclick="editOrder(${orderId})">
                         <i class="bi bi-pencil"></i> Edit
                     </button>
                 ` : ''}
                 ${'<?= $user["role"] ?>' === 'admin' && order.total_dispatched === 0 ? `
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${order.id}, '${order.order_no}')">
+                    <button class="btn btn-sm btn-outline-danger" onclick='deleteOrder(${orderId}, ${safeOrderNoJs})'>
                         <i class="bi bi-trash"></i> Delete
                     </button>
                 ` : ''}
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
     
     tbody.innerHTML = rows;
 }
@@ -291,11 +299,13 @@ async function loadParties() {
         const response = await apiCall('/api/reports/parties');
         const select = document.getElementById('filterParty');
         
-        const options = response.data.map(party => 
-            `<option value="${party.id}">${party.name}</option>`
-        ).join('');
-        
-        select.innerHTML = '<option value="">All Parties</option>' + options;
+        select.innerHTML = '<option value="">All Parties</option>';
+        response.data.forEach((party) => {
+            const option = document.createElement('option');
+            option.value = String(party.id ?? '');
+            option.textContent = String(party.name ?? '');
+            select.appendChild(option);
+        });
     } catch (error) {
         console.error('Failed to load parties:', error);
     }
@@ -318,7 +328,7 @@ async function deleteOrder(orderId, orderNo) {
         const response = await fetch(`/api/orders/${orderId}`, {
             method: 'DELETE',
             headers: {
-                'X-CSRF-Token': '<?= $csrf_token ?>'
+                'X-CSRF-Token': csrfToken
             }
         });
         
@@ -343,8 +353,9 @@ async function deleteOrder(orderId, orderNo) {
 function showAlert(message, type) {
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    const safeMessage = escapeHtml(message);
     alertDiv.innerHTML = `
-        ${message}
+        ${safeMessage}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
     

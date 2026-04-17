@@ -1,17 +1,17 @@
-<!-- Import bills receivables from CSV -->
+<!-- Import Busy bills (receivables) from CSV -->
 <div class="page-header">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="/crm">CRM</a></li>
-                    <li class="breadcrumb-item active">Import receivables</li>
+                    <li class="breadcrumb-item"><a href="/admin/parties">Administration</a></li>
+                    <li class="breadcrumb-item active">Import bills (Busy)</li>
                 </ol>
             </nav>
-            <h1 class="page-title mt-2"><i class="bi bi-upload me-2"></i>Import receivables</h1>
-            <p class="page-subtitle mb-0">Upload a CSV of bills receivables (invoice-wise) to update parties and CRM ageing</p>
+            <h1 class="page-title mt-2"><i class="bi bi-upload me-2"></i>Import bills (Busy)</h1>
+            <p class="page-subtitle mb-0">Upload Busy export CSV. System will add new invoices and update existing invoices by (Party + Bill/Invoice No).</p>
         </div>
-        <a href="/crm" class="btn btn-outline-secondary">Back to CRM</a>
+        <a href="/admin/parties" class="btn btn-outline-secondary">Back to Administration</a>
     </div>
 </div>
 
@@ -25,15 +25,15 @@
         <ul class="small text-muted mb-3">
             <li><strong>Party name</strong> – column named "Party Name", "Customer", "Name", "Party", etc.</li>
             <li><strong>Amount due</strong> – column named "Amount", "Due", "Balance", "Outstanding", "Amount Due", etc.</li>
-            <li>Optional: <strong>Invoice No</strong> ("Invoice No", "Bill No", "Reference"), <strong>Date</strong> ("Date", "Due Date", "Invoice Date")</li>
+            <li>Optional: <strong>Bill/Invoice No</strong> ("Invoice No", "Bill No", "Reference"), <strong>Date</strong> ("Date", "Invoice Date", "Bill Date")</li>
         </ul>
         <form id="importForm">
             <div class="mb-3">
-                <label class="form-label">Select CSV file</label>
+                <label class="form-label">Select Busy CSV file</label>
                 <input type="file" class="form-control" id="csvFile" accept=".csv" required>
             </div>
             <button type="submit" class="btn btn-primary" id="btnImport" disabled>
-                <i class="bi bi-upload me-1"></i> Import
+                <i class="bi bi-upload me-1"></i> Import / Update
             </button>
         </form>
     </div>
@@ -47,7 +47,7 @@
         <div id="resultPreview" class="mt-3"></div>
         <div class="mt-3">
             <a href="/crm" class="btn btn-outline-primary btn-sm">View CRM dashboard</a>
-            <a href="#" class="btn btn-outline-primary btn-sm" id="linkAging">View receivables ageing</a>
+            <a href="/admin/credit-approvals" class="btn btn-outline-primary btn-sm">Credit approvals</a>
         </div>
     </div>
 </div>
@@ -75,9 +75,7 @@ document.getElementById('importForm').addEventListener('submit', async function(
     try {
         const response = await fetch('/api/crm/receivables/import', {
             method: 'POST',
-            headers: {
-                'X-CSRF-Token': csrfToken
-            },
+            headers: { 'X-CSRF-Token': csrfToken },
             body: formData
         });
         const data = await response.json();
@@ -103,13 +101,14 @@ document.getElementById('importForm').addEventListener('submit', async function(
         }
         const previewEl = document.getElementById('resultPreview');
         if (data.preview && data.preview.length) {
-            previewEl.innerHTML = '<strong>Sample imported rows:</strong><table class="table table-sm mt-1"><thead><tr><th>Party</th><th>Amount</th><th>Reference</th><th>Date</th></tr></thead><tbody>' +
+            previewEl.innerHTML = '<strong>Sample rows:</strong><table class="table table-sm mt-1"><thead><tr><th>Party</th><th>Amount</th><th>Reference</th><th>Date</th></tr></thead><tbody>' +
                 data.preview.map(r => '<tr><td>' + escapeHtml(r.party_name) + '</td><td>₹' + Number(r.amount).toLocaleString() + '</td><td>' + escapeHtml(r.reference || '') + '</td><td>' + escapeHtml(r.date || '') + '</td></tr>').join('') + '</tbody></table>';
         } else {
             previewEl.innerHTML = '';
         }
+
         document.getElementById('success-container').style.display = 'block';
-        document.getElementById('success-container').textContent = 'Import completed. Data is updated in Parties and CRM receivables ageing.';
+        document.getElementById('success-container').textContent = 'Import completed. Busy bills are updated in CRM receivables.';
         document.getElementById('btnImport').disabled = false;
         fileInput.value = '';
     } catch (err) {
@@ -118,10 +117,6 @@ document.getElementById('importForm').addEventListener('submit', async function(
     }
 });
 
-document.getElementById('linkAging').addEventListener('click', function(e) {
-    e.preventDefault();
-    window.location.href = '/crm';
-});
 function escapeHtml(s) {
     if (s == null) return '';
     const d = document.createElement('div');
@@ -129,3 +124,4 @@ function escapeHtml(s) {
     return d.innerHTML;
 }
 </script>
+

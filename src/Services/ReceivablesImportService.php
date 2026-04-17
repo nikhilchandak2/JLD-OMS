@@ -13,6 +13,10 @@ use App\Models\CrmReceivableEntry;
  */
 class ReceivablesImportService
 {
+    private const MAX_IMPORT_ROWS = 10000;
+    private const MAX_PARTY_NAME_LENGTH = 255;
+    private const MAX_REFERENCE_LENGTH = 255;
+
     private PartyRepository $partyRepo;
     private CrmReceivableEntryRepository $receivableRepo;
 
@@ -31,13 +35,14 @@ class ReceivablesImportService
     /**
      * @param string $csvContent Raw CSV content
      * @param int|null $createdBy User ID for audit
-     * @return array{success: bool, parties_created: int, parties_matched: int, invoices_added: int, errors: array, preview: array}
+     * @return array{success: bool, parties_created: int, parties_matched: int, invoices_added: int, invoices_updated: int, errors: array, preview: array}
      */
     public function importFromCsv(string $csvContent, ?int $createdBy = null): array
     {
         $partiesCreated = 0;
         $partiesMatched = 0;
         $invoicesAdded = 0;
+        $invoicesUpdated = 0;
         $errors = [];
         $preview = [];
         $seenParties = [];
@@ -54,6 +59,7 @@ class ReceivablesImportService
                 'parties_created' => 0,
                 'parties_matched' => 0,
                 'invoices_added' => 0,
+                'invoices_updated' => 0,
                 'errors' => ['CSV must have a header row and at least one data row.'],
                 'preview' => [],
             ];
@@ -73,6 +79,7 @@ class ReceivablesImportService
                 'parties_created' => 0,
                 'parties_matched' => 0,
                 'invoices_added' => 0,
+                'invoices_updated' => 0,
                 'errors' => ['Could not find a Party/Customer name column. Use headers like "Party Name", "Customer", or "Name".'],
                 'preview' => [array_combine($headerRow, $headerRow) ?: $headerRow],
             ];
@@ -83,6 +90,7 @@ class ReceivablesImportService
                 'parties_created' => 0,
                 'parties_matched' => 0,
                 'invoices_added' => 0,
+                'invoices_updated' => 0,
                 'errors' => ['Could not find an Amount/Due column. Use headers like "Amount", "Due", "Balance", or "Amount Due".'],
                 'preview' => [array_combine($headerRow, $headerRow) ?: $headerRow],
             ];
@@ -94,6 +102,11 @@ class ReceivablesImportService
         $rowNum = 1; // after header
         foreach ($lines as $line) {
             $rowNum++;
+            if ($rowNum > self::MAX_IMPORT_ROWS + 1) {
+                $errors[] = 'Import stopped: CSV exceeds maximum allowed rows (' . self::MAX_IMPORT_ROWS . ').';
+                break;
+            }
+
             $row = str_getcsv($line);
             if (count($row) < max($partyCol, $amountCol) + 1) {
                 continue;
@@ -102,6 +115,11 @@ class ReceivablesImportService
             $partyName = trim((string)($row[$partyCol] ?? ''));
             $amountRaw = trim((string)($row[$amountCol] ?? ''));
             if ($partyName === '' || $amountRaw === '') {
+                continue;
+            }
+
+            if (strlen($partyName) > self::MAX_PARTY_NAME_LENGTH) {
+                $errors[] = "Row {$rowNum}: Party name is too long – skipped.";
                 continue;
             }
 
@@ -131,18 +149,33 @@ class ReceivablesImportService
             }
 
             $reference = $refCol !== null && isset($row[$refCol]) ? trim((string)$row[$refCol]) : '';
+            if (strlen($reference) > self::MAX_REFERENCE_LENGTH) {
+                $reference = substr($reference, 0, self::MAX_REFERENCE_LENGTH);
+            }
             $entryDate = $dateCol !== null && isset($row[$dateCol]) ? $this->parseDate(trim((string)$row[$dateCol])) : date('Y-m-d');
 
-            $entry = new CrmReceivableEntry();
-            $entry->partyId = $party->id;
-            $entry->entryType = 'invoice';
-            $entry->amount = $amount;
-            $entry->entryDate = $entryDate;
-            $entry->reference = $reference;
-            $entry->description = 'Imported from CSV';
-            $entry->createdBy = $createdBy;
-            $this->receivableRepo->create($entry);
-            $invoicesAdded++;
+            $description = 'Imported from Busy (CSV)';
+            $didUpdate = false;
+            if ($reference !== '') {
+                $existing = $this->receivableRepo->findInvoiceByPartyAndReference($party->id, $reference);
+                if ($existing) {
+                    $this->receivableRepo->updateInvoice((int)$existing->id, $amount, $entryDate, $description);
+                    $invoicesUpdated++;
+                    $didUpdate = true;
+                }
+            }
+            if (!$didUpdate) {
+                $entry = new CrmReceivableEntry();
+                $entry->partyId = $party->id;
+                $entry->entryType = 'invoice';
+                $entry->amount = $amount;
+                $entry->entryDate = $entryDate;
+                $entry->reference = $reference;
+                $entry->description = $description;
+                $entry->createdBy = $createdBy;
+                $this->receivableRepo->create($entry);
+                $invoicesAdded++;
+            }
 
             if (count($preview) < 5) {
                 $preview[] = [
@@ -159,6 +192,7 @@ class ReceivablesImportService
             'parties_created' => $partiesCreated,
             'parties_matched' => $partiesMatched,
             'invoices_added' => $invoicesAdded,
+            'invoices_updated' => $invoicesUpdated,
             'errors' => $errors,
             'preview' => $preview,
         ];
@@ -168,6 +202,9 @@ class ReceivablesImportService
     {
         foreach ($headers as $i => $h) {
             $h = trim($h);
+            if ($h === '') {
+                continue;
+            }
             foreach ($candidates as $c) {
                 if ($h === $c || strpos($h, $c) !== false || strpos($c, $h) !== false) {
                     return $i;

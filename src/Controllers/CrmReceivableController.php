@@ -10,6 +10,10 @@ use App\Models\CrmReceivableEntry;
 
 class CrmReceivableController
 {
+    private const MAX_UPLOAD_BYTES = 5242880; // 5MB
+    private const MAX_REFERENCE_LENGTH = 255;
+    private const MAX_DESCRIPTION_LENGTH = 1000;
+
     private AuthService $authService;
     private CrmReceivableEntryRepository $receivableRepo;
     private PartyRepository $partyRepo;
@@ -24,7 +28,7 @@ class CrmReceivableController
     private function requireCrmAccess(): bool
     {
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'crm'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'crm', 'accounts'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return false;
@@ -64,6 +68,11 @@ class CrmReceivableController
     {
         header('Content-Type: application/json');
         if (!$this->requireCrmAccess()) return;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
         $user = $this->authService->getCurrentUser();
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
         $partyId = (int)($input['party_id'] ?? 0);
@@ -84,13 +93,34 @@ class CrmReceivableController
             echo json_encode(['error' => 'Amount must be positive']);
             return;
         }
+
+        $entryDate = !empty($input['entry_date']) ? (string)$input['entry_date'] : date('Y-m-d');
+        if (!$this->isValidDate($entryDate)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'entry_date must be in YYYY-MM-DD format']);
+            return;
+        }
+
+        $reference = trim((string)($input['reference'] ?? ''));
+        $description = trim((string)($input['description'] ?? ''));
+        if (strlen($reference) > self::MAX_REFERENCE_LENGTH) {
+            http_response_code(400);
+            echo json_encode(['error' => 'reference is too long']);
+            return;
+        }
+        if (strlen($description) > self::MAX_DESCRIPTION_LENGTH) {
+            http_response_code(400);
+            echo json_encode(['error' => 'description is too long']);
+            return;
+        }
+
         $entry = new CrmReceivableEntry();
         $entry->partyId = $partyId;
         $entry->entryType = $type;
         $entry->amount = $amount;
-        $entry->entryDate = !empty($input['entry_date']) ? $input['entry_date'] : date('Y-m-d');
-        $entry->reference = trim($input['reference'] ?? '');
-        $entry->description = trim($input['description'] ?? '');
+        $entry->entryDate = $entryDate;
+        $entry->reference = $reference;
+        $entry->description = $description;
         $entry->createdBy = $user ? (int)$user['id'] : null;
         try {
             $created = $this->receivableRepo->create($entry);
@@ -102,8 +132,7 @@ class CrmReceivableController
                 'outstanding' => $this->receivableRepo->getOutstandingForParty($partyId),
             ]);
         } catch (\Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            $this->respondServerError('Failed to add receivable entry', $e);
         }
     }
 
@@ -111,6 +140,11 @@ class CrmReceivableController
     {
         header('Content-Type: application/json');
         if (!$this->requireCrmAccess()) return;
+        if ($_SERVER['REQUEST_METHOD'] !== 'DELETE') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
         $eid = (int)$id;
         $entry = $eid > 0 ? $this->receivableRepo->findById($eid) : null;
         if (!$entry) {
@@ -122,8 +156,7 @@ class CrmReceivableController
             $this->receivableRepo->delete($eid);
             echo json_encode(['success' => true, 'message' => 'Entry deleted', 'outstanding' => $this->receivableRepo->getOutstandingForParty($entry->partyId)]);
         } catch (\Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            $this->respondServerError('Failed to delete receivable entry', $e);
         }
     }
 
@@ -170,6 +203,11 @@ class CrmReceivableController
     {
         header('Content-Type: application/json');
         if (!$this->requireCrmAccess()) return;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
 
         $file = $_FILES['file'] ?? null;
         if (!$file || ($file['error'] ?? 0) !== UPLOAD_ERR_OK) {
@@ -184,7 +222,21 @@ class CrmReceivableController
             return;
         }
 
-        $content = file_get_contents($file['tmp_name']);
+        $size = (int)($file['size'] ?? 0);
+        if ($size <= 0 || $size > self::MAX_UPLOAD_BYTES) {
+            http_response_code(400);
+            echo json_encode(['error' => 'CSV file must be between 1 byte and 5MB']);
+            return;
+        }
+
+        $tmpName = (string)($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid uploaded file']);
+            return;
+        }
+
+        $content = file_get_contents($tmpName);
         if ($content === false) {
             http_response_code(400);
             echo json_encode(['error' => 'Could not read file.']);
@@ -202,12 +254,25 @@ class CrmReceivableController
                 'parties_created' => $result['parties_created'],
                 'parties_matched' => $result['parties_matched'],
                 'invoices_added' => $result['invoices_added'],
+                'invoices_updated' => $result['invoices_updated'] ?? 0,
                 'errors' => $result['errors'],
                 'preview' => $result['preview'],
             ]);
         } catch (\Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            $this->respondServerError('Failed to import receivables CSV', $e);
         }
+    }
+
+    private function isValidDate(string $date): bool
+    {
+        $d = \DateTime::createFromFormat('Y-m-d', $date);
+        return $d && $d->format('Y-m-d') === $date;
+    }
+
+    private function respondServerError(string $message, \Throwable $e): void
+    {
+        error_log($message . ': ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['error' => $message]);
     }
 }

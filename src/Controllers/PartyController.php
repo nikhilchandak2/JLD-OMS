@@ -9,6 +9,8 @@ use App\Models\Party;
 
 class PartyController
 {
+    private const MAX_UPLOAD_BYTES = 5242880; // 5MB
+
     private AuthService $authService;
     private PartyRepository $partyRepository;
     
@@ -372,11 +374,11 @@ class PartyController
             return;
         }
         
-        // Check permissions - allow both entry and admin users
+        // Restrict destructive action to admin/accounts roles.
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
+        if (!$user || !$this->authService->hasAnyRole(['admin', 'accounts'])) {
             http_response_code(403);
-            echo json_encode(['error' => 'Entry or Admin access required']);
+            echo json_encode(['error' => 'Admin or Accounts access required']);
             return;
         }
         
@@ -393,8 +395,7 @@ class PartyController
                 echo json_encode(['error' => 'Party not found']);
             }
         } catch (\Exception $e) {
-            http_response_code(400);
-            echo json_encode(['error' => $e->getMessage()]);
+            $this->respondServerError('Failed to delete party', $e);
         }
     }
 
@@ -405,6 +406,12 @@ class PartyController
     public function importFromCsv(): void
     {
         header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
+
         $user = $this->authService->getCurrentUser();
         if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
             http_response_code(403);
@@ -425,7 +432,21 @@ class PartyController
             return;
         }
 
-        $content = file_get_contents($file['tmp_name']);
+        $size = (int)($file['size'] ?? 0);
+        if ($size <= 0 || $size > self::MAX_UPLOAD_BYTES) {
+            http_response_code(400);
+            echo json_encode(['error' => 'CSV file must be between 1 byte and 5MB']);
+            return;
+        }
+
+        $tmpName = (string)($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid uploaded file']);
+            return;
+        }
+
+        $content = file_get_contents($tmpName);
         if ($content === false) {
             http_response_code(400);
             echo json_encode(['error' => 'Could not read file.']);
@@ -444,8 +465,14 @@ class PartyController
                 'preview' => $result['preview'],
             ]);
         } catch (\Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            $this->respondServerError('Failed to import parties CSV', $e);
         }
+    }
+
+    private function respondServerError(string $message, \Throwable $e): void
+    {
+        error_log($message . ': ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['error' => $message]);
     }
 }

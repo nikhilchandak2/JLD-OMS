@@ -232,31 +232,37 @@ async function loadFormData() {
         const companiesResponse = await apiCall('/api/companies');
         const companySelect = document.getElementById('companyId');
         
-        const companyOptions = companiesResponse.data.map(company => 
-            `<option value="${company.id}">${company.name} (${company.code})</option>`
-        ).join('');
-        
-        companySelect.innerHTML = '<option value="">Select company...</option>' + companyOptions;
+        companySelect.innerHTML = '<option value="">Select company...</option>';
+        companiesResponse.data.forEach((company) => {
+            const option = document.createElement('option');
+            option.value = String(company.id ?? '');
+            option.textContent = `${company.name ?? ''} (${company.code ?? ''})`;
+            companySelect.appendChild(option);
+        });
         
         // Load parties
         const partiesResponse = await apiCall('/api/reports/parties');
         const partySelect = document.getElementById('partyId');
         
-        const partyOptions = partiesResponse.data.map(party => 
-            `<option value="${party.id}">${party.name}</option>`
-        ).join('');
-        
-        partySelect.innerHTML = '<option value="">Select or type to search party...</option>' + partyOptions;
+        partySelect.innerHTML = '<option value="">Select or type to search party...</option>';
+        partiesResponse.data.forEach((party) => {
+            const option = document.createElement('option');
+            option.value = String(party.id ?? '');
+            option.textContent = String(party.name ?? '');
+            partySelect.appendChild(option);
+        });
         
         // Load products
         const productsResponse = await apiCall('/api/reports/products');
         const productSelect = document.getElementById('productId');
         
-        const productOptions = productsResponse.data.map(product => 
-            `<option value="${product.id}">${product.name}</option>`
-        ).join('');
-        
-        productSelect.innerHTML = '<option value="">Select or type to search product...</option>' + productOptions;
+        productSelect.innerHTML = '<option value="">Select or type to search product...</option>';
+        productsResponse.data.forEach((product) => {
+            const option = document.createElement('option');
+            option.value = String(product.id ?? '');
+            option.textContent = String(product.name ?? '');
+            productSelect.appendChild(option);
+        });
         
         // Initialize Select2 for searchable dropdowns after a short delay
         setTimeout(() => {
@@ -307,7 +313,8 @@ document.getElementById('quickAddPartyForm').addEventListener('submit', async fu
         const response = await fetch('/api/parties', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
             },
             body: JSON.stringify(data)
         });
@@ -353,7 +360,8 @@ document.getElementById('quickAddProductForm').addEventListener('submit', async 
         const response = await fetch('/api/products', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
             },
             body: JSON.stringify(data)
         });
@@ -418,7 +426,7 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
             body: JSON.stringify(orderData)
         });
         
-        showSuccess('Order created successfully! Order No: ' + response.data.order_no);
+        showSuccess((response.message || 'Order created successfully') + '! Order No: ' + response.data.order_no);
         
         // Reset form
         this.reset();

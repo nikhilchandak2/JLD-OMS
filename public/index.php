@@ -10,10 +10,13 @@ use App\Core\Router;
 use App\Core\Database;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\CsrfMiddleware;
+use App\Middleware\RateLimitMiddleware;
 
 // Load environment variables
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->load();
+
+applySecurityHeaders();
 
 // Set timezone (default: India)
 date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'Asia/Kolkata');
@@ -46,6 +49,7 @@ $router = new Router();
 
 // Register middleware
 $router->addMiddleware(new CsrfMiddleware());
+$router->addMiddleware(new RateLimitMiddleware());
 
 // API Routes
 $router->group('/api', function($router) {
@@ -263,6 +267,58 @@ try {
         echo json_encode(['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
     } else {
         echo json_encode(['error' => 'Internal Server Error']);
+    }
+}
+
+function applySecurityHeaders(): void
+{
+    $enabledRaw = strtolower(trim((string)($_ENV['SECURITY_HEADERS_ENABLED'] ?? '1')));
+    $enabled = !in_array($enabledRaw, ['0', 'false', 'off', 'no'], true);
+    if (!$enabled) {
+        return;
+    }
+
+    // Basic hardening headers.
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+    header('X-Permitted-Cross-Domain-Policies: none');
+    header('Cross-Origin-Resource-Policy: same-origin');
+
+    $csp = trim((string)($_ENV['SECURITY_CSP'] ?? ''));
+    if ($csp === '') {
+        // Compatible default with current external CDNs and inline scripts/styles.
+        $csp = "default-src 'self'; "
+            . "base-uri 'self'; "
+            . "frame-ancestors 'self'; "
+            . "object-src 'none'; "
+            . "form-action 'self'; "
+            . "img-src 'self' data: https:; "
+            . "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:; "
+            . "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+            . "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com; "
+            . "connect-src 'self';";
+    }
+    header('Content-Security-Policy: ' . $csp);
+
+    $secureRequest = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+    if ($secureRequest) {
+        $hstsMaxAge = (int)($_ENV['SECURITY_HSTS_MAX_AGE'] ?? 31536000);
+        $includeSubdomainsRaw = strtolower(trim((string)($_ENV['SECURITY_HSTS_INCLUDE_SUBDOMAINS'] ?? '1')));
+        $preloadRaw = strtolower(trim((string)($_ENV['SECURITY_HSTS_PRELOAD'] ?? '0')));
+        $includeSubdomains = !in_array($includeSubdomainsRaw, ['0', 'false', 'off', 'no'], true);
+        $preload = !in_array($preloadRaw, ['0', 'false', 'off', 'no'], true);
+
+        $hsts = 'max-age=' . max($hstsMaxAge, 300);
+        if ($includeSubdomains) {
+            $hsts .= '; includeSubDomains';
+        }
+        if ($preload) {
+            $hsts .= '; preload';
+        }
+        header('Strict-Transport-Security: ' . $hsts);
     }
 }
 

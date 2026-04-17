@@ -66,6 +66,31 @@ class CrmReceivableEntryRepository
         return $this->findById($entry->id);
     }
 
+    public function findInvoiceByPartyAndReference(int $partyId, string $reference): ?CrmReceivableEntry
+    {
+        $reference = trim($reference);
+        if ($partyId <= 0 || $reference === '') return null;
+
+        $sql = "SELECT * FROM crm_receivable_entries
+                WHERE party_id = ? AND entry_type = 'invoice' AND reference = ?
+                ORDER BY id DESC
+                LIMIT 1";
+        $stmt = $this->database->getConnection()->prepare($sql);
+        $stmt->execute([$partyId, $reference]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ? new CrmReceivableEntry($row) : null;
+    }
+
+    public function updateInvoice(int $id, float $amount, string $entryDate, string $description): bool
+    {
+        $sql = "UPDATE crm_receivable_entries
+                SET amount = ?, entry_date = ?, description = ?
+                WHERE id = ? AND entry_type = 'invoice'";
+        $stmt = $this->database->getConnection()->prepare($sql);
+        $stmt->execute([$amount, $entryDate, $description, $id]);
+        return $stmt->rowCount() > 0;
+    }
+
     public function delete(int $id): bool
     {
         $sql = "DELETE FROM crm_receivable_entries WHERE id = ?";

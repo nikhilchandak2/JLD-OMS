@@ -14,6 +14,9 @@ use App\Services\FuelAlertService;
 
 class GPSFuelWebhookController
 {
+    private const DEFAULT_MAX_PAYLOAD_BYTES = 1048576; // 1MB
+    private const DEFAULT_TIMESTAMP_TOLERANCE_SECONDS = 300;
+
     private VehicleRepository $vehicleRepository;
     private GPSDeviceRepository $gpsDeviceRepository;
     private FuelSensorRepository $fuelSensorRepository;
@@ -47,11 +50,16 @@ class GPSFuelWebhookController
             return;
         }
         
-        // Get input data
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        if (!$this->validatePayloadSize()) {
+            http_response_code(413);
+            echo json_encode(['error' => 'Payload too large']);
+            return;
+        }
+
+        $rawBody = file_get_contents('php://input') ?: '';
+        $input = json_decode($rawBody, true) ?? $_POST;
         
-        // Validate API key if configured
-        if (!$this->validateApiKey()) {
+        if (!$this->validateWebhookRequest($rawBody)) {
             http_response_code(401);
             echo json_encode(['error' => 'Unauthorized']);
             return;
@@ -136,10 +144,10 @@ class GPSFuelWebhookController
             ]);
             
         } catch (\Exception $e) {
+            error_log('GPS webhook error: ' . $e->getMessage());
             http_response_code(500);
             echo json_encode([
-                'error' => 'Internal server error',
-                'message' => $e->getMessage()
+                'error' => 'Internal server error'
             ]);
         }
     }
@@ -158,9 +166,16 @@ class GPSFuelWebhookController
             return;
         }
         
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        if (!$this->validatePayloadSize()) {
+            http_response_code(413);
+            echo json_encode(['error' => 'Payload too large']);
+            return;
+        }
+
+        $rawBody = file_get_contents('php://input') ?: '';
+        $input = json_decode($rawBody, true) ?? $_POST;
         
-        if (!$this->validateApiKey()) {
+        if (!$this->validateWebhookRequest($rawBody)) {
             http_response_code(401);
             echo json_encode(['error' => 'Unauthorized']);
             return;
@@ -230,10 +245,10 @@ class GPSFuelWebhookController
             ]);
             
         } catch (\Exception $e) {
+            error_log('Fuel webhook error: ' . $e->getMessage());
             http_response_code(500);
             echo json_encode([
-                'error' => 'Internal server error',
-                'message' => $e->getMessage()
+                'error' => 'Internal server error'
             ]);
         }
     }
@@ -256,14 +271,14 @@ class GPSFuelWebhookController
      */
     private function ingestFuelFromPayload(\App\Models\Vehicle $vehicle, string $deviceId, array $input): void
     {
-        $fuelLevel = $this->firstNumeric($input, [
+        $fuelLevel = $this->extractNumericValue($input, [
             'fuel_level', 'fuelLevel', 'fuel', 'level', 'tank_level', 'tankLevel', 'fuel_liters', 'fuelLiters'
         ]);
-        $fuelPercentage = $this->firstNumeric($input, [
+        $fuelPercentage = $this->extractNumericValue($input, [
             'fuel_percentage', 'fuelPercentage', 'percentage', 'fuel_percent', 'fuelPercent'
         ]);
-        $temperature = $this->firstNumeric($input, ['temperature', 'temp', 'fuel_temp', 'fuelTemperature']);
-        $voltage = $this->firstNumeric($input, ['voltage', 'battery_voltage', 'sensor_voltage']);
+        $temperature = $this->extractNumericValue($input, ['temperature', 'temp', 'fuel_temp', 'fuelTemperature']);
+        $voltage = $this->extractNumericValue($input, ['voltage', 'battery_voltage', 'sensor_voltage']);
 
         // Skip if there is no fuel signal in this payload.
         if ($fuelLevel === null && $fuelPercentage === null && $temperature === null && $voltage === null) {
@@ -309,21 +324,71 @@ class GPSFuelWebhookController
     }
 
     /**
-     * Return first numeric value from provided keys.
+     * Return first numeric value from provided keys, including nested payloads.
      */
-    private function firstNumeric(array $input, array $keys): ?float
+    private function extractNumericValue(array $payload, array $targetKeys): ?float
     {
-        foreach ($keys as $key) {
-            if (!array_key_exists($key, $input) || $input[$key] === '' || $input[$key] === null) {
-                continue;
-            }
-            if (is_numeric($input[$key])) {
-                return (float)$input[$key];
+        $lookup = [];
+        foreach ($targetKeys as $key) {
+            $lookup[$this->normalizeKey($key)] = true;
+        }
+
+        $stack = [$payload];
+        while ($stack) {
+            $current = array_pop($stack);
+            foreach ($current as $key => $value) {
+                if (is_array($value)) {
+                    $stack[] = $value;
+                }
+                if (!is_scalar($value)) {
+                    continue;
+                }
+                if (isset($lookup[$this->normalizeKey((string)$key)])) {
+                    $parsed = $this->parseNumeric((string)$value);
+                    if ($parsed !== null) {
+                        return $parsed;
+                    }
+                }
             }
         }
         return null;
     }
+
+    private function normalizeKey(string $key): string
+    {
+        return preg_replace('/[^a-z0-9]/', '', strtolower($key)) ?? strtolower($key);
+    }
+
+    private function parseNumeric(string $value): ?float
+    {
+        $clean = trim(str_replace('%', '', $value));
+        if ($clean === '' || !is_numeric($clean)) {
+            return null;
+        }
+        return (float)$clean;
+    }
     
+    private function validateWebhookRequest(string $rawBody): bool
+    {
+        $apiKeyConfigured = isset($_ENV['GPS_FUEL_API_KEY']) && (string)$_ENV['GPS_FUEL_API_KEY'] !== '';
+        $hmacConfigured = isset($_ENV['GPS_FUEL_WEBHOOK_SECRET']) && (string)$_ENV['GPS_FUEL_WEBHOOK_SECRET'] !== '';
+
+        // Backwards compatibility for local/dev environments without webhook auth configured.
+        if (!$apiKeyConfigured && !$hmacConfigured) {
+            return true;
+        }
+
+        if ($apiKeyConfigured && $this->validateApiKey()) {
+            return true;
+        }
+
+        if ($hmacConfigured && $this->validateHmacSignature($rawBody)) {
+            return true;
+        }
+
+        return false;
+    }
+
     private function validateApiKey(): bool
     {
         $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? null;
@@ -336,8 +401,56 @@ class GPSFuelWebhookController
                 return hash_equals($validApiKey, $apiKey);
             }
         }
-        
-        // If no API key configured, allow all (for development)
-        return true;
+        return false;
+    }
+
+    private function validatePayloadSize(): bool
+    {
+        $contentLength = isset($_SERVER['CONTENT_LENGTH']) ? (int)$_SERVER['CONTENT_LENGTH'] : 0;
+        $maxBytes = (int)($_ENV['GPS_FUEL_WEBHOOK_MAX_BYTES'] ?? self::DEFAULT_MAX_PAYLOAD_BYTES);
+        return $contentLength <= 0 || $contentLength <= max($maxBytes, 1);
+    }
+
+    private function validateHmacSignature(string $rawBody): bool
+    {
+        $secret = (string)($_ENV['GPS_FUEL_WEBHOOK_SECRET'] ?? '');
+        if ($secret === '') {
+            // HMAC mode not configured.
+            return false;
+        }
+
+        $timestamp = $_SERVER['HTTP_X_WEBHOOK_TIMESTAMP'] ?? '';
+        $signatureHeader = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'] ?? '';
+        if ($timestamp === '' || $signatureHeader === '') {
+            return false;
+        }
+
+        if (!ctype_digit((string)$timestamp)) {
+            return false;
+        }
+
+        $tolerance = (int)($_ENV['GPS_FUEL_WEBHOOK_TOLERANCE_SECONDS'] ?? self::DEFAULT_TIMESTAMP_TOLERANCE_SECONDS);
+        $timestampInt = (int)$timestamp;
+        if (abs(time() - $timestampInt) > max($tolerance, 1)) {
+            return false;
+        }
+
+        $provided = $this->normalizeSignature($signatureHeader);
+        if ($provided === '') {
+            return false;
+        }
+
+        $signedPayload = $timestamp . '.' . $rawBody;
+        $expected = hash_hmac('sha256', $signedPayload, $secret);
+        return hash_equals($expected, $provided);
+    }
+
+    private function normalizeSignature(string $signature): string
+    {
+        $trimmed = trim($signature);
+        if (stripos($trimmed, 'sha256=') === 0) {
+            return substr($trimmed, 7);
+        }
+        return $trimmed;
     }
 }

@@ -19,22 +19,22 @@ class DispatchController
     public function index(): void
     {
         header('Content-Type: application/json');
-        
-        // Check permissions
-        $user = $this->authService->getCurrentUser();
-        if (!$user) {
-            http_response_code(401);
-            echo json_encode(['error' => 'Authentication required']);
+
+        if (!$this->requireDispatchReadAccess()) {
             return;
         }
         
         // Get query parameters
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+        $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+        $limit = max(1, min($limit, 200));
+        $offset = max(0, $offset);
         $filters = [
-            'order_id' => $_GET['order_id'] ?? null,
+            'order_id' => isset($_GET['order_id']) ? max(0, (int)$_GET['order_id']) : null,
             'start_date' => $_GET['start_date'] ?? null,
             'end_date' => $_GET['end_date'] ?? null,
-            'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 50,
-            'offset' => isset($_GET['offset']) ? (int)$_GET['offset'] : 0
+            'limit' => $limit,
+            'offset' => $offset
         ];
         
         try {
@@ -130,12 +130,8 @@ class DispatchController
     public function show(int $id): void
     {
         header('Content-Type: application/json');
-        
-        // Check permissions
-        $user = $this->authService->getCurrentUser();
-        if (!$user) {
-            http_response_code(401);
-            echo json_encode(['error' => 'Authentication required']);
+
+        if (!$this->requireDispatchReadAccess()) {
             return;
         }
         
@@ -264,6 +260,24 @@ class DispatchController
     {
         $d = \DateTime::createFromFormat('Y-m-d', $date);
         return $d && $d->format('Y-m-d') === $date;
+    }
+
+    private function requireDispatchReadAccess(): bool
+    {
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Authentication required']);
+            return false;
+        }
+
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Dispatch access required']);
+            return false;
+        }
+
+        return true;
     }
 }
 

@@ -6,6 +6,7 @@ use App\Repositories\OrderRepository;
 use App\Repositories\DispatchRepository;
 use App\Repositories\PartyRepository;
 use App\Repositories\CompanyRepository;
+use App\Repositories\CreditApprovalRepository;
 
 class DocumentGeneratorService
 {
@@ -15,6 +16,7 @@ class DocumentGeneratorService
     private DispatchRepository $dispatchRepository;
     private PartyRepository $partyRepository;
     private CompanyRepository $companyRepository;
+    private CreditApprovalRepository $creditApprovalRepository;
     
     public function __construct()
     {
@@ -24,6 +26,7 @@ class DocumentGeneratorService
         $this->dispatchRepository = new DispatchRepository();
         $this->partyRepository = new PartyRepository();
         $this->companyRepository = new CompanyRepository();
+        $this->creditApprovalRepository = new CreditApprovalRepository();
     }
     
     /**
@@ -43,6 +46,12 @@ class DocumentGeneratorService
         $order = $this->orderRepository->findById($orderId);
         if (!$order) {
             throw new \Exception("Order not found: {$orderId}");
+        }
+
+        $approval = $this->creditApprovalRepository->getForOrder($orderId);
+        if ($approval && ($approval['status'] ?? '') !== 'approved') {
+            $status = (string)($approval['status'] ?? 'pending');
+            throw new \Exception("Cannot generate billing documents until admin credit approval is granted. Current status: {$status}.");
         }
         
         $party = $this->partyRepository->findById($order->partyId);

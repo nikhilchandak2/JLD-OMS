@@ -1169,7 +1169,14 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         // Global CSRF token
-        const csrfToken = '<?= $csrf_token ?? '' ?>';
+        const csrfToken = <?= json_encode((string)($csrf_token ?? ''), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(value);
+            return div.innerHTML;
+        }
         
         // Global API helper functions
         async function apiCall(url, options = {}) {
@@ -1198,9 +1205,10 @@
                     container.style.display = 'none';
                     return;
                 }
+                const safeMessage = escapeHtml(message);
                 container.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        ${message}
+                        ${safeMessage}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;
@@ -1211,9 +1219,10 @@
         function showSuccess(message, containerId = 'success-container') {
             const container = document.getElementById(containerId);
             if (container) {
+                const safeMessage = escapeHtml(message);
                 container.innerHTML = `
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
-                        ${message}
+                        ${safeMessage}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;
@@ -1231,7 +1240,7 @@
                 'partial': '<span class="badge bg-info">Partial</span>',
                 'completed': '<span class="badge bg-success">Completed</span>'
             };
-            return statusMap[status] || status;
+            return statusMap[status] || escapeHtml(status);
         }
         
         function formatPriority(priority) {
@@ -1239,7 +1248,7 @@
                 'normal': '<span class="badge bg-secondary">Normal</span>',
                 'urgent': '<span class="badge bg-danger">Urgent</span>'
             };
-            return priorityMap[priority] || priority;
+            return priorityMap[priority] || escapeHtml(priority);
         }
         
         async function logout() {

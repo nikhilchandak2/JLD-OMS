@@ -71,7 +71,7 @@
         </div>
         
         <div class="col-md-4">
-            <?php if (in_array($user['role'], ['entry', 'admin'])): ?>
+            <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin'])): ?>
             <div class="card">
                 <div class="card-header">
                     <h5><i class="bi bi-truck"></i> Create Dispatch</h5>
@@ -154,7 +154,7 @@
 
 <script>
 let currentOrder = null;
-const orderId = <?= $order_id ?>;
+const orderId = <?= (int)$order_id ?>;
 
 async function loadOrderDetails() {
     const loading = document.getElementById('loading');
@@ -187,7 +187,15 @@ function updateOrderDisplay(order) {
     document.getElementById('orderedQty').textContent = order.order_qty_trucks;
     document.getElementById('dispatchedQty').textContent = order.total_dispatched;
     document.getElementById('pendingQty').textContent = order.pending_trucks;
-    document.getElementById('orderStatus').innerHTML = formatStatus(order.status);
+    const creditApproval = order.credit_approval || null;
+    const creditBadge = creditApproval
+        ? creditApproval.status === 'pending'
+            ? '<div class="mt-1 text-warning fw-semibold">Credit Approval: Pending</div>'
+            : creditApproval.status === 'approved'
+                ? '<div class="mt-1 text-success fw-semibold">Credit Approval: Approved</div>'
+                : '<div class="mt-1 text-danger fw-semibold">Credit Approval: Rejected</div>'
+        : '';
+    document.getElementById('orderStatus').innerHTML = formatStatus(order.status) + creditBadge;
     document.getElementById('availableQty').textContent = order.pending_trucks;
     
     // Update dispatch form max quantity
@@ -196,6 +204,16 @@ function updateOrderDisplay(order) {
         dispatchQtyInput.max = order.pending_trucks;
         dispatchQtyInput.placeholder = `Max: ${order.pending_trucks}`;
     }
+
+    // If credit approval is not approved yet, block dispatch UI (backend also enforces)
+    const dispatchBtn = document.getElementById('dispatchBtn');
+    if (dispatchBtn && creditApproval && creditApproval.status !== 'approved') {
+        dispatchBtn.disabled = true;
+        dispatchBtn.title = 'Admin credit approval required before dispatch';
+    }
+
+    // Default bill reference to order number
+    // bill generation removed; bills come from Busy import
     
     // Load delivery schedule if this is a recurring order
     if (order.is_recurring) {
@@ -250,12 +268,14 @@ function displayDeliverySchedule(deliveries) {
             ? '<span class="badge bg-warning">In Progress</span>'
             : '<span class="badge bg-secondary">Pending</span>';
         
+        const safeSequence = escapeHtml(delivery.delivery_sequence);
+        const safeQuantity = escapeHtml(delivery.trucks_quantity);
         scheduleHtml += `
             <div class="col-md-6 col-lg-4 mb-3">
                 <div class="card border-left-primary h-100 delivery-schedule-card">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="card-title mb-0">Delivery ${delivery.delivery_sequence}</h6>
+                            <h6 class="card-title mb-0">Delivery ${safeSequence}</h6>
                             ${statusBadge}
                         </div>
                         <p class="card-text mb-1">
@@ -264,7 +284,7 @@ function displayDeliverySchedule(deliveries) {
                         </p>
                         <p class="card-text mb-0">
                             <i class="bi bi-truck"></i> 
-                            <strong>${delivery.trucks_quantity} trucks</strong>
+                            <strong>${safeQuantity} trucks</strong>
                         </p>
                     </div>
                 </div>
@@ -307,16 +327,16 @@ function updateDispatchHistory(dispatches) {
         <tr>
             <td>${formatDate(dispatch.dispatch_date)}</td>
             <td><span class="badge bg-success">${dispatch.dispatch_qty_trucks}</span></td>
-            <td>${dispatch.vehicle_no || '-'}</td>
-            <td>${dispatch.remarks || '-'}</td>
-            <td>${dispatch.dispatched_by_name || 'Unknown'}</td>
+            <td>${escapeHtml(dispatch.vehicle_no || '-')}</td>
+            <td>${escapeHtml(dispatch.remarks || '-')}</td>
+            <td>${escapeHtml(dispatch.dispatched_by_name || 'Unknown')}</td>
         </tr>
     `).join('');
     
     tbody.innerHTML = rows;
 }
 
-<?php if (in_array($user['role'], ['entry', 'admin'])): ?>
+<?php if (in_array($user['role'], ['entry', 'admin', 'order_processing'])): ?>
 document.getElementById('dispatchForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
@@ -372,18 +392,25 @@ document.getElementById('dispatchForm').addEventListener('submit', async functio
 });
 <?php endif; ?>
 
+// bill generation removed; bills come from Busy import
+
 // Handle back navigation with preserved state
 function goBackToOrders() {
     const urlParams = new URLSearchParams(window.location.search);
     const returnUrl = urlParams.get('return');
     
     if (returnUrl) {
-        // Go back to the specific orders page with filters preserved
-        window.location.href = decodeURIComponent(returnUrl);
+        const decodedReturnUrl = decodeURIComponent(returnUrl);
+        // Restrict navigation to internal orders paths to prevent open redirects.
+        if (decodedReturnUrl.startsWith('/orders')) {
+            window.location.href = decodedReturnUrl;
+            return;
+        }
     } else {
         // Fallback to orders page
         window.location.href = '/orders';
     }
+    window.location.href = '/orders';
 }
 
 // Load order details on page load

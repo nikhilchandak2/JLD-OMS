@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Core\Database;
 use App\Repositories\DispatchRepository;
 use App\Repositories\OrderRepository;
+use App\Repositories\CreditApprovalRepository;
 use App\Repositories\ScheduledDeliveryRepository;
 use App\Models\Dispatch;
 
@@ -13,6 +14,7 @@ class DispatchService
     private Database $database;
     private DispatchRepository $dispatchRepository;
     private OrderRepository $orderRepository;
+    private CreditApprovalRepository $creditApprovalRepository;
     private ScheduledDeliveryRepository $scheduledDeliveryRepository;
     
     public function __construct()
@@ -20,6 +22,7 @@ class DispatchService
         $this->database = new Database();
         $this->dispatchRepository = new DispatchRepository();
         $this->orderRepository = new OrderRepository();
+        $this->creditApprovalRepository = new CreditApprovalRepository();
         $this->scheduledDeliveryRepository = new ScheduledDeliveryRepository();
     }
     
@@ -44,6 +47,12 @@ class DispatchService
         $order = $this->orderRepository->findById($data['order_id']);
         if (!$order) {
             throw new \Exception("Order not found");
+        }
+
+        $approval = $this->creditApprovalRepository->getForOrder($order->id);
+        if ($approval && ($approval['status'] ?? '') !== 'approved') {
+            $status = (string)($approval['status'] ?? 'pending');
+            throw new \Exception("Cannot dispatch until admin credit approval is granted. Current approval status: {$status}.");
         }
         
         // Validate business rules

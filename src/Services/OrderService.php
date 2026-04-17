@@ -5,6 +5,9 @@ namespace App\Services;
 use App\Core\Database;
 use App\Repositories\OrderRepository;
 use App\Repositories\DispatchRepository;
+use App\Repositories\PartyRepository;
+use App\Repositories\CrmReceivableEntryRepository;
+use App\Repositories\CreditApprovalRepository;
 use App\Repositories\ScheduledDeliveryRepository;
 use App\Models\Order;
 use App\Models\ScheduledDelivery;
@@ -14,6 +17,9 @@ class OrderService
     private Database $database;
     private OrderRepository $orderRepository;
     private DispatchRepository $dispatchRepository;
+    private PartyRepository $partyRepository;
+    private CrmReceivableEntryRepository $receivableEntryRepository;
+    private CreditApprovalRepository $creditApprovalRepository;
     private ScheduledDeliveryRepository $scheduledDeliveryRepository;
     
     public function __construct()
@@ -21,6 +27,9 @@ class OrderService
         $this->database = new Database();
         $this->orderRepository = new OrderRepository();
         $this->dispatchRepository = new DispatchRepository();
+        $this->partyRepository = new PartyRepository();
+        $this->receivableEntryRepository = new CrmReceivableEntryRepository();
+        $this->creditApprovalRepository = new CreditApprovalRepository();
         $this->scheduledDeliveryRepository = new ScheduledDeliveryRepository();
     }
     
@@ -57,6 +66,32 @@ class OrderService
         // Validate that product and party exist
         $this->validateProductExists($data['product_id']);
         $this->validatePartyExists($data['party_id']);
+
+        $createdByRole = (string)($data['created_by_role'] ?? '');
+        if ($createdByRole === '' && isset($data['created_by'])) {
+            $row = $this->database->fetch(
+                "SELECT r.name AS role_name
+                 FROM users u
+                 JOIN roles r ON u.role_id = r.id
+                 WHERE u.id = ?
+                 LIMIT 1",
+                [(int)$data['created_by']]
+            );
+            if ($row && !empty($row['role_name'])) {
+                $createdByRole = (string)$row['role_name'];
+            }
+        }
+        $partyId = (int)$data['party_id'];
+
+        $creditInfo = $this->getCreditLimitAndOutstanding($partyId);
+        $requiresApproval = false;
+        if ($creditInfo && $creditInfo['outstanding'] > $creditInfo['credit_limit']) {
+            $requiresApproval = true;
+        }
+
+        // Create an approval request whenever the party is over credit.
+        // Once the admin approves and increases credit limit, future orders won't require approval until limit is breached again.
+        $shouldCreateApprovalRequest = $requiresApproval;
         
         $order = new Order();
         $order->companyId = $data['company_id'];
@@ -84,6 +119,29 @@ class OrderService
             
             $orderId = $this->orderRepository->create($order);
             $order->id = $orderId;
+
+            if ($shouldCreateApprovalRequest) {
+                $approvalId = $this->creditApprovalRepository->createRequest(
+                    $orderId,
+                    $partyId,
+                    (float)$creditInfo['outstanding'],
+                    (float)$creditInfo['credit_limit'],
+                    (int)$data['created_by']
+                );
+
+                $this->logAuditEvent(
+                    (int)$data['created_by'],
+                    'credit_approval_requests',
+                    $approvalId,
+                    'CREATE',
+                    null,
+                    [
+                        'order_id' => $orderId,
+                        'party_id' => $partyId,
+                        'status' => 'pending'
+                    ]
+                );
+            }
             
             // Create scheduled deliveries if this is a recurring order
             if ($order->isRecurring) {
@@ -204,6 +262,75 @@ class OrderService
         
         if (!$result) {
             throw new \Exception("Party not found or inactive");
+        }
+    }
+
+    private function getCreditLimitAndOutstanding(int $partyId): ?array
+    {
+        $party = $this->partyRepository->findById($partyId);
+        if (!$party || $party->creditLimit === null || $party->creditLimit <= 0) {
+            return null;
+        }
+
+        $outstanding = $this->receivableEntryRepository->getOutstandingForParty($partyId);
+
+        return [
+            'credit_limit' => (float)$party->creditLimit,
+            'outstanding' => (float)$outstanding
+        ];
+    }
+
+    public function getCreditApprovalForOrder(int $orderId): ?array
+    {
+        $row = $this->creditApprovalRepository->getForOrder($orderId);
+        if (!$row) {
+            return null;
+        }
+
+        return [
+            'id' => (int)$row['id'],
+            'order_id' => (int)$row['order_id'],
+            'party_id' => (int)$row['party_id'],
+            'outstanding' => (float)$row['outstanding'],
+            'credit_limit' => (float)$row['credit_limit'],
+            'status' => (string)$row['status'],
+            'requested_at' => $row['requested_at'] ?? null,
+            'decided_at' => $row['decided_at'] ?? null,
+            'decision_note' => $row['decision_note'] ?? null
+        ];
+    }
+
+    public function getPendingCreditApprovals(): array
+    {
+        return $this->creditApprovalRepository->getPendingApprovals();
+    }
+
+    public function decideCreditApproval(
+        int $approvalId,
+        string $decision,
+        int $decidedBy,
+        ?string $note,
+        ?float $creditLimitIncrease
+    ): bool {
+        // Update request + party credit limit atomically.
+        $this->database->beginTransaction();
+        try {
+            $ok = $this->creditApprovalRepository->decide(
+                $approvalId,
+                $decision,
+                $decidedBy,
+                $note,
+                $creditLimitIncrease
+            );
+            if (!$ok) {
+                $this->database->rollback();
+                return false;
+            }
+            $this->database->commit();
+            return true;
+        } catch (\Exception $e) {
+            $this->database->rollback();
+            throw $e;
         }
     }
     

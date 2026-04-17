@@ -157,6 +157,28 @@ class WebController
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
+
+    public function creditApprovalsPage(): void
+    {
+        $this->requireAuth();
+
+        $user = $this->authService->getCurrentUser();
+
+        if (!$this->authService->hasRole('admin')) {
+            http_response_code(403);
+            $this->renderTemplate('error', [
+                'title' => 'Access Denied',
+                'message' => 'Admin access required'
+            ]);
+            return;
+        }
+
+        $this->renderTemplate('admin/credit-approvals', [
+            'title' => 'Credit Approvals',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
     
     public function parties(): void
     {
@@ -191,6 +213,22 @@ class WebController
         $user = $this->authService->getCurrentUser();
         $this->renderTemplate('parties-import', [
             'title' => 'Import parties',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function adminImportBills(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'accounts'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Admin or Accounts access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('admin/import-bills', [
+            'title' => 'Import bills (Busy)',
             'user' => $user,
             'csrf_token' => CsrfMiddleware::getToken()
         ]);

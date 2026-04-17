@@ -28,6 +28,7 @@
                                 <tr>
                                     <th>Name</th>
                                     <th>Status</th>
+                                    <th class="text-end">Credit Limit</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
@@ -88,6 +89,18 @@
                         <label for="address" class="form-label">Address</label>
                         <textarea class="form-control" id="address" name="address" rows="3"></textarea>
                     </div>
+
+                    <div class="mb-3">
+                        <label for="creditLimit" class="form-label">Credit Limit</label>
+                        <input type="number"
+                               class="form-control"
+                               id="creditLimit"
+                               name="credit_limit"
+                               min="0"
+                               step="0.01"
+                               placeholder="e.g., 500000">
+                        <div class="form-text">Used for credit limit checks when creating orders.</div>
+                    </div>
                     
                     <div class="mb-3">
                         <div class="form-check">
@@ -141,10 +154,11 @@ function renderPartiesTable() {
         row.innerHTML = `
             <td>${escapeHtml(party.name)}</td>
             <td><span class="badge ${party.is_active ? 'bg-success' : 'bg-secondary'}">${party.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td class="text-end">${party.credit_limit != null ? Number(party.credit_limit).toFixed(2) : '-'}</td>
             <td class="text-end">
-                <a href="/crm/parties/${party.id}" class="btn btn-sm btn-outline-success me-1" title="CRM view (profile, samples, receivables)"><i class="bi bi-person-lines-fill"></i> CRM</a>
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="editParty(${party.id})"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteParty(${party.id})"><i class="fas fa-trash"></i></button>
+                <a href="/crm/parties/${Number(party.id) || 0}" class="btn btn-sm btn-outline-success me-1" title="CRM view (profile, samples, receivables)"><i class="bi bi-person-lines-fill"></i> CRM</a>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editParty(${Number(party.id) || 0})"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteParty(${Number(party.id) || 0})"><i class="fas fa-trash"></i></button>
             </td>
         `;
         tbody.appendChild(row);
@@ -170,10 +184,12 @@ function openPartyModal(partyId = null) {
             document.getElementById('email').value = party.email || '';
             document.getElementById('address').value = party.address || '';
             document.getElementById('isActive').checked = party.is_active;
+            document.getElementById('creditLimit').value = party.credit_limit != null ? party.credit_limit : '';
         }
     } else {
         title.textContent = 'Add New Party';
         document.getElementById('isActive').checked = true;
+        document.getElementById('creditLimit').value = '';
     }
 }
 
@@ -194,7 +210,7 @@ async function deleteParty(partyId) {
         const response = await fetch(`/api/parties/${partyId}`, {
             method: 'DELETE',
             headers: {
-                'X-CSRF-Token': '<?= $csrf_token ?>'
+                'X-CSRF-Token': csrfToken
             }
         });
         
@@ -222,7 +238,10 @@ document.getElementById('partyForm').addEventListener('submit', async function(e
         phone: formData.get('phone'),
         email: formData.get('email'),
         address: formData.get('address'),
-        is_active: formData.has('is_active')
+        is_active: formData.has('is_active'),
+        credit_limit: formData.get('credit_limit') !== null && String(formData.get('credit_limit')).trim() !== ''
+            ? parseFloat(formData.get('credit_limit'))
+            : null
     };
     
     try {
@@ -232,7 +251,7 @@ document.getElementById('partyForm').addEventListener('submit', async function(e
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-Token': '<?= $csrf_token ?>'
+                    'X-CSRF-Token': csrfToken
                 },
                 body: JSON.stringify(data)
             });
@@ -241,7 +260,7 @@ document.getElementById('partyForm').addEventListener('submit', async function(e
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-Token': '<?= $csrf_token ?>'
+                    'X-CSRF-Token': csrfToken
                 },
                 body: JSON.stringify(data)
             });
@@ -270,8 +289,9 @@ function escapeHtml(text) {
 function showAlert(message, type) {
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    const safeMessage = escapeHtml(message);
     alertDiv.innerHTML = `
-        ${message}
+        ${safeMessage}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
     
