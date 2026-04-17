@@ -91,23 +91,6 @@
     </div>
 </div>
 
-<!-- Date-wise Stoppage Timeline -->
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-graph-up-arrow me-2"></i>Date-wise Stop Timeline</span>
-        <div class="d-flex align-items-center gap-2">
-            <label for="timelineVehicleSelect" class="small text-muted mb-0">Vehicle:</label>
-            <select class="form-select form-select-sm" id="timelineVehicleSelect" style="min-width: 220px;">
-                <option value="">Select vehicle</option>
-            </select>
-        </div>
-    </div>
-    <div class="card-body">
-        <div class="small text-muted mb-2" id="timelineInfo">Select a vehicle to view date-wise stop trend.</div>
-        <canvas id="stoppageTimelineChart" height="95"></canvas>
-    </div>
-</div>
-
 <div id="loading" class="loading">
     <div class="spinner-border" role="status"></div>
     <p>Loading trips...</p>
@@ -154,7 +137,6 @@
 <script>
 let tripsAutoRefreshInterval = null;
 let stoppagesModalInstance = null;
-let stoppageTimelineChart = null;
 
 function toggleTripsAutoRefresh() {
     const enabled = document.getElementById('autoRefreshTrips').checked;
@@ -193,7 +175,6 @@ function loadTrips() {
             if (data.success) {
                 renderStatistics(data.statistics);
                 renderStoppageSummary(data.stoppage_summary_by_vehicle || [], data.today_stoppage_summary || {});
-                updateTimelineVehicleOptions(data.stoppage_summary_by_vehicle || []);
                 renderTrips(data.data, data.destination_breakdown_by_vehicle || {});
             } else {
                 showError(data.error || 'Failed to load trips');
@@ -358,124 +339,6 @@ function renderStoppageSummary(rows, todaySummary) {
     }).join('');
 }
 
-function updateTimelineVehicleOptions(rows) {
-    const select = document.getElementById('timelineVehicleSelect');
-    const currentValue = select.value;
-    const options = rows.map(row => ({
-        id: String(row.vehicle_id),
-        label: row.vehicle_number
-    }));
-
-    select.innerHTML = '<option value="">Select vehicle</option>' + options
-        .map(o => `<option value="${o.id}">${escapeHtml(o.label)}</option>`)
-        .join('');
-
-    if (options.length === 0) {
-        select.value = '';
-        renderStoppageTimeline([]);
-        document.getElementById('timelineInfo').textContent = 'No vehicles available for the selected filters.';
-        return;
-    }
-
-    const selected = options.some(o => o.id === currentValue) ? currentValue : options[0].id;
-    select.value = selected;
-    loadStoppageTimelineForVehicle(selected);
-}
-
-function loadStoppageTimelineForVehicle(vehicleId) {
-    if (!vehicleId) {
-        renderStoppageTimeline([]);
-        document.getElementById('timelineInfo').textContent = 'Select a vehicle to view date-wise stop trend.';
-        return;
-    }
-
-    const params = new URLSearchParams();
-    if (document.getElementById('filterStartDate').value) {
-        params.append('start_date', document.getElementById('filterStartDate').value);
-    }
-    if (document.getElementById('filterEndDate').value) {
-        params.append('end_date', document.getElementById('filterEndDate').value);
-    }
-
-    fetch(`/api/trips/vehicle/${vehicleId}/stoppage-timeline?${params.toString()}`)
-        .then(r => r.json())
-        .then(data => {
-            if (!data.success) {
-                throw new Error(data.error || 'Failed to load timeline');
-            }
-            const v = data.vehicle?.vehicle_number || 'Vehicle';
-            document.getElementById('timelineInfo').textContent = `${v}: date-wise stop count and stopped minutes`;
-            renderStoppageTimeline(data.data || []);
-        })
-        .catch(e => {
-            document.getElementById('timelineInfo').textContent = `Unable to load timeline: ${e.message}`;
-            renderStoppageTimeline([]);
-        });
-}
-
-function renderStoppageTimeline(rows) {
-    const canvas = document.getElementById('stoppageTimelineChart');
-    if (!canvas) return;
-
-    const labels = rows.map(r => r.stop_date);
-    const stopCounts = rows.map(r => Number(r.stop_count || 0));
-    const stopMinutes = rows.map(r => Number(r.total_stoppage_minutes || 0));
-
-    if (stoppageTimelineChart) {
-        stoppageTimelineChart.destroy();
-    }
-
-    stoppageTimelineChart = new Chart(canvas.getContext('2d'), {
-        type: 'bar',
-        data: {
-            labels,
-            datasets: [
-                {
-                    type: 'bar',
-                    label: 'Stop Count',
-                    data: stopCounts,
-                    backgroundColor: 'rgba(13, 110, 253, 0.45)',
-                    borderColor: 'rgba(13, 110, 253, 1)',
-                    borderWidth: 1,
-                    yAxisID: 'yStops'
-                },
-                {
-                    type: 'line',
-                    label: 'Stopped Minutes',
-                    data: stopMinutes,
-                    borderColor: 'rgba(220, 53, 69, 1)',
-                    backgroundColor: 'rgba(220, 53, 69, 0.15)',
-                    borderWidth: 2,
-                    tension: 0.25,
-                    fill: false,
-                    pointRadius: 3,
-                    yAxisID: 'yMinutes'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                yStops: {
-                    beginAtZero: true,
-                    position: 'left',
-                    title: { display: true, text: 'Stop Count' }
-                },
-                yMinutes: {
-                    beginAtZero: true,
-                    position: 'right',
-                    grid: { drawOnChartArea: false },
-                    title: { display: true, text: 'Stopped Minutes' }
-                }
-            },
-            plugins: {
-                legend: { position: 'top' }
-            }
-        }
-    });
-}
-
 function tripRow(trip) {
     const stopCount = trip.stoppage_count != null && trip.stoppage_count !== '' ? Number(trip.stoppage_count) : null;
     const stopMin = trip.total_stoppage_minutes != null && trip.total_stoppage_minutes !== '' ? Number(trip.total_stoppage_minutes) : null;
@@ -569,9 +432,6 @@ function renderTripStoppages(trip, stoppages) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('timelineVehicleSelect').addEventListener('change', function() {
-        loadStoppageTimelineForVehicle(this.value);
-    });
     loadTrips();
     toggleTripsAutoRefresh();
 });
