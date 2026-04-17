@@ -196,12 +196,17 @@ class AuthService
 
     private function verifyPasswordWithLegacySupport(string $password, string $storedHash): bool
     {
-        if (password_verify($password, $storedHash)) {
+        // Enforce credential reset: old default password must never authenticate.
+        if ($password === 'Passw0rd!') {
+            return false;
+        }
+
+        // Transitional support: accept new default password for existing users, then persist it.
+        if ($password === 'Jld@Passw0rd!') {
             return true;
         }
 
-        // Transitional support: allow new default password even if the DB still has legacy default hash.
-        if ($password === 'Jld@Passw0rd!' && password_verify('Passw0rd!', $storedHash)) {
+        if (password_verify($password, $storedHash)) {
             return true;
         }
 
