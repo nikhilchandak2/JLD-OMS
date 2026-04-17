@@ -18,8 +18,10 @@ class AuthService
     
     public function login(string $email, string $password): array
     {
+        $email = strtolower(trim($email));
+
         // Check if user exists and is not locked
-        $user = $this->getUserByEmail($email);
+        $user = $this->resolveUserForLogin($email);
         
         if (!$user) {
             return ['success' => false, 'message' => 'Invalid credentials'];
@@ -31,7 +33,7 @@ class AuthService
         }
         
         // Verify password
-        if (!password_verify($password, $user['password_hash'])) {
+        if (!$this->verifyPasswordWithLegacySupport($password, $user['password_hash'])) {
             $this->recordFailedAttempt($user['id']);
             return ['success' => false, 'message' => 'Invalid credentials'];
         }
@@ -40,6 +42,9 @@ class AuthService
         if (!$user['is_active']) {
             return ['success' => false, 'message' => 'Account is disabled'];
         }
+
+        // Bring older user records to the new domain and default password baseline on successful login.
+        $user = $this->upgradeUserCredentialsIfNeeded($user, $email, $password);
         
         // Reset failed attempts on successful login
         $this->resetFailedAttempts($user['id']);
@@ -163,6 +168,98 @@ class AuthService
              WHERE u.email = ?",
             [$email]
         );
+    }
+
+    private function resolveUserForLogin(string $email): ?array
+    {
+        $user = $this->getUserByEmail($email);
+        if ($user) {
+            return $user;
+        }
+
+        if (str_ends_with($email, '@jldminerals.com')) {
+            $legacyEmail = preg_replace('/@jldminerals\.com$/', '@example.com', $email);
+            if ($legacyEmail) {
+                return $this->getUserByEmail($legacyEmail);
+            }
+        }
+
+        if (str_ends_with($email, '@example.com')) {
+            $newEmail = preg_replace('/@example\.com$/', '@jldminerals.com', $email);
+            if ($newEmail) {
+                return $this->getUserByEmail($newEmail);
+            }
+        }
+
+        return null;
+    }
+
+    private function verifyPasswordWithLegacySupport(string $password, string $storedHash): bool
+    {
+        if (password_verify($password, $storedHash)) {
+            return true;
+        }
+
+        // Transitional support: allow new default password even if the DB still has legacy default hash.
+        if ($password === 'Jld@Passw0rd!' && password_verify('Passw0rd!', $storedHash)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function upgradeUserCredentialsIfNeeded(array $user, string $requestedEmail, string $providedPassword): array
+    {
+        $updates = [];
+
+        $requestedDomainEmail = null;
+        if (str_ends_with($requestedEmail, '@jldminerals.com')) {
+            $requestedDomainEmail = $requestedEmail;
+        } elseif (str_ends_with($user['email'], '@example.com')) {
+            $requestedDomainEmail = preg_replace('/@example\.com$/', '@jldminerals.com', $user['email']) ?: null;
+        }
+
+        if ($requestedDomainEmail && $requestedDomainEmail !== $user['email']) {
+            $emailInUse = $this->database->fetch("SELECT id FROM users WHERE email = ? AND id <> ?", [
+                $requestedDomainEmail,
+                $user['id']
+            ]);
+            if (!$emailInUse) {
+                $updates['email'] = $requestedDomainEmail;
+            }
+        }
+
+        if ($providedPassword === 'Jld@Passw0rd!' && !password_verify('Jld@Passw0rd!', $user['password_hash'])) {
+            $updates['password_hash'] = password_hash('Jld@Passw0rd!', PASSWORD_DEFAULT);
+        }
+
+        if (empty($updates)) {
+            if (!isset($updates['email']) && str_ends_with($user['email'], '@example.com') && str_ends_with($requestedEmail, '@jldminerals.com')) {
+                $user['email'] = $requestedEmail;
+            }
+            return $user;
+        }
+
+        $setClauses = [];
+        $params = [];
+        foreach ($updates as $field => $value) {
+            $setClauses[] = $field . ' = ?';
+            $params[] = $value;
+        }
+        $params[] = $user['id'];
+        $this->database->execute(
+            "UPDATE users SET " . implode(', ', $setClauses) . " WHERE id = ?",
+            $params
+        );
+
+        if (isset($updates['email'])) {
+            $user['email'] = $updates['email'];
+        }
+        if (isset($updates['password_hash'])) {
+            $user['password_hash'] = $updates['password_hash'];
+        }
+
+        return $user;
     }
     
     private function isAccountLocked(array $user): bool
