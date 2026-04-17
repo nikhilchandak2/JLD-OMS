@@ -16,7 +16,7 @@
    cd /var/www/your-app   # or your app root
    bash scripts/deploy-server.sh
    ```
-   This does: `git pull`, `composer install --no-dev --optimize-autoloader`, and runs migrations 006–011 (skips already-applied ones).
+  This does: `git pull`, `composer install --no-dev --optimize-autoloader`, and runs migrations 006–013 + 018–020 (skips already-applied ones).
 
 **Or run manually:**
 ```bash
@@ -24,7 +24,7 @@ git pull
 composer install --no-dev --optimize-autoloader
 php scripts/run_migration.php 006
 php scripts/run_migration.php 007
-# ... 008, 009, 010, 011 as needed
+# ... 008, 009, 010, 011, 012, 013, 018, 019, 020 as needed
 ```
 
 ---
