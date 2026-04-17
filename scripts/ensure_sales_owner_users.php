@@ -16,11 +16,11 @@ use App\Core\Database;
 $roleName = 'crm';
 
 $users = [
-    ['email' => 'salesowner1@example.com', 'name' => 'Sales Owner 1', 'password' => 'Passw0rd!1'],
-    ['email' => 'salesowner2@example.com', 'name' => 'Sales Owner 2', 'password' => 'Passw0rd!2'],
-    ['email' => 'salesowner3@example.com', 'name' => 'Sales Owner 3', 'password' => 'Passw0rd!3'],
-    ['email' => 'salesowner4@example.com', 'name' => 'Sales Owner 4', 'password' => 'Passw0rd!4'],
-    ['email' => 'salesowner5@example.com', 'name' => 'Sales Owner 5', 'password' => 'Passw0rd!5'],
+    ['email' => 'salesowner1@jldminerals.com', 'name' => 'Sales Owner 1', 'password' => 'Jld@Passw0rd!1'],
+    ['email' => 'salesowner2@jldminerals.com', 'name' => 'Sales Owner 2', 'password' => 'Jld@Passw0rd!2'],
+    ['email' => 'salesowner3@jldminerals.com', 'name' => 'Sales Owner 3', 'password' => 'Jld@Passw0rd!3'],
+    ['email' => 'salesowner4@jldminerals.com', 'name' => 'Sales Owner 4', 'password' => 'Jld@Passw0rd!4'],
+    ['email' => 'salesowner5@jldminerals.com', 'name' => 'Sales Owner 5', 'password' => 'Jld@Passw0rd!5'],
 ];
 
 try {

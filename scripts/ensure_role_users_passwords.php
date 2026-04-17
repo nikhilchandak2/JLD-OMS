@@ -1,6 +1,6 @@
 <?php
 /**
- * Set password to Passw0rd! for all role users (admin, order, accounts, operator, crm).
+ * Set password to Jld@Passw0rd! for all role users (admin, order, accounts, operator, crm).
  * Run after migration 017: php scripts/ensure_role_users_passwords.php
  * Then you can test each user on http://localhost:8000
  */
@@ -12,13 +12,13 @@ $dotenv->load();
 
 use App\Core\Database;
 
-$password = 'Passw0rd!';
+$password = 'Jld@Passw0rd!';
 $emails = [
-    'admin@example.com',
-    'order@example.com',
-    'accounts@example.com',
-    'operator@example.com',
-    'crm@example.com',
+    'admin@jldminerals.com',
+    'order@jldminerals.com',
+    'accounts@jldminerals.com',
+    'operator@jldminerals.com',
+    'crm@jldminerals.com',
 ];
 
 try {
@@ -40,11 +40,11 @@ try {
     echo "\nLogin at http://localhost:8000 with password: {$password}\n\n";
     echo "| Email                  | Role              | Access                          |\n";
     echo "|------------------------|-------------------|----------------------------------|\n";
-    echo "| admin@example.com      | Admin             | Full system                      |\n";
-    echo "| order@example.com      | Order Processing  | Orders, Reports, Export          |\n";
-    echo "| accounts@example.com   | Accounts          | Party management, Products       |\n";
-    echo "| operator@example.com   | Operator          | Vehicles, Tracking, Trips, etc.  |\n";
-    echo "| crm@example.com        | CRM               | CRM Dashboard, Funnel             |\n";
+    echo "| admin@jldminerals.com      | Admin             | Full system                      |\n";
+    echo "| order@jldminerals.com      | Order Processing  | Orders, Reports, Export          |\n";
+    echo "| accounts@jldminerals.com   | Accounts          | Party management, Products       |\n";
+    echo "| operator@jldminerals.com   | Operator          | Vehicles, Tracking, Trips, etc.  |\n";
+    echo "| crm@jldminerals.com        | CRM               | CRM Dashboard, Funnel             |\n";
 } catch (\Exception $e) {
     echo "Error: " . $e->getMessage() . "\n";
     exit(1);

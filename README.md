@@ -84,15 +84,15 @@ A secure, role-based PHP web application for managing orders (truck counts), rec
 
 7. **Access the application**
    - URL: `http://your-domain.com`
-   - Default admin: `admin@example.com` / `Passw0rd!`
+   - Default admin: `admin@jldminerals.com` / `Jld@Passw0rd!`
 
 ## Default User Accounts
 
 | Email | Password | Role | Permissions |
 |-------|----------|------|-------------|
-| admin@example.com | Passw0rd! | Admin | Full access, user management |
-| entry@example.com | Passw0rd! | Entry | Create orders, dispatches |
-| view@example.com | Passw0rd! | View | View data, generate reports |
+| admin@jldminerals.com | Jld@Passw0rd! | Admin | Full access, user management |
+| entry@jldminerals.com | Jld@Passw0rd! | Entry | Create orders, dispatches |
+| view@jldminerals.com | Jld@Passw0rd! | View | View data, generate reports |
 
 **⚠️ Change default passwords immediately in production!**
 
@@ -105,8 +105,8 @@ A secure, role-based PHP web application for managing orders (truck counts), rec
 curl -X POST http://your-domain.com/api/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@example.com",
-    "password": "Passw0rd!"
+    "email": "admin@jldminerals.com",
+    "password": "Jld@Passw0rd!"
   }'
 ```
 
@@ -219,7 +219,7 @@ curl -X POST http://your-domain.com/api/users \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: your-csrf-token" \
   -d '{
-    "email": "newuser@example.com",
+    "email": "newuser@jldminerals.com",
     "password": "SecurePassword123!",
     "name": "New User",
     "role_id": 2,

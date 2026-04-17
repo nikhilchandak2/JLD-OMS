@@ -65,9 +65,9 @@ try {
     
     echo "Seeding completed successfully!\n";
     echo "\nDefault user credentials:\n";
-    echo "Admin: admin@example.com / Passw0rd!\n";
-    echo "Entry: entry@example.com / Passw0rd!\n";
-    echo "View: view@example.com / Passw0rd!\n";
+    echo "Admin: admin@jldminerals.com / Jld@Passw0rd!\n";
+    echo "Entry: entry@jldminerals.com / Jld@Passw0rd!\n";
+    echo "View: view@jldminerals.com / Jld@Passw0rd!\n";
     
 } catch (Exception $e) {
     echo "Seeding failed: " . $e->getMessage() . "\n";

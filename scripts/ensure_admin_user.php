@@ -3,7 +3,7 @@
  * Ensure an admin user exists so you can log in on localhost.
  * Run once: php scripts/ensure_admin_user.php
  *
- * Creates or updates admin@example.com with password: Passw0rd!
+ * Creates or updates admin@jldminerals.com with password: Jld@Passw0rd!
  * (Resets password to this so login works even if seed hash was wrong.)
  */
 
@@ -14,8 +14,8 @@ $dotenv->load();
 
 use App\Core\Database;
 
-$email = 'admin@example.com';
-$password = 'Passw0rd!';
+$email = 'admin@jldminerals.com';
+$password = 'Jld@Passw0rd!';
 $name = 'System Administrator';
 $roleName = 'admin';
 

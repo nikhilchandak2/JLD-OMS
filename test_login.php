@@ -24,7 +24,7 @@ try {
 }
 
 // Check if user exists
-$email = 'admin@example.com';
+$email = 'admin@jldminerals.com';
 $user = $db->fetch(
     "SELECT u.*, r.name as role_name 
      FROM users u 
@@ -50,7 +50,7 @@ echo "  - Locked Until: " . ($user['locked_until'] ?? 'NULL') . "\n";
 echo "  - Password Hash: " . substr($user['password_hash'], 0, 20) . "...\n\n";
 
 // Test password verification
-$password = 'Passw0rd!';
+$password = 'Jld@Passw0rd!';
 $hash = $user['password_hash'];
 
 echo "Testing password verification:\n";
@@ -65,7 +65,7 @@ if ($verified) {
     echo "  ✗ Password verification: FAILED\n\n";
     
     // Try generating a new hash
-    echo "Generating new hash for 'Passw0rd!':\n";
+    echo "Generating new hash for 'Jld@Passw0rd!':\n";
     $newHash = password_hash($password, PASSWORD_BCRYPT);
     echo "  - New Hash: {$newHash}\n";
     

@@ -6,12 +6,12 @@ INSERT INTO roles (name) VALUES
 ('view'), 
 ('admin');
 
--- Insert sample users (passwords are hashed version of 'Passw0rd!')
--- Password hash for 'Passw0rd!' using bcrypt
+-- Insert sample users (passwords are hashed version of 'Jld@Passw0rd!')
+-- Password hash for 'Jld@Passw0rd!' using bcrypt
 INSERT INTO users (email, password_hash, name, role_id, is_active) VALUES
-('admin@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 3, 1),
-('entry@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Entry User', 1, 1),
-('view@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'View User', 2, 1);
+('admin@jldminerals.com', '$2b$10$5sOYJsm5tXCUa7X1K1kcIetJNH8h5jYEAUko5PXtF78ZSFVqs3gT.', 'System Administrator', 3, 1),
+('entry@jldminerals.com', '$2b$10$5sOYJsm5tXCUa7X1K1kcIetJNH8h5jYEAUko5PXtF78ZSFVqs3gT.', 'Entry User', 1, 1),
+('view@jldminerals.com', '$2b$10$5sOYJsm5tXCUa7X1K1kcIetJNH8h5jYEAUko5PXtF78ZSFVqs3gT.', 'View User', 2, 1);
 
 -- Insert sample products
 INSERT INTO products (code, name) VALUES
