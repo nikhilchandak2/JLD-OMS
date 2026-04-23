@@ -228,6 +228,7 @@ class GeofenceService
     private function hydrateGeofenceRow(array $row): array
     {
         $row['shape_type'] = $row['shape_type'] ?? 'circle';
+        $row['geofence_type'] = strtolower(trim((string)($row['geofence_type'] ?? '')));
         $row['polygon_points'] = $this->normalizePolygonPoints($row['polygon_points'] ?? null);
         return $row;
     }
@@ -240,7 +241,7 @@ class GeofenceService
         $sql = "
             SELECT * FROM gps_tracking_data
             WHERE vehicle_id = ?
-            ORDER BY timestamp DESC
+            ORDER BY id DESC
             LIMIT 1 OFFSET 1
         ";
         

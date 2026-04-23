@@ -221,20 +221,25 @@ class TripDetectionService
      */
     private function isDestinationGeofence(array $geofence): bool
     {
-        $type = strtolower((string)($geofence['geofence_type'] ?? ''));
+        $type = $this->normalizeGeofenceType($geofence);
         return in_array($type, ['stockpile', 'other', 'others'], true);
     }
 
     private function isPitGeofence(array $geofence): bool
     {
-        $type = strtolower((string)($geofence['geofence_type'] ?? ''));
+        $type = $this->normalizeGeofenceType($geofence);
         return $type === 'pit';
     }
 
     private function isParkingGeofence(array $geofence): bool
     {
-        $type = strtolower((string)($geofence['geofence_type'] ?? ''));
+        $type = $this->normalizeGeofenceType($geofence);
         return $type === 'parking';
+    }
+
+    private function normalizeGeofenceType(array $geofence): string
+    {
+        return strtolower(trim((string)($geofence['geofence_type'] ?? '')));
     }
     
     /**
