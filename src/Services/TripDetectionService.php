@@ -297,13 +297,13 @@ class TripDetectionService
     }
 
     /**
-     * Completed trips are based on stockpile entry only.
+     * Destination is any non-pit geofence.
+     * Some deployments classify stockyards as parking/other/custom labels.
      */
     private function isStockpileGeofence(array $geofence): bool
     {
         $type = $this->normalizeGeofenceType($geofence);
-        // Some sites mark stockpile destinations as "other"/"others".
-        return in_array($type, ['stockpile', 'stock_pile', 'stock pile', 'other', 'others'], true);
+        return $type !== '' && $type !== 'pit';
     }
 
     private function isPitGeofence(array $geofence): bool
