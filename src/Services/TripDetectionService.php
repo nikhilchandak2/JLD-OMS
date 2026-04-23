@@ -437,13 +437,29 @@ class TripDetectionService
             return true;
         }
 
-        // Fallback for sparse vendor points: if current point is outside pit, infer pit exit happened.
+        // Fallback for sparse vendor points:
+        // 1) if current point is outside pit, infer pit exit happened.
+        // 2) if current point is inside any non-pit destination geofence, also treat pit exit as satisfied
+        //    (handles overlapping pit/destination boundaries and missing pit-exit events).
         if ($currentLatitude !== null && $currentLongitude !== null) {
             $sourcePit = $this->geofenceService->getGeofenceById($sourceGeofenceId);
             if (!$sourcePit) {
                 return true;
             }
-            return !$this->geofenceService->containsPoint($currentLatitude, $currentLongitude, $sourcePit);
+            if (!$this->geofenceService->containsPoint($currentLatitude, $currentLongitude, $sourcePit)) {
+                return true;
+            }
+
+            $containing = $this->geofenceService->getContainingGeofences($currentLatitude, $currentLongitude);
+            foreach ($containing as $geofence) {
+                $geofenceId = (int)($geofence['id'] ?? 0);
+                if ($geofenceId === $sourceGeofenceId) {
+                    continue;
+                }
+                if ($this->isStockpileGeofence($geofence)) {
+                    return true;
+                }
+            }
         }
 
         return false;
