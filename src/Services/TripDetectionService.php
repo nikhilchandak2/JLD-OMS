@@ -207,8 +207,9 @@ class TripDetectionService
             return;
         }
 
-        // Enforce rule: complete only after the vehicle has exited the source pit.
-        if (!$this->hasExitedSourcePitSinceTripStart($activeTrip, $trackingData->timestamp, (float)$trackingData->latitude, (float)$trackingData->longitude)) {
+        // Complete on destination entry once trip has reasonably progressed.
+        // This avoids getting stuck when pit-exit events are missing or pit/destination overlap.
+        if (!$this->canCompleteTripAtDestinationEntry($activeTrip, $trackingData, $geofenceId)) {
             $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId);
             return;
         }
@@ -402,6 +403,32 @@ class TripDetectionService
         }
 
         return $stockpiles[0];
+    }
+
+    /**
+     * Guard against same-point false completions when pit and destination overlap.
+     */
+    private function canCompleteTripAtDestinationEntry(array $activeTrip, $trackingData, int $destinationGeofenceId): bool
+    {
+        $startLat = isset($activeTrip['start_latitude']) ? (float)$activeTrip['start_latitude'] : 0.0;
+        $startLon = isset($activeTrip['start_longitude']) ? (float)$activeTrip['start_longitude'] : 0.0;
+        $currentLat = (float)$trackingData->latitude;
+        $currentLon = (float)$trackingData->longitude;
+        $distanceFromStart = $this->calculateDistance($startLat, $startLon, $currentLat, $currentLon);
+        $durationMinutes = $this->durationMinutes((string)$activeTrip['start_time'], (string)$trackingData->timestamp);
+
+        // If moved a bit or time elapsed, destination entry is valid completion.
+        if ($distanceFromStart >= 0.05 || $durationMinutes >= 1.0) {
+            return true;
+        }
+
+        // If explicit/fallback pit-exit evidence exists, allow completion even with short movement.
+        return $this->hasExitedSourcePitSinceTripStart(
+            $activeTrip,
+            (string)$trackingData->timestamp,
+            $currentLat,
+            $currentLon
+        );
     }
 
     /**
