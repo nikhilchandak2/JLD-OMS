@@ -116,7 +116,7 @@ class TripDetectionService
             }
         }
 
-        $previousInside = [];
+        $previousInside = $this->getInsideGeofencesForPointBeforeRange($vehicleId, (string)$trackingPoints[0]->timestamp, $activeGeofences);
         $processed = 0;
         $generatedEvents = 0;
         $pitEntries = 0;
@@ -131,13 +131,8 @@ class TripDetectionService
                 }
             }
 
-            // For first point in range, mimic live behavior: treat current inside geofences as entries.
-            $entryIds = empty($previousInside)
-                ? array_keys($currentInside)
-                : array_values(array_diff(array_keys($currentInside), array_keys($previousInside)));
-            $exitIds = empty($previousInside)
-                ? []
-                : array_values(array_diff(array_keys($previousInside), array_keys($currentInside)));
+            $entryIds = array_values(array_diff(array_keys($currentInside), array_keys($previousInside)));
+            $exitIds = array_values(array_diff(array_keys($previousInside), array_keys($currentInside)));
 
             foreach ($entryIds as $geofenceId) {
                 $geofence = $currentInside[(int)$geofenceId] ?? $this->geofenceService->getGeofenceById((int)$geofenceId);
@@ -174,6 +169,39 @@ class TripDetectionService
             'active_geofences' => count($activeGeofences),
             'destination_geofences' => $destinationGeofenceCount,
         ];
+    }
+
+    /**
+     * Build initial inside-state from the GPS point immediately before replay range.
+     */
+    private function getInsideGeofencesForPointBeforeRange(int $vehicleId, string $rangeStartTime, array $activeGeofences): array
+    {
+        $sql = "
+            SELECT latitude, longitude
+            FROM gps_tracking_data
+            WHERE vehicle_id = ?
+              AND timestamp < ?
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 1
+        ";
+        $row = $this->database->fetch($sql, [$vehicleId, $rangeStartTime]);
+        if (!$row) {
+            return [];
+        }
+
+        $latitude = isset($row['latitude']) ? (float)$row['latitude'] : null;
+        $longitude = isset($row['longitude']) ? (float)$row['longitude'] : null;
+        if ($latitude === null || $longitude === null) {
+            return [];
+        }
+
+        $inside = [];
+        foreach ($activeGeofences as $geofence) {
+            if ($this->geofenceService->containsPoint($latitude, $longitude, $geofence)) {
+                $inside[(int)$geofence['id']] = $geofence;
+            }
+        }
+        return $inside;
     }
     
     /**
