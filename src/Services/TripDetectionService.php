@@ -57,7 +57,7 @@ class TripDetectionService
             return;
         }
         
-        if ($eventType === 'entry' && $geofence['geofence_type'] === 'pit') {
+        if ($eventType === 'entry' && $this->isPitGeofence($geofence)) {
             // Vehicle entered pit - start new trip
             $this->startTrip($vehicleId, $geofenceId, $trackingData);
             return;
@@ -76,8 +76,8 @@ class TripDetectionService
 
         $currentDestinationId = (int)($activeTrip['destination_geofence_id'] ?? 0);
 
-        if ($eventType === 'entry' && $isDestination) {
-            // Lock first destination entry; do not overwrite it later.
+        if ($eventType === 'entry' && ($isDestination || $isParking)) {
+            // Lock first destination/parking entry; do not overwrite it later.
             $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId, $currentDestinationId);
             return;
         }
@@ -223,6 +223,12 @@ class TripDetectionService
     {
         $type = strtolower((string)($geofence['geofence_type'] ?? ''));
         return in_array($type, ['stockpile', 'other', 'others'], true);
+    }
+
+    private function isPitGeofence(array $geofence): bool
+    {
+        $type = strtolower((string)($geofence['geofence_type'] ?? ''));
+        return $type === 'pit';
     }
 
     private function isParkingGeofence(array $geofence): bool
