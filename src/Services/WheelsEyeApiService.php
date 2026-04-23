@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Core\Database;
 use App\Models\GPSTrackingData;
 use App\Models\FuelReadingData;
 use App\Repositories\VehicleRepository;
@@ -29,6 +30,7 @@ class WheelsEyeApiService
     private FuelSensorRepository $fuelSensorRepository;
     private FuelReadingRepository $fuelReadingRepository;
     private FuelAlertService $fuelAlertService;
+    private Database $database;
 
     public function __construct()
     {
@@ -39,6 +41,7 @@ class WheelsEyeApiService
         $this->fuelSensorRepository = new FuelSensorRepository();
         $this->fuelReadingRepository = new FuelReadingRepository();
         $this->fuelAlertService = new FuelAlertService();
+        $this->database = new Database();
     }
 
     /**
@@ -78,6 +81,7 @@ class WheelsEyeApiService
 
         $list = $json['data']['list'];
         $synced = 0;
+        $vehiclesSynced = 0;
         $skipped = 0;
         $fuelSaved = 0;
         $fuelMissing = 0;
@@ -86,12 +90,6 @@ class WheelsEyeApiService
         foreach ($list as $item) {
             $vehicleNumber = $item['vehicleNumber'] ?? null;
             $deviceNumber = (string)($item['deviceNumber'] ?? '');
-            $lat = $this->extractNumericValue($item, ['latitude', 'lat']) ?? 0.0;
-            $lng = $this->extractNumericValue($item, ['longitude', 'lng', 'lon', 'long']) ?? 0.0;
-            if ($lat === 0.0 && $lng === 0.0) {
-                $skipped++;
-                continue;
-            }
 
             $vehicle = null;
             if (!empty($vehicleNumber)) {
@@ -106,52 +104,61 @@ class WheelsEyeApiService
                 continue;
             }
 
-            $epoch = $item['dttimeInEpoch'] ?? $item['createdDate'] ?? time();
-            $timestamp = date('Y-m-d H:i:s', $this->normalizeEpochToSeconds($epoch));
             $deviceId = $deviceNumber !== '' ? $deviceNumber : ($vehicle->gpsDeviceImei ?? 'wheelseye-api');
-            $speed = $this->extractNumericValue($item, ['speed', 'gps_speed', 'vehicle_speed']);
-            $heading = $this->extractNumericValue($item, ['angle', 'heading', 'course', 'direction']);
-            $altitude = $this->extractNumericValue($item, ['altitude', 'alt']);
-            $accuracy = $this->extractNumericValue($item, ['accuracy', 'hdop']);
-            $satelliteCount = $this->extractIntegerValue($item, ['satellites', 'satellite_count', 'satellite']);
-            $odometer = $this->extractNumericValue($item, ['odometer', 'odometer_reading', 'mileage', 'distance']);
-            $ignitionStatus = $this->extractBooleanValue($item, [
-                'ignition', 'ignition_status', 'ignition_status_flag', 'acc', 'acc_status', 'engine_status', 'engine'
-            ]);
-            $movementStatus = $this->extractMovementStatus($item, $speed);
+            $points = $this->extractTrackingPointsFromPayload($item);
+            if (empty($points)) {
+                $skipped++;
+                continue;
+            }
 
-            $tracking = new GPSTrackingData([
-                'vehicle_id' => $vehicle->id,
-                'device_id' => $deviceId,
-                'latitude' => $lat,
-                'longitude' => $lng,
-                'altitude' => $altitude,
-                'speed' => $speed,
-                'heading' => $heading,
-                'accuracy' => $accuracy,
-                'satellite_count' => $satelliteCount,
-                'timestamp' => $timestamp,
-                'ignition_status' => $ignitionStatus,
-                'movement_status' => $movementStatus,
-                'odometer' => $odometer,
-                'raw_data' => $item,
-            ]);
+            $savedForVehicle = 0;
+            foreach ($points as $point) {
+                $tracking = new GPSTrackingData([
+                    'vehicle_id' => $vehicle->id,
+                    'device_id' => $deviceId,
+                    'latitude' => $point['latitude'],
+                    'longitude' => $point['longitude'],
+                    'altitude' => $point['altitude'],
+                    'speed' => $point['speed'],
+                    'heading' => $point['heading'],
+                    'accuracy' => $point['accuracy'],
+                    'satellite_count' => $point['satellite_count'],
+                    'timestamp' => $point['timestamp'],
+                    'ignition_status' => $point['ignition_status'],
+                    'movement_status' => $point['movement_status'],
+                    'odometer' => $point['odometer'],
+                    'raw_data' => $point['raw_data'],
+                ]);
 
-            $this->gpsTrackingRepository->create($tracking);
-            $fuelSavedForVehicle = $this->ingestFuelFromPayload($vehicle, $deviceId, $item, $timestamp);
+                if (!$this->isDuplicateTrackingPoint($vehicle->id, $tracking)) {
+                    $this->gpsTrackingRepository->create($tracking);
+                    $this->tripDetectionService->processTrackingData($vehicle->id, $tracking);
+                    $synced++;
+                    $savedForVehicle++;
+                }
+            }
+
+            if ($savedForVehicle > 0) {
+                $vehiclesSynced++;
+            } else {
+                $skipped++;
+            }
+
+            $latestPayload = $points[count($points) - 1]['raw_data'] ?? $item;
+            $latestTimestamp = $points[count($points) - 1]['timestamp'] ?? date('Y-m-d H:i:s');
+            $fuelSavedForVehicle = $this->ingestFuelFromPayload($vehicle, $deviceId, is_array($latestPayload) ? $latestPayload : $item, $latestTimestamp);
             if ($fuelSavedForVehicle) {
                 $fuelSaved++;
             } else {
                 $fuelMissing++;
             }
-            $this->tripDetectionService->processTrackingData($vehicle->id, $tracking);
-            $synced++;
         }
 
         return [
             'success' => true,
-            'message' => 'Synced ' . $synced . ' location(s) from WheelsEye',
+            'message' => 'Synced ' . $synced . ' GPS point(s) across ' . $vehiclesSynced . ' vehicle(s) from WheelsEye',
             'synced' => $synced,
+            'vehicles_synced' => $vehiclesSynced,
             'skipped' => $skipped,
             'fuel_saved' => $fuelSaved,
             'fuel_missing' => $fuelMissing,
@@ -465,5 +472,126 @@ class WheelsEyeApiService
             }
         }
         return time();
+    }
+
+    /**
+     * Extract all track points available in payload (single-point or history/path arrays).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function extractTrackingPointsFromPayload(array $payload): array
+    {
+        $candidates = [];
+        $this->collectPointCandidates($payload, $candidates, 0);
+        if (empty($candidates)) {
+            return [];
+        }
+
+        $points = [];
+        foreach ($candidates as $candidate) {
+            $context = array_merge($payload, $candidate);
+            $lat = $this->extractNumericValue($context, ['latitude', 'lat']);
+            $lng = $this->extractNumericValue($context, ['longitude', 'lng', 'lon', 'long']);
+            if ($lat === null || $lng === null) {
+                continue;
+            }
+            if (!$this->isValidCoordinate($lat, $lng)) {
+                continue;
+            }
+
+            $epoch = $context['dttimeInEpoch'] ?? $context['createdDate'] ?? $context['timestamp'] ?? $context['time'] ?? null;
+            $timestamp = date('Y-m-d H:i:s', $this->normalizeEpochToSeconds($epoch ?? time()));
+            $speed = $this->extractNumericValue($context, ['speed', 'gps_speed', 'vehicle_speed']);
+
+            $points[] = [
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'altitude' => $this->extractNumericValue($context, ['altitude', 'alt']),
+                'speed' => $speed,
+                'heading' => $this->extractNumericValue($context, ['angle', 'heading', 'course', 'direction']),
+                'accuracy' => $this->extractNumericValue($context, ['accuracy', 'hdop']),
+                'satellite_count' => $this->extractIntegerValue($context, ['satellites', 'satellite_count', 'satellite']),
+                'timestamp' => $timestamp,
+                'ignition_status' => $this->extractBooleanValue($context, [
+                    'ignition', 'ignition_status', 'ignition_status_flag', 'acc', 'acc_status', 'engine_status', 'engine'
+                ]),
+                'movement_status' => $this->extractMovementStatus($context, $speed),
+                'odometer' => $this->extractNumericValue($context, ['odometer', 'odometer_reading', 'mileage', 'distance']),
+                'raw_data' => $context,
+            ];
+        }
+
+        if (empty($points)) {
+            return [];
+        }
+
+        usort($points, fn(array $a, array $b) => strcmp($a['timestamp'], $b['timestamp']));
+
+        $deduped = [];
+        $seen = [];
+        foreach ($points as $point) {
+            $key = $point['timestamp'] . '|' . round((float)$point['latitude'], 6) . '|' . round((float)$point['longitude'], 6);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $deduped[] = $point;
+        }
+
+        return $deduped;
+    }
+
+    /**
+     * Recursively collect arrays that look like track points (have lat/lng).
+     *
+     * @param array<int, array<string, mixed>> $out
+     */
+    private function collectPointCandidates($node, array &$out, int $depth): void
+    {
+        if ($depth > 8 || !is_array($node)) {
+            return;
+        }
+
+        if ($this->arrayLooksLikePoint($node)) {
+            $out[] = $node;
+        }
+
+        foreach ($node as $value) {
+            if (is_array($value)) {
+                $this->collectPointCandidates($value, $out, $depth + 1);
+            }
+        }
+    }
+
+    private function arrayLooksLikePoint(array $data): bool
+    {
+        $lat = $this->extractNumericValue($data, ['latitude', 'lat']);
+        $lng = $this->extractNumericValue($data, ['longitude', 'lng', 'lon', 'long']);
+        return $lat !== null && $lng !== null;
+    }
+
+    private function isValidCoordinate(float $lat, float $lng): bool
+    {
+        return $lat >= -90 && $lat <= 90 && $lng >= -180 && $lng <= 180;
+    }
+
+    private function isDuplicateTrackingPoint(int $vehicleId, GPSTrackingData $tracking): bool
+    {
+        $sql = "
+            SELECT id
+            FROM gps_tracking_data
+            WHERE vehicle_id = ?
+              AND timestamp = ?
+              AND ABS(latitude - ?) < 0.000001
+              AND ABS(longitude - ?) < 0.000001
+            LIMIT 1
+        ";
+        $row = $this->database->fetch($sql, [
+            $vehicleId,
+            $tracking->timestamp,
+            $tracking->latitude,
+            $tracking->longitude
+        ]);
+        return $row !== null;
     }
 }
