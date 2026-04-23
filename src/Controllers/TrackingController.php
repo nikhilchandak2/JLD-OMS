@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Services\WheelsEyeApiService;
+use App\Services\TripDetectionService;
 use App\Repositories\VehicleRepository;
 use App\Repositories\GPSTrackingRepository;
 
@@ -225,6 +226,67 @@ class TrackingController
             'success' => true,
             'data' => $data,
         ]);
+    }
+
+    /**
+     * Rebuild trips for a vehicle from stored GPS points in a time range.
+     * GET/POST /api/tracking/rebuild-trips?vehicle_id=ID&start_time=...&end_time=...
+     */
+    public function rebuildTrips(): void
+    {
+        header('Content-Type: application/json');
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        $payload = $_POST;
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $raw = file_get_contents('php://input');
+            if ($raw !== false && trim($raw) !== '') {
+                $json = json_decode($raw, true);
+                if (is_array($json)) {
+                    $payload = array_merge($payload, $json);
+                }
+            }
+        }
+
+        $vehicleId = isset($payload['vehicle_id']) ? (int)$payload['vehicle_id'] : (isset($_GET['vehicle_id']) ? (int)$_GET['vehicle_id'] : 0);
+        if ($vehicleId <= 0) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'error' => 'vehicle_id is required']);
+            return;
+        }
+
+        $vehicle = $this->vehicleRepository->findById($vehicleId);
+        if (!$vehicle) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Vehicle not found']);
+            return;
+        }
+
+        $startTime = $payload['start_time'] ?? $_GET['start_time'] ?? date('Y-m-d 00:00:00');
+        $endTime = $payload['end_time'] ?? $_GET['end_time'] ?? date('Y-m-d H:i:s');
+
+        try {
+            $service = new TripDetectionService();
+            $result = $service->rebuildTripsFromTracking($vehicleId, (string)$startTime, (string)$endTime);
+            echo json_encode([
+                'success' => true,
+                'vehicle' => $vehicle->toArray(),
+                'message' => 'Trips rebuilt from stored tracking points',
+                'data' => $result,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
     }
 
     private function saveSyncStatus(array $status): void

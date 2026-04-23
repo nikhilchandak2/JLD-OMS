@@ -84,6 +84,8 @@ $router->group('/api', function($router) {
         $router->get('/tracking/sync', 'TrackingController@syncFromWheelsEye');
         $router->post('/tracking/sync', 'TrackingController@syncFromWheelsEye');
         $router->get('/tracking/sync-status', 'TrackingController@syncStatus');
+        $router->get('/tracking/rebuild-trips', 'TrackingController@rebuildTrips');
+        $router->post('/tracking/rebuild-trips', 'TrackingController@rebuildTrips');
         
         // Trips
         $router->get('/trips', 'TripController@index');

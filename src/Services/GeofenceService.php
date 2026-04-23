@@ -290,6 +290,20 @@ class GeofenceService
         $rows = $this->database->fetchAll($sql);
         return array_map(fn(array $row) => $this->hydrateGeofenceRow($row), $rows);
     }
+
+    /**
+     * Return active geofences that currently contain the given point.
+     */
+    public function getContainingGeofences(float $latitude, float $longitude): array
+    {
+        $matches = [];
+        foreach ($this->getActiveGeofences() as $geofence) {
+            if ($this->containsPointInGeofence($latitude, $longitude, $geofence)) {
+                $matches[] = $geofence;
+            }
+        }
+        return $matches;
+    }
     
     /**
      * Get geofence by ID

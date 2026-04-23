@@ -40,6 +40,60 @@ class TripDetectionService
         foreach ($geofenceEvents as $event) {
             $this->processGeofenceEvent($vehicleId, $event, $trackingData);
         }
+
+        // Fallback reconciliation: close stale in-progress trip if vehicle is already inside stockpile
+        // and we can confirm pit exit happened (covers missed/late entry events).
+        $this->reconcileTripCompletionFromCurrentPosition($vehicleId, $trackingData);
+    }
+
+    /**
+     * Rebuild geofence events and trips for a vehicle using stored GPS points in a time range.
+     */
+    public function rebuildTripsFromTracking(int $vehicleId, string $startTime, string $endTime): array
+    {
+        $start = new \DateTime($startTime);
+        $end = new \DateTime($endTime);
+        if ($end < $start) {
+            throw new \InvalidArgumentException('End time must be greater than or equal to start time');
+        }
+
+        $startTime = $start->format('Y-m-d H:i:s');
+        $endTime = $end->format('Y-m-d H:i:s');
+
+        $deleted = $this->clearTripAndGeofenceDataForRange($vehicleId, $startTime, $endTime);
+
+        $trackingPoints = $this->gpsTrackingRepository->getTrackingBetween($vehicleId, $startTime, $endTime, 20000);
+        $processed = 0;
+        foreach ($trackingPoints as $point) {
+            $this->processTrackingData($vehicleId, $point);
+            $processed++;
+        }
+
+        $summarySql = "
+            SELECT
+                COUNT(*) AS total_trips,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_trips,
+                SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_trips,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_trips
+            FROM vehicle_trips
+            WHERE vehicle_id = ?
+              AND start_time BETWEEN ? AND ?
+        ";
+        $summary = $this->database->fetch($summarySql, [$vehicleId, $startTime, $endTime]) ?? [];
+
+        return [
+            'vehicle_id' => $vehicleId,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'tracking_points_processed' => $processed,
+            'deleted' => $deleted,
+            'summary' => [
+                'total_trips' => (int)($summary['total_trips'] ?? 0),
+                'completed_trips' => (int)($summary['completed_trips'] ?? 0),
+                'in_progress_trips' => (int)($summary['in_progress_trips'] ?? 0),
+                'cancelled_trips' => (int)($summary['cancelled_trips'] ?? 0),
+            ]
+        ];
     }
     
     /**
@@ -221,6 +275,55 @@ class TripDetectionService
     }
 
     /**
+     * Use current GPS point to complete an in-progress trip when stockpile entry event was missed.
+     */
+    private function reconcileTripCompletionFromCurrentPosition(int $vehicleId, $trackingData): void
+    {
+        $activeTrip = $this->getActiveTrip($vehicleId);
+        if (!$activeTrip) {
+            return;
+        }
+
+        if (!$this->hasExitedSourcePitSinceTripStart($activeTrip, $trackingData->timestamp)) {
+            return;
+        }
+
+        $stockpile = $this->resolveCurrentStockpileGeofence(
+            (float)$trackingData->latitude,
+            (float)$trackingData->longitude,
+            (int)$activeTrip['destination_geofence_id']
+        );
+        if (!$stockpile) {
+            return;
+        }
+
+        $this->completeTrip($activeTrip, (int)$stockpile['id'], $trackingData);
+    }
+
+    private function resolveCurrentStockpileGeofence(float $latitude, float $longitude, int $preferredGeofenceId = 0): ?array
+    {
+        $containingGeofences = $this->geofenceService->getContainingGeofences($latitude, $longitude);
+        if (empty($containingGeofences)) {
+            return null;
+        }
+
+        $stockpiles = array_values(array_filter($containingGeofences, fn(array $geofence) => $this->isStockpileGeofence($geofence)));
+        if (empty($stockpiles)) {
+            return null;
+        }
+
+        if ($preferredGeofenceId > 0) {
+            foreach ($stockpiles as $geofence) {
+                if ((int)$geofence['id'] === $preferredGeofenceId) {
+                    return $geofence;
+                }
+            }
+        }
+
+        return $stockpiles[0];
+    }
+
+    /**
      * Confirm source pit exit happened between trip start and current event time.
      */
     private function hasExitedSourcePitSinceTripStart(array $activeTrip, string $eventTimestamp): bool
@@ -265,6 +368,35 @@ class TripDetectionService
         ";
         
         return $this->database->fetch($sql, [$vehicleId]);
+    }
+
+    private function clearTripAndGeofenceDataForRange(int $vehicleId, string $startTime, string $endTime): array
+    {
+        $tripIds = $this->database->fetchAll(
+            "SELECT id FROM vehicle_trips WHERE vehicle_id = ? AND start_time BETWEEN ? AND ?",
+            [$vehicleId, $startTime, $endTime]
+        );
+
+        $deletedStoppages = 0;
+        foreach ($tripIds as $row) {
+            $this->database->execute("DELETE FROM trip_stoppages WHERE trip_id = ?", [(int)$row['id']]);
+            $deletedStoppages++;
+        }
+
+        $tripCount = count($tripIds);
+        $this->database->execute(
+            "DELETE FROM vehicle_trips WHERE vehicle_id = ? AND start_time BETWEEN ? AND ?",
+            [$vehicleId, $startTime, $endTime]
+        );
+        $this->database->execute(
+            "DELETE FROM geofence_events WHERE vehicle_id = ? AND timestamp BETWEEN ? AND ?",
+            [$vehicleId, $startTime, $endTime]
+        );
+
+        return [
+            'vehicle_trips' => $tripCount,
+            'trip_stoppage_groups' => $deletedStoppages
+        ];
     }
     
     /**
