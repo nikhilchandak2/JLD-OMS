@@ -81,6 +81,58 @@ class VehicleRepository
         
         return $result ? new Vehicle($result) : null;
     }
+
+    /**
+     * Fuzzy matcher for vendor numbers like RJ07GD5241 vs OMS numbers like 5241.
+     */
+    public function findByNumberOrRegistrationFuzzy(string $value): ?Vehicle
+    {
+        $clean = strtoupper(preg_replace('/[^A-Z0-9]/', '', trim($value)) ?? '');
+        if ($clean === '') {
+            return null;
+        }
+
+        $sql = "
+            SELECT *
+            FROM vehicles
+            WHERE UPPER(REPLACE(REPLACE(IFNULL(vehicle_number, ''), '-', ''), ' ', '')) = ?
+               OR UPPER(REPLACE(REPLACE(IFNULL(registration_number, ''), '-', ''), ' ', '')) = ?
+            LIMIT 1
+        ";
+        $exact = $this->database->fetch($sql, [$clean, $clean]);
+        if ($exact) {
+            return new Vehicle($exact);
+        }
+
+        // Common fleet pattern: WheelsEye vehicleNumber contains registration while OMS uses short fleet code.
+        // Try matching by trailing digit groups (prefer longest match).
+        if (preg_match_all('/\d+/', $clean, $matches) !== 1 || empty($matches[0])) {
+            return null;
+        }
+        $digitGroups = array_values(array_unique($matches[0]));
+        usort($digitGroups, fn(string $a, string $b) => strlen($b) <=> strlen($a));
+
+        foreach ($digitGroups as $digits) {
+            if (strlen($digits) < 3) {
+                continue;
+            }
+            $like = '%' . $digits;
+            $candidateSql = "
+                SELECT *
+                FROM vehicles
+                WHERE UPPER(REPLACE(REPLACE(IFNULL(vehicle_number, ''), '-', ''), ' ', '')) LIKE ?
+                   OR UPPER(REPLACE(REPLACE(IFNULL(registration_number, ''), '-', ''), ' ', '')) LIKE ?
+                ORDER BY id ASC
+                LIMIT 1
+            ";
+            $candidate = $this->database->fetch($candidateSql, [$like, $like]);
+            if ($candidate) {
+                return new Vehicle($candidate);
+            }
+        }
+
+        return null;
+    }
     
     public function findByGpsDeviceId(int $gpsDeviceId): ?Vehicle
     {

@@ -98,6 +98,9 @@ class WheelsEyeApiService
             if (!$vehicle && $deviceNumber !== '') {
                 $vehicle = $this->vehicleRepository->findByGpsDeviceImei($deviceNumber);
             }
+            if (!$vehicle && !empty($vehicleNumber)) {
+                $vehicle = $this->vehicleRepository->findByNumberOrRegistrationFuzzy($vehicleNumber);
+            }
             if (!$vehicle) {
                 $errors[] = 'No vehicle in OMS for: ' . ($vehicleNumber ?: 'device ' . $deviceNumber);
                 $skipped++;
