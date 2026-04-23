@@ -19,6 +19,7 @@ class TripDetectionService
     private TripStoppageRepository $tripStoppageRepository;
     private GeofenceService $geofenceService;
     private bool $rebuildMode = false;
+    private ?string $rebuildRangeStartTime = null;
 
     public function __construct()
     {
@@ -65,10 +66,12 @@ class TripDetectionService
 
         $trackingPoints = $this->gpsTrackingRepository->getTrackingBetween($vehicleId, $startTime, $endTime, 20000);
         $this->rebuildMode = true;
+        $this->rebuildRangeStartTime = $startTime;
         try {
             $replayStats = $this->replayTripsFromHistoricalPoints($vehicleId, $trackingPoints);
         } finally {
             $this->rebuildMode = false;
+            $this->rebuildRangeStartTime = null;
         }
 
         $summarySql = "
@@ -561,6 +564,11 @@ class TripDetectionService
             return;
         }
 
+        $startTime = (string)$seed['start_time'];
+        if ($this->rebuildRangeStartTime !== null && strcmp($startTime, $this->rebuildRangeStartTime) < 0) {
+            $startTime = $this->rebuildRangeStartTime;
+        }
+
         $insertSql = "
             INSERT INTO vehicle_trips
             (vehicle_id, trip_type, source_geofence_id, start_time, start_latitude, start_longitude, status)
@@ -569,7 +577,7 @@ class TripDetectionService
         $this->database->execute($insertSql, [
             $vehicleId,
             (int)$seed['source_geofence_id'],
-            (string)$seed['start_time'],
+            $startTime,
             (float)$seed['start_latitude'],
             (float)$seed['start_longitude'],
         ]);
@@ -595,6 +603,42 @@ class TripDetectionService
             return null;
         }
 
+        $pitIds = array_map(fn(array $g) => (int)$g['id'], $pitGeofences);
+        $placeholders = implode(',', array_fill(0, count($pitIds), '?'));
+        $params = array_merge([$vehicleId, $beforeTimestamp], $pitIds);
+        $eventSql = "
+            SELECT geofence_id, timestamp
+            FROM geofence_events
+            WHERE vehicle_id = ?
+              AND timestamp < ?
+              AND event_type = 'entry'
+              AND geofence_id IN ($placeholders)
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 1
+        ";
+        $pitEvent = $this->database->fetch($eventSql, $params);
+        if ($pitEvent) {
+            $point = $this->database->fetch(
+                "
+                SELECT timestamp, latitude, longitude
+                FROM gps_tracking_data
+                WHERE vehicle_id = ?
+                  AND timestamp <= ?
+                ORDER BY timestamp DESC, id DESC
+                LIMIT 1
+                ",
+                [$vehicleId, (string)$pitEvent['timestamp']]
+            );
+            if ($point) {
+                return [
+                    'source_geofence_id' => (int)$pitEvent['geofence_id'],
+                    'start_time' => (string)$pitEvent['timestamp'],
+                    'start_latitude' => (float)$point['latitude'],
+                    'start_longitude' => (float)$point['longitude'],
+                ];
+            }
+        }
+
         $rows = $this->database->fetchAll(
             "
             SELECT timestamp, latitude, longitude
@@ -602,7 +646,7 @@ class TripDetectionService
             WHERE vehicle_id = ?
               AND timestamp < ?
             ORDER BY timestamp DESC, id DESC
-            LIMIT 500
+            LIMIT 5000
             ",
             [$vehicleId, $beforeTimestamp]
         );
