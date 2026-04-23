@@ -304,6 +304,14 @@ class GeofenceService
         }
         return $matches;
     }
+
+    /**
+     * Check if a coordinate is inside a specific geofence row.
+     */
+    public function containsPoint(float $latitude, float $longitude, array $geofence): bool
+    {
+        return $this->containsPointInGeofence($latitude, $longitude, $geofence);
+    }
     
     /**
      * Get geofence by ID

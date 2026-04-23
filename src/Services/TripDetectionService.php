@@ -63,11 +63,7 @@ class TripDetectionService
         $deleted = $this->clearTripAndGeofenceDataForRange($vehicleId, $startTime, $endTime);
 
         $trackingPoints = $this->gpsTrackingRepository->getTrackingBetween($vehicleId, $startTime, $endTime, 20000);
-        $processed = 0;
-        foreach ($trackingPoints as $point) {
-            $this->processTrackingData($vehicleId, $point);
-            $processed++;
-        }
+        $processed = $this->replayTripsFromHistoricalPoints($vehicleId, $trackingPoints);
 
         $summarySql = "
             SELECT
@@ -94,6 +90,52 @@ class TripDetectionService
                 'cancelled_trips' => (int)($summary['cancelled_trips'] ?? 0),
             ]
         ];
+    }
+
+    /**
+     * Recompute geofence entry/exit transitions from chronological points (for rebuild use only).
+     */
+    private function replayTripsFromHistoricalPoints(int $vehicleId, array $trackingPoints): int
+    {
+        if (empty($trackingPoints)) {
+            return 0;
+        }
+
+        $activeGeofences = $this->geofenceService->getActiveGeofences();
+        $previousInside = [];
+        $processed = 0;
+
+        foreach ($trackingPoints as $point) {
+            $currentInside = [];
+            foreach ($activeGeofences as $geofence) {
+                if ($this->geofenceService->containsPoint((float)$point->latitude, (float)$point->longitude, $geofence)) {
+                    $currentInside[(int)$geofence['id']] = $geofence;
+                }
+            }
+
+            // For first point in range, mimic live behavior: treat current inside geofences as entries.
+            $entryIds = empty($previousInside)
+                ? array_keys($currentInside)
+                : array_values(array_diff(array_keys($currentInside), array_keys($previousInside)));
+            $exitIds = empty($previousInside)
+                ? []
+                : array_values(array_diff(array_keys($previousInside), array_keys($currentInside)));
+
+            foreach ($entryIds as $geofenceId) {
+                $this->recordGeofenceEvent($vehicleId, (int)$geofenceId, 'entry', (float)$point->latitude, (float)$point->longitude, $point->timestamp);
+                $this->processGeofenceEvent($vehicleId, ['geofence_id' => (int)$geofenceId, 'event_type' => 'entry'], $point);
+            }
+            foreach ($exitIds as $geofenceId) {
+                $this->recordGeofenceEvent($vehicleId, (int)$geofenceId, 'exit', (float)$point->latitude, (float)$point->longitude, $point->timestamp);
+                $this->processGeofenceEvent($vehicleId, ['geofence_id' => (int)$geofenceId, 'event_type' => 'exit'], $point);
+            }
+
+            $this->reconcileTripCompletionFromCurrentPosition($vehicleId, $point);
+            $previousInside = $currentInside;
+            $processed++;
+        }
+
+        return $processed;
     }
     
     /**
@@ -397,6 +439,16 @@ class TripDetectionService
             'vehicle_trips' => $tripCount,
             'trip_stoppage_groups' => $deletedStoppages
         ];
+    }
+
+    private function recordGeofenceEvent(int $vehicleId, int $geofenceId, string $eventType, float $lat, float $lon, string $timestamp): void
+    {
+        $sql = "
+            INSERT INTO geofence_events
+            (vehicle_id, geofence_id, event_type, latitude, longitude, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ";
+        $this->database->execute($sql, [$vehicleId, $geofenceId, $eventType, $lat, $lon, $timestamp]);
     }
     
     /**
