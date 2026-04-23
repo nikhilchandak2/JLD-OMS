@@ -35,6 +35,10 @@ class TripDetectionService
     {
         // Check if vehicle entered/exited any geofences
         $geofenceEvents = $this->geofenceService->checkGeofenceEvents($vehicleId, $trackingData);
+
+        usort($geofenceEvents, function (array $a, array $b): int {
+            return $this->eventPriority($a) <=> $this->eventPriority($b);
+        });
         
         // Process geofence events to detect trips
         foreach ($geofenceEvents as $event) {
@@ -130,6 +134,16 @@ class TripDetectionService
             $entryIds = array_values(array_diff(array_keys($currentInside), array_keys($previousInside)));
             $exitIds = array_values(array_diff(array_keys($previousInside), array_keys($currentInside)));
 
+            usort($entryIds, function (int $a, int $b) use ($currentInside): int {
+                return $this->eventPriority(
+                    ['geofence_id' => $a, 'event_type' => 'entry'],
+                    $currentInside[$a] ?? null
+                ) <=> $this->eventPriority(
+                    ['geofence_id' => $b, 'event_type' => 'entry'],
+                    $currentInside[$b] ?? null
+                );
+            });
+
             foreach ($entryIds as $geofenceId) {
                 $geofence = $currentInside[(int)$geofenceId] ?? $this->geofenceService->getGeofenceById((int)$geofenceId);
                 $this->recordGeofenceEvent($vehicleId, (int)$geofenceId, 'entry', (float)$point->latitude, (float)$point->longitude, $point->timestamp);
@@ -164,6 +178,28 @@ class TripDetectionService
             'active_geofences' => count($activeGeofences),
             'destination_geofences' => $destinationGeofenceCount,
         ];
+    }
+
+    private function eventPriority(array $event, ?array $knownGeofence = null): int
+    {
+        $eventType = strtolower((string)($event['event_type'] ?? ''));
+        $geofence = $knownGeofence;
+        if (!$geofence && isset($event['geofence_id'])) {
+            $geofence = $this->geofenceService->getGeofenceById((int)$event['geofence_id']);
+        }
+        $isPit = is_array($geofence) && $this->isPitGeofence($geofence);
+
+        // Ensure pit entry starts trip before any destination entry at same point.
+        if ($eventType === 'entry' && $isPit) {
+            return 0;
+        }
+        if ($eventType === 'entry') {
+            return 1;
+        }
+        if ($eventType === 'exit' && $isPit) {
+            return 2;
+        }
+        return 3;
     }
 
     /**
