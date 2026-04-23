@@ -18,8 +18,6 @@ class TripDetectionService
     private GPSTrackingRepository $gpsTrackingRepository;
     private TripStoppageRepository $tripStoppageRepository;
     private GeofenceService $geofenceService;
-    private bool $rebuildMode = false;
-    private ?string $rebuildRangeStartTime = null;
 
     public function __construct()
     {
@@ -42,10 +40,6 @@ class TripDetectionService
         foreach ($geofenceEvents as $event) {
             $this->processGeofenceEvent($vehicleId, $event, $trackingData);
         }
-
-        // Fallback reconciliation: close stale in-progress trip if vehicle is already inside stockpile
-        // and we can confirm pit exit happened (covers missed/late entry events).
-        $this->reconcileTripCompletionFromCurrentPosition($vehicleId, $trackingData);
     }
 
     /**
@@ -65,14 +59,7 @@ class TripDetectionService
         $deleted = $this->clearTripAndGeofenceDataForRange($vehicleId, $startTime, $endTime);
 
         $trackingPoints = $this->gpsTrackingRepository->getTrackingBetween($vehicleId, $startTime, $endTime, 20000);
-        $this->rebuildMode = true;
-        $this->rebuildRangeStartTime = $startTime;
-        try {
-            $replayStats = $this->replayTripsFromHistoricalPoints($vehicleId, $trackingPoints);
-        } finally {
-            $this->rebuildMode = false;
-            $this->rebuildRangeStartTime = null;
-        }
+        $replayStats = $this->replayTripsFromHistoricalPoints($vehicleId, $trackingPoints);
 
         $summarySql = "
             SELECT
@@ -164,7 +151,6 @@ class TripDetectionService
                 }
             }
 
-            $this->reconcileTripCompletionFromCurrentPosition($vehicleId, $point);
             $previousInside = $currentInside;
             $processed++;
         }
@@ -234,33 +220,15 @@ class TripDetectionService
             return;
         }
 
+        // Trip ends when vehicle enters any non-pit geofence.
+        if ($eventType !== 'entry' || !$this->isStockpileGeofence($geofence)) {
+            return;
+        }
+
         $activeTrip = $this->getActiveTrip($vehicleId);
         if (!$activeTrip) {
-            if ($this->rebuildMode && $eventType === 'entry' && $this->isStockpileGeofence($geofence)) {
-                $this->createSyntheticTripAndComplete($vehicleId, $geofenceId, $trackingData);
-            }
             return;
         }
-
-        // A trip can complete only when vehicle enters a stockpile geofence.
-        if (!$this->isStockpileGeofence($geofence) || $eventType !== 'entry') {
-            return;
-        }
-
-        // Deterministic replay behavior: when rebuilding historical data, destination entry
-        // should finalize the active trip even if pit-exit evidence is sparse/missing.
-        if ($this->rebuildMode) {
-            $this->completeTrip($activeTrip, $geofenceId, $trackingData);
-            return;
-        }
-
-        // Complete on destination entry once trip has reasonably progressed.
-        // This avoids getting stuck when pit-exit events are missing or pit/destination overlap.
-        if (!$this->canCompleteTripAtDestinationEntry($activeTrip, $trackingData, $geofenceId)) {
-            $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId);
-            return;
-        }
-
         $this->completeTrip($activeTrip, $geofenceId, $trackingData);
     }
     
@@ -370,19 +338,6 @@ class TripDetectionService
     }
 
     /**
-     * Persist destination geofence when vehicle enters stockpile before pit-exit condition is satisfied.
-     */
-    private function markDestinationEntry(int $tripId, int $destinationGeofenceId): void
-    {
-        $sql = "
-            UPDATE vehicle_trips
-            SET destination_geofence_id = ?
-            WHERE id = ? AND status = 'in_progress' AND destination_geofence_id IS NULL
-        ";
-        $this->database->execute($sql, [$destinationGeofenceId, $tripId]);
-    }
-
-    /**
      * Destination is any non-pit geofence.
      * Some deployments classify stockyards as parking/other/custom labels.
      */
@@ -404,142 +359,6 @@ class TripDetectionService
     }
 
     /**
-     * Use current GPS point to complete an in-progress trip when stockpile entry event was missed.
-     */
-    private function reconcileTripCompletionFromCurrentPosition(int $vehicleId, $trackingData): void
-    {
-        $activeTrip = $this->getActiveTrip($vehicleId);
-        if (!$activeTrip) {
-            return;
-        }
-
-        if (!$this->hasExitedSourcePitSinceTripStart($activeTrip, $trackingData->timestamp, (float)$trackingData->latitude, (float)$trackingData->longitude)) {
-            return;
-        }
-
-        $stockpile = $this->resolveCurrentStockpileGeofence(
-            (float)$trackingData->latitude,
-            (float)$trackingData->longitude,
-            (int)$activeTrip['destination_geofence_id']
-        );
-        if (!$stockpile) {
-            return;
-        }
-
-        $this->completeTrip($activeTrip, (int)$stockpile['id'], $trackingData);
-    }
-
-    private function resolveCurrentStockpileGeofence(float $latitude, float $longitude, int $preferredGeofenceId = 0): ?array
-    {
-        $containingGeofences = $this->geofenceService->getContainingGeofences($latitude, $longitude);
-        if (empty($containingGeofences)) {
-            return null;
-        }
-
-        $stockpiles = array_values(array_filter($containingGeofences, fn(array $geofence) => $this->isStockpileGeofence($geofence)));
-        if (empty($stockpiles)) {
-            return null;
-        }
-
-        if ($preferredGeofenceId > 0) {
-            foreach ($stockpiles as $geofence) {
-                if ((int)$geofence['id'] === $preferredGeofenceId) {
-                    return $geofence;
-                }
-            }
-        }
-
-        return $stockpiles[0];
-    }
-
-    /**
-     * Guard against same-point false completions when pit and destination overlap.
-     */
-    private function canCompleteTripAtDestinationEntry(array $activeTrip, $trackingData, int $destinationGeofenceId): bool
-    {
-        $startLat = isset($activeTrip['start_latitude']) ? (float)$activeTrip['start_latitude'] : 0.0;
-        $startLon = isset($activeTrip['start_longitude']) ? (float)$activeTrip['start_longitude'] : 0.0;
-        $currentLat = (float)$trackingData->latitude;
-        $currentLon = (float)$trackingData->longitude;
-        $distanceFromStart = $this->calculateDistance($startLat, $startLon, $currentLat, $currentLon);
-        $durationMinutes = $this->durationMinutes((string)$activeTrip['start_time'], (string)$trackingData->timestamp);
-
-        // If moved a bit or time elapsed, destination entry is valid completion.
-        if ($distanceFromStart >= 0.05 || $durationMinutes >= 1.0) {
-            return true;
-        }
-
-        // If explicit/fallback pit-exit evidence exists, allow completion even with short movement.
-        return $this->hasExitedSourcePitSinceTripStart(
-            $activeTrip,
-            (string)$trackingData->timestamp,
-            $currentLat,
-            $currentLon
-        );
-    }
-
-    /**
-     * Confirm source pit exit happened between trip start and current event time.
-     */
-    private function hasExitedSourcePitSinceTripStart(array $activeTrip, string $eventTimestamp, ?float $currentLatitude = null, ?float $currentLongitude = null): bool
-    {
-        $sourceGeofenceId = (int)($activeTrip['source_geofence_id'] ?? 0);
-        if ($sourceGeofenceId <= 0) {
-            return true;
-        }
-
-        $sql = "
-            SELECT id
-            FROM geofence_events
-            WHERE vehicle_id = ?
-              AND geofence_id = ?
-              AND event_type = 'exit'
-              AND timestamp >= ?
-              AND timestamp <= ?
-            ORDER BY id DESC
-            LIMIT 1
-        ";
-
-        $row = $this->database->fetch($sql, [
-            (int)$activeTrip['vehicle_id'],
-            $sourceGeofenceId,
-            $activeTrip['start_time'],
-            $eventTimestamp
-        ]);
-
-        if ($row !== null) {
-            return true;
-        }
-
-        // Fallback for sparse vendor points:
-        // 1) if current point is outside pit, infer pit exit happened.
-        // 2) if current point is inside any non-pit destination geofence, also treat pit exit as satisfied
-        //    (handles overlapping pit/destination boundaries and missing pit-exit events).
-        if ($currentLatitude !== null && $currentLongitude !== null) {
-            $sourcePit = $this->geofenceService->getGeofenceById($sourceGeofenceId);
-            if (!$sourcePit) {
-                return true;
-            }
-            if (!$this->geofenceService->containsPoint($currentLatitude, $currentLongitude, $sourcePit)) {
-                return true;
-            }
-
-            $containing = $this->geofenceService->getContainingGeofences($currentLatitude, $currentLongitude);
-            foreach ($containing as $geofence) {
-                $geofenceId = (int)($geofence['id'] ?? 0);
-                if ($geofenceId === $sourceGeofenceId) {
-                    continue;
-                }
-                if ($this->isStockpileGeofence($geofence)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-    
-    /**
      * Get active trip for vehicle
      */
     private function getActiveTrip(int $vehicleId): ?array
@@ -552,120 +371,6 @@ class TripDetectionService
         ";
         
         return $this->database->fetch($sql, [$vehicleId]);
-    }
-
-    /**
-     * Rebuild fallback: if destination entry appears without active trip, synthesize from recent pit context.
-     */
-    private function createSyntheticTripAndComplete(int $vehicleId, int $destinationGeofenceId, $trackingData): void
-    {
-        $seed = $this->findRecentPitSeedPoint($vehicleId, (string)$trackingData->timestamp);
-        if (!$seed) {
-            return;
-        }
-
-        $startTime = (string)$seed['start_time'];
-        if ($this->rebuildRangeStartTime !== null && strcmp($startTime, $this->rebuildRangeStartTime) < 0) {
-            $startTime = $this->rebuildRangeStartTime;
-        }
-
-        $insertSql = "
-            INSERT INTO vehicle_trips
-            (vehicle_id, trip_type, source_geofence_id, start_time, start_latitude, start_longitude, status)
-            VALUES (?, 'pit_to_stockpile', ?, ?, ?, ?, 'in_progress')
-        ";
-        $this->database->execute($insertSql, [
-            $vehicleId,
-            (int)$seed['source_geofence_id'],
-            $startTime,
-            (float)$seed['start_latitude'],
-            (float)$seed['start_longitude'],
-        ]);
-
-        $tripId = (int)$this->database->lastInsertId();
-        $activeTrip = $this->database->fetch("SELECT * FROM vehicle_trips WHERE id = ?", [$tripId]);
-        if (!$activeTrip) {
-            return;
-        }
-        $this->completeTrip($activeTrip, $destinationGeofenceId, $trackingData);
-    }
-
-    /**
-     * Find latest historical point before destination that lies in a pit geofence.
-     */
-    private function findRecentPitSeedPoint(int $vehicleId, string $beforeTimestamp): ?array
-    {
-        $pitGeofences = array_values(array_filter(
-            $this->geofenceService->getActiveGeofences(),
-            fn(array $g) => $this->isPitGeofence($g)
-        ));
-        if (empty($pitGeofences)) {
-            return null;
-        }
-
-        $pitIds = array_map(fn(array $g) => (int)$g['id'], $pitGeofences);
-        $placeholders = implode(',', array_fill(0, count($pitIds), '?'));
-        $params = array_merge([$vehicleId, $beforeTimestamp], $pitIds);
-        $eventSql = "
-            SELECT geofence_id, timestamp
-            FROM geofence_events
-            WHERE vehicle_id = ?
-              AND timestamp < ?
-              AND event_type = 'entry'
-              AND geofence_id IN ($placeholders)
-            ORDER BY timestamp DESC, id DESC
-            LIMIT 1
-        ";
-        $pitEvent = $this->database->fetch($eventSql, $params);
-        if ($pitEvent) {
-            $point = $this->database->fetch(
-                "
-                SELECT timestamp, latitude, longitude
-                FROM gps_tracking_data
-                WHERE vehicle_id = ?
-                  AND timestamp <= ?
-                ORDER BY timestamp DESC, id DESC
-                LIMIT 1
-                ",
-                [$vehicleId, (string)$pitEvent['timestamp']]
-            );
-            if ($point) {
-                return [
-                    'source_geofence_id' => (int)$pitEvent['geofence_id'],
-                    'start_time' => (string)$pitEvent['timestamp'],
-                    'start_latitude' => (float)$point['latitude'],
-                    'start_longitude' => (float)$point['longitude'],
-                ];
-            }
-        }
-
-        $rows = $this->database->fetchAll(
-            "
-            SELECT timestamp, latitude, longitude
-            FROM gps_tracking_data
-            WHERE vehicle_id = ?
-              AND timestamp < ?
-            ORDER BY timestamp DESC, id DESC
-            LIMIT 5000
-            ",
-            [$vehicleId, $beforeTimestamp]
-        );
-        foreach ($rows as $row) {
-            $lat = (float)($row['latitude'] ?? 0);
-            $lon = (float)($row['longitude'] ?? 0);
-            foreach ($pitGeofences as $pit) {
-                if ($this->geofenceService->containsPoint($lat, $lon, $pit)) {
-                    return [
-                        'source_geofence_id' => (int)$pit['id'],
-                        'start_time' => (string)$row['timestamp'],
-                        'start_latitude' => $lat,
-                        'start_longitude' => $lon,
-                    ];
-                }
-            }
-        }
-
-        return null;
     }
 
     private function clearTripAndGeofenceDataForRange(int $vehicleId, string $startTime, string $endTime): array
