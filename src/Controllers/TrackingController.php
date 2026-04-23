@@ -273,7 +273,9 @@ class TrackingController
                 }
                 $vehicles[] = $vehicle;
             } else {
-                $vehicles = $this->vehicleRepository->findAll(['status' => 'active']);
+                // Rebuild should include every configured vehicle, not only active ones.
+                // Some sites keep operational vehicles as inactive in OMS master data.
+                $vehicles = $this->vehicleRepository->findAll();
             }
 
             if (empty($vehicles)) {

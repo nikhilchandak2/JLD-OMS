@@ -438,7 +438,10 @@ async function pullAndRebuildTrips() {
         const totals = rebuildData?.data?.totals || {};
         const errors = rebuildData?.data?.errors || [];
         const syncNote = Number(syncData.synced || 0);
-        const message = `Pulled ${syncNote} live location(s); rebuilt trips: ${Number(totals.total_trips || 0)} total, ${Number(totals.completed_trips || 0)} completed.`;
+        const vehiclesSynced = Number(syncData.vehicles_synced || 0);
+        const skippedSync = Number(syncData.skipped || 0);
+        const pointsProcessed = Number(totals.tracking_points_processed || 0);
+        const message = `Pulled ${syncNote} GPS point(s) for ${vehiclesSynced} vehicle(s) (skipped ${skippedSync}); processed ${pointsProcessed} points; rebuilt trips: ${Number(totals.total_trips || 0)} total, ${Number(totals.completed_trips || 0)} completed.`;
         showSuccess(errors.length ? `${message} (${errors.length} vehicle error(s))` : message);
         loadTrips();
     } catch (error) {

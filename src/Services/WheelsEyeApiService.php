@@ -90,17 +90,7 @@ class WheelsEyeApiService
         foreach ($list as $item) {
             $vehicleNumber = $item['vehicleNumber'] ?? null;
             $deviceNumber = (string)($item['deviceNumber'] ?? '');
-
-            $vehicle = null;
-            if (!empty($vehicleNumber)) {
-                $vehicle = $this->vehicleRepository->findByVehicleNumber($vehicleNumber);
-            }
-            if (!$vehicle && $deviceNumber !== '') {
-                $vehicle = $this->vehicleRepository->findByGpsDeviceImei($deviceNumber);
-            }
-            if (!$vehicle && !empty($vehicleNumber)) {
-                $vehicle = $this->vehicleRepository->findByNumberOrRegistrationFuzzy($vehicleNumber);
-            }
+            $vehicle = $this->resolveVehicleFromPayloadIdentifiers($item, $vehicleNumber, $deviceNumber);
             if (!$vehicle) {
                 $errors[] = 'No vehicle in OMS for: ' . ($vehicleNumber ?: 'device ' . $deviceNumber);
                 $skipped++;
@@ -596,5 +586,94 @@ class WheelsEyeApiService
             $tracking->longitude
         ]);
         return $row !== null;
+    }
+
+    private function resolveVehicleFromPayloadIdentifiers(array $item, ?string $vehicleNumber, string $deviceNumber): ?\App\Models\Vehicle
+    {
+        $identifiers = $this->extractVehicleIdentifiers($item, $vehicleNumber, $deviceNumber);
+
+        foreach ($identifiers['device'] as $deviceId) {
+            $vehicle = $this->vehicleRepository->findByGpsDeviceImei($deviceId);
+            if ($vehicle) {
+                return $vehicle;
+            }
+        }
+
+        foreach ($identifiers['vehicle'] as $number) {
+            $vehicle = $this->vehicleRepository->findByVehicleNumber($number);
+            if ($vehicle) {
+                return $vehicle;
+            }
+        }
+
+        foreach ($identifiers['vehicle'] as $number) {
+            $vehicle = $this->vehicleRepository->findByNumberOrRegistrationFuzzy($number);
+            if ($vehicle) {
+                return $vehicle;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract plausible vehicle/device identifiers from payload keys used by WheelsEye variants.
+     *
+     * @return array{vehicle: string[], device: string[]}
+     */
+    private function extractVehicleIdentifiers(array $item, ?string $vehicleNumber, string $deviceNumber): array
+    {
+        $vehicleIds = [];
+        $deviceIds = [];
+
+        foreach ([$vehicleNumber, $item['registrationNo'] ?? null, $item['registration_number'] ?? null, $item['vehicleNo'] ?? null, $item['vehicleno'] ?? null, $item['truckNo'] ?? null] as $candidate) {
+            if (!is_scalar($candidate)) {
+                continue;
+            }
+            $val = trim((string)$candidate);
+            if ($val !== '') {
+                $vehicleIds[] = $val;
+            }
+        }
+
+        foreach ([$deviceNumber, $item['imei'] ?? null, $item['device_id'] ?? null, $item['trackerId'] ?? null, $item['tracker_id'] ?? null] as $candidate) {
+            if (!is_scalar($candidate)) {
+                continue;
+            }
+            $val = trim((string)$candidate);
+            if ($val !== '') {
+                $deviceIds[] = $val;
+            }
+        }
+
+        // Deep-scan for additional string IDs in nested objects.
+        $stack = [$item];
+        while ($stack) {
+            $current = array_pop($stack);
+            foreach ($current as $key => $value) {
+                if (is_array($value)) {
+                    $stack[] = $value;
+                    continue;
+                }
+                if (!is_scalar($value)) {
+                    continue;
+                }
+                $k = strtolower((string)$key);
+                $v = trim((string)$value);
+                if ($v === '') {
+                    continue;
+                }
+                if (str_contains($k, 'imei') || str_contains($k, 'device')) {
+                    $deviceIds[] = $v;
+                } elseif (str_contains($k, 'vehicle') || str_contains($k, 'truck') || str_contains($k, 'reg')) {
+                    $vehicleIds[] = $v;
+                }
+            }
+        }
+
+        return [
+            'vehicle' => array_values(array_unique($vehicleIds)),
+            'device' => array_values(array_unique($deviceIds)),
+        ];
     }
 }
