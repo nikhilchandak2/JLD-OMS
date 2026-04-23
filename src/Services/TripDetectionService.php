@@ -63,7 +63,7 @@ class TripDetectionService
         $deleted = $this->clearTripAndGeofenceDataForRange($vehicleId, $startTime, $endTime);
 
         $trackingPoints = $this->gpsTrackingRepository->getTrackingBetween($vehicleId, $startTime, $endTime, 20000);
-        $processed = $this->replayTripsFromHistoricalPoints($vehicleId, $trackingPoints);
+        $replayStats = $this->replayTripsFromHistoricalPoints($vehicleId, $trackingPoints);
 
         $summarySql = "
             SELECT
@@ -81,8 +81,9 @@ class TripDetectionService
             'vehicle_id' => $vehicleId,
             'start_time' => $startTime,
             'end_time' => $endTime,
-            'tracking_points_processed' => $processed,
+            'tracking_points_processed' => (int)($replayStats['tracking_points_processed'] ?? 0),
             'deleted' => $deleted,
+            'diagnostics' => $replayStats,
             'summary' => [
                 'total_trips' => (int)($summary['total_trips'] ?? 0),
                 'completed_trips' => (int)($summary['completed_trips'] ?? 0),
@@ -95,15 +96,32 @@ class TripDetectionService
     /**
      * Recompute geofence entry/exit transitions from chronological points (for rebuild use only).
      */
-    private function replayTripsFromHistoricalPoints(int $vehicleId, array $trackingPoints): int
+    private function replayTripsFromHistoricalPoints(int $vehicleId, array $trackingPoints): array
     {
         if (empty($trackingPoints)) {
-            return 0;
+            return [
+                'tracking_points_processed' => 0,
+                'geofence_events_generated' => 0,
+                'pit_entries' => 0,
+                'pit_exits' => 0,
+                'destination_entries' => 0,
+            ];
         }
 
         $activeGeofences = $this->geofenceService->getActiveGeofences();
+        $destinationGeofenceCount = 0;
+        foreach ($activeGeofences as $geofence) {
+            if ($this->isStockpileGeofence($geofence)) {
+                $destinationGeofenceCount++;
+            }
+        }
+
         $previousInside = [];
         $processed = 0;
+        $generatedEvents = 0;
+        $pitEntries = 0;
+        $pitExits = 0;
+        $destinationEntries = 0;
 
         foreach ($trackingPoints as $point) {
             $currentInside = [];
@@ -122,12 +140,24 @@ class TripDetectionService
                 : array_values(array_diff(array_keys($previousInside), array_keys($currentInside)));
 
             foreach ($entryIds as $geofenceId) {
+                $geofence = $currentInside[(int)$geofenceId] ?? $this->geofenceService->getGeofenceById((int)$geofenceId);
                 $this->recordGeofenceEvent($vehicleId, (int)$geofenceId, 'entry', (float)$point->latitude, (float)$point->longitude, $point->timestamp);
                 $this->processGeofenceEvent($vehicleId, ['geofence_id' => (int)$geofenceId, 'event_type' => 'entry'], $point);
+                $generatedEvents++;
+                if (is_array($geofence) && $this->isPitGeofence($geofence)) {
+                    $pitEntries++;
+                } elseif (is_array($geofence) && $this->isStockpileGeofence($geofence)) {
+                    $destinationEntries++;
+                }
             }
             foreach ($exitIds as $geofenceId) {
+                $geofence = $previousInside[(int)$geofenceId] ?? $this->geofenceService->getGeofenceById((int)$geofenceId);
                 $this->recordGeofenceEvent($vehicleId, (int)$geofenceId, 'exit', (float)$point->latitude, (float)$point->longitude, $point->timestamp);
                 $this->processGeofenceEvent($vehicleId, ['geofence_id' => (int)$geofenceId, 'event_type' => 'exit'], $point);
+                $generatedEvents++;
+                if (is_array($geofence) && $this->isPitGeofence($geofence)) {
+                    $pitExits++;
+                }
             }
 
             $this->reconcileTripCompletionFromCurrentPosition($vehicleId, $point);
@@ -135,7 +165,15 @@ class TripDetectionService
             $processed++;
         }
 
-        return $processed;
+        return [
+            'tracking_points_processed' => $processed,
+            'geofence_events_generated' => $generatedEvents,
+            'pit_entries' => $pitEntries,
+            'pit_exits' => $pitExits,
+            'destination_entries' => $destinationEntries,
+            'active_geofences' => count($activeGeofences),
+            'destination_geofences' => $destinationGeofenceCount,
+        ];
     }
     
     /**

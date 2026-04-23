@@ -305,6 +305,10 @@ class TrackingController
                 'completed_trips' => 0,
                 'in_progress_trips' => 0,
                 'cancelled_trips' => 0,
+                'geofence_events_generated' => 0,
+                'pit_entries' => 0,
+                'pit_exits' => 0,
+                'destination_entries' => 0,
             ];
 
             foreach ($vehicles as $targetVehicle) {
@@ -317,6 +321,10 @@ class TrackingController
                     $totals['completed_trips'] += (int)($row['summary']['completed_trips'] ?? 0);
                     $totals['in_progress_trips'] += (int)($row['summary']['in_progress_trips'] ?? 0);
                     $totals['cancelled_trips'] += (int)($row['summary']['cancelled_trips'] ?? 0);
+                    $totals['geofence_events_generated'] += (int)($row['diagnostics']['geofence_events_generated'] ?? 0);
+                    $totals['pit_entries'] += (int)($row['diagnostics']['pit_entries'] ?? 0);
+                    $totals['pit_exits'] += (int)($row['diagnostics']['pit_exits'] ?? 0);
+                    $totals['destination_entries'] += (int)($row['diagnostics']['destination_entries'] ?? 0);
                 } catch (\Exception $vehicleException) {
                     $errors[] = 'Vehicle ' . $targetVehicle->vehicleNumber . ': ' . $vehicleException->getMessage();
                 }

@@ -441,7 +441,10 @@ async function pullAndRebuildTrips() {
         const vehiclesSynced = Number(syncData.vehicles_synced || 0);
         const skippedSync = Number(syncData.skipped || 0);
         const pointsProcessed = Number(totals.tracking_points_processed || 0);
-        const message = `Pulled ${syncNote} GPS point(s) for ${vehiclesSynced} vehicle(s) (skipped ${skippedSync}); processed ${pointsProcessed} points; rebuilt trips: ${Number(totals.total_trips || 0)} total, ${Number(totals.completed_trips || 0)} completed.`;
+        const pitEntries = Number(totals.pit_entries || 0);
+        const pitExits = Number(totals.pit_exits || 0);
+        const destEntries = Number(totals.destination_entries || 0);
+        const message = `Pulled ${syncNote} GPS point(s) for ${vehiclesSynced} vehicle(s) (skipped ${skippedSync}); processed ${pointsProcessed} points; events: pit in ${pitEntries}, pit out ${pitExits}, destination in ${destEntries}; rebuilt trips: ${Number(totals.total_trips || 0)} total, ${Number(totals.completed_trips || 0)} completed.`;
         showSuccess(errors.length ? `${message} (${errors.length} vehicle error(s))` : message);
         loadTrips();
     } catch (error) {
