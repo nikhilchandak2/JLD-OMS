@@ -170,7 +170,7 @@ class TripDetectionService
         }
 
         // Enforce rule: complete only after the vehicle has exited the source pit.
-        if (!$this->hasExitedSourcePitSinceTripStart($activeTrip, $trackingData->timestamp)) {
+        if (!$this->hasExitedSourcePitSinceTripStart($activeTrip, $trackingData->timestamp, (float)$trackingData->latitude, (float)$trackingData->longitude)) {
             $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId);
             return;
         }
@@ -302,7 +302,8 @@ class TripDetectionService
     private function isStockpileGeofence(array $geofence): bool
     {
         $type = $this->normalizeGeofenceType($geofence);
-        return in_array($type, ['stockpile', 'stock_pile', 'stock pile'], true);
+        // Some sites mark stockpile destinations as "other"/"others".
+        return in_array($type, ['stockpile', 'stock_pile', 'stock pile', 'other', 'others'], true);
     }
 
     private function isPitGeofence(array $geofence): bool
@@ -326,7 +327,7 @@ class TripDetectionService
             return;
         }
 
-        if (!$this->hasExitedSourcePitSinceTripStart($activeTrip, $trackingData->timestamp)) {
+        if (!$this->hasExitedSourcePitSinceTripStart($activeTrip, $trackingData->timestamp, (float)$trackingData->latitude, (float)$trackingData->longitude)) {
             return;
         }
 
@@ -368,7 +369,7 @@ class TripDetectionService
     /**
      * Confirm source pit exit happened between trip start and current event time.
      */
-    private function hasExitedSourcePitSinceTripStart(array $activeTrip, string $eventTimestamp): bool
+    private function hasExitedSourcePitSinceTripStart(array $activeTrip, string $eventTimestamp, ?float $currentLatitude = null, ?float $currentLongitude = null): bool
     {
         $sourceGeofenceId = (int)($activeTrip['source_geofence_id'] ?? 0);
         if ($sourceGeofenceId <= 0) {
@@ -394,7 +395,20 @@ class TripDetectionService
             $eventTimestamp
         ]);
 
-        return $row !== null;
+        if ($row !== null) {
+            return true;
+        }
+
+        // Fallback for sparse vendor points: if current point is outside pit, infer pit exit happened.
+        if ($currentLatitude !== null && $currentLongitude !== null) {
+            $sourcePit = $this->geofenceService->getGeofenceById($sourceGeofenceId);
+            if (!$sourcePit) {
+                return true;
+            }
+            return !$this->geofenceService->containsPoint($currentLatitude, $currentLongitude, $sourcePit);
+        }
+
+        return false;
     }
     
     /**
