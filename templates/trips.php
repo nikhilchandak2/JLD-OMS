@@ -11,6 +11,7 @@
 </div>
 
 <div id="error-container" class="error-message"></div>
+<div id="success-container" class="success-message"></div>
 
 <!-- Filters -->
 <div class="card mb-4">
@@ -48,6 +49,9 @@
             <div class="col-12">
                 <button class="btn btn-primary" onclick="loadTrips()">
                     <i class="bi bi-search me-1"></i> Filter
+                </button>
+                <button class="btn btn-outline-primary ms-2" id="pullRebuildBtn" onclick="pullAndRebuildTrips()">
+                    <i class="bi bi-arrow-repeat me-1"></i> Pull + Rebuild Trips
                 </button>
                 <label class="ms-3">
                     <input type="checkbox" id="autoRefreshTrips" onchange="toggleTripsAutoRefresh()" checked> Auto-refresh (15s)
@@ -377,6 +381,72 @@ function showError(msg) {
     container.textContent = msg;
     container.style.display = 'block';
     setTimeout(() => container.style.display = 'none', 5000);
+}
+
+function showSuccess(msg) {
+    const container = document.getElementById('success-container');
+    container.textContent = msg;
+    container.style.display = 'block';
+    setTimeout(() => container.style.display = 'none', 7000);
+}
+
+function getSelectedRangeForRebuild() {
+    const startDate = document.getElementById('filterStartDate').value || new Date().toISOString().slice(0, 10);
+    const endDate = document.getElementById('filterEndDate').value || new Date().toISOString().slice(0, 10);
+    return {
+        start_time: `${startDate} 00:00:00`,
+        end_time: `${endDate} 23:59:59`,
+    };
+}
+
+async function pullAndRebuildTrips() {
+    const btn = document.getElementById('pullRebuildBtn');
+    if (!btn) return;
+
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Processing...';
+
+    try {
+        const syncResp = await fetch('/api/tracking/sync', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRF-Token': '<?= $csrf_token ?>'
+            }
+        });
+        const syncData = await syncResp.json();
+        if (!syncData.success) {
+            throw new Error(syncData.message || syncData.error || 'Failed to pull latest WheelsEye data');
+        }
+
+        const rebuildPayload = getSelectedRangeForRebuild();
+        const rebuildResp = await fetch('/api/tracking/rebuild-trips', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': '<?= $csrf_token ?>'
+            },
+            body: JSON.stringify(rebuildPayload)
+        });
+        const rebuildData = await rebuildResp.json();
+        if (!rebuildData.success) {
+            throw new Error(rebuildData.error || 'Failed to rebuild trips');
+        }
+
+        const totals = rebuildData?.data?.totals || {};
+        const errors = rebuildData?.data?.errors || [];
+        const syncNote = Number(syncData.synced || 0);
+        const message = `Pulled ${syncNote} live location(s); rebuilt trips: ${Number(totals.total_trips || 0)} total, ${Number(totals.completed_trips || 0)} completed.`;
+        showSuccess(errors.length ? `${message} (${errors.length} vehicle error(s))` : message);
+        loadTrips();
+    } catch (error) {
+        showError(error.message || 'Pull + rebuild failed');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
 }
 
 function viewTripStoppages(tripId) {

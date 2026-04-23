@@ -255,30 +255,84 @@ class TrackingController
         }
 
         $vehicleId = isset($payload['vehicle_id']) ? (int)$payload['vehicle_id'] : (isset($_GET['vehicle_id']) ? (int)$_GET['vehicle_id'] : 0);
-        if ($vehicleId <= 0) {
-            http_response_code(422);
-            echo json_encode(['success' => false, 'error' => 'vehicle_id is required']);
-            return;
-        }
-
-        $vehicle = $this->vehicleRepository->findById($vehicleId);
-        if (!$vehicle) {
-            http_response_code(404);
-            echo json_encode(['success' => false, 'error' => 'Vehicle not found']);
-            return;
-        }
 
         $startTime = $payload['start_time'] ?? $_GET['start_time'] ?? date('Y-m-d 00:00:00');
         $endTime = $payload['end_time'] ?? $_GET['end_time'] ?? date('Y-m-d H:i:s');
+        $startTime = strlen((string)$startTime) <= 10 ? ((string)$startTime . ' 00:00:00') : (string)$startTime;
+        $endTime = strlen((string)$endTime) <= 10 ? ((string)$endTime . ' 23:59:59') : (string)$endTime;
 
         try {
             $service = new TripDetectionService();
-            $result = $service->rebuildTripsFromTracking($vehicleId, (string)$startTime, (string)$endTime);
+            $vehicles = [];
+            if ($vehicleId > 0) {
+                $vehicle = $this->vehicleRepository->findById($vehicleId);
+                if (!$vehicle) {
+                    http_response_code(404);
+                    echo json_encode(['success' => false, 'error' => 'Vehicle not found']);
+                    return;
+                }
+                $vehicles[] = $vehicle;
+            } else {
+                $vehicles = $this->vehicleRepository->findAll(['status' => 'active']);
+            }
+
+            if (empty($vehicles)) {
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'No vehicles available for rebuild',
+                    'data' => [
+                        'vehicle_count' => 0,
+                        'results' => [],
+                        'totals' => [
+                            'tracking_points_processed' => 0,
+                            'total_trips' => 0,
+                            'completed_trips' => 0,
+                            'in_progress_trips' => 0,
+                            'cancelled_trips' => 0,
+                        ],
+                    ],
+                ]);
+                return;
+            }
+
+            $results = [];
+            $errors = [];
+            $totals = [
+                'tracking_points_processed' => 0,
+                'total_trips' => 0,
+                'completed_trips' => 0,
+                'in_progress_trips' => 0,
+                'cancelled_trips' => 0,
+            ];
+
+            foreach ($vehicles as $targetVehicle) {
+                try {
+                    $row = $service->rebuildTripsFromTracking($targetVehicle->id, $startTime, $endTime);
+                    $row['vehicle_number'] = $targetVehicle->vehicleNumber;
+                    $results[] = $row;
+                    $totals['tracking_points_processed'] += (int)($row['tracking_points_processed'] ?? 0);
+                    $totals['total_trips'] += (int)($row['summary']['total_trips'] ?? 0);
+                    $totals['completed_trips'] += (int)($row['summary']['completed_trips'] ?? 0);
+                    $totals['in_progress_trips'] += (int)($row['summary']['in_progress_trips'] ?? 0);
+                    $totals['cancelled_trips'] += (int)($row['summary']['cancelled_trips'] ?? 0);
+                } catch (\Exception $vehicleException) {
+                    $errors[] = 'Vehicle ' . $targetVehicle->vehicleNumber . ': ' . $vehicleException->getMessage();
+                }
+            }
+
             echo json_encode([
                 'success' => true,
-                'vehicle' => $vehicle->toArray(),
                 'message' => 'Trips rebuilt from stored tracking points',
-                'data' => $result,
+                'data' => [
+                    'vehicle_count' => count($vehicles),
+                    'range' => [
+                        'start_time' => $startTime,
+                        'end_time' => $endTime,
+                    ],
+                    'results' => $results,
+                    'totals' => $totals,
+                    'errors' => $errors,
+                ],
             ]);
         } catch (\InvalidArgumentException $e) {
             http_response_code(422);
