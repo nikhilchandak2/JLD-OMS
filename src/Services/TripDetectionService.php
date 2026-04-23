@@ -63,36 +63,23 @@ class TripDetectionService
             return;
         }
 
-        $isDestination = $this->isDestinationGeofence($geofence);
-        $isParking = $this->isParkingGeofence($geofence);
-        if (!$isDestination && !$isParking) {
-            return;
-        }
-
         $activeTrip = $this->getActiveTrip($vehicleId);
         if (!$activeTrip) {
             return;
         }
 
-        $currentDestinationId = (int)($activeTrip['destination_geofence_id'] ?? 0);
-
-        if ($eventType === 'entry' && ($isDestination || $isParking)) {
-            // Lock first destination/parking entry; do not overwrite it later.
-            $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId, $currentDestinationId);
+        // A trip can complete only when vehicle enters a stockpile geofence.
+        if (!$this->isStockpileGeofence($geofence) || $eventType !== 'entry') {
             return;
         }
 
-        if ($eventType === 'exit' && $currentDestinationId === $geofenceId) {
-            // Complete only when exiting the same destination geofence.
-            $this->completeTrip($activeTrip, $geofenceId, $trackingData);
+        // Enforce rule: complete only after the vehicle has exited the source pit.
+        if (!$this->hasExitedSourcePitSinceTripStart($activeTrip, $trackingData->timestamp)) {
+            $this->markDestinationEntry((int)$activeTrip['id'], $geofenceId);
             return;
         }
 
-        if ($eventType === 'entry' && $currentDestinationId > 0 && $geofenceId !== $currentDestinationId) {
-            // Fallback: if we already had a destination and moved into another zone (for example parking),
-            // finalize the trip against the previously selected destination.
-            $this->completeTrip($activeTrip, $currentDestinationId, $trackingData);
-        }
+        $this->completeTrip($activeTrip, $geofenceId, $trackingData);
     }
     
     /**
@@ -201,28 +188,25 @@ class TripDetectionService
     }
 
     /**
-     * Persist destination geofence when vehicle enters a valid destination.
+     * Persist destination geofence when vehicle enters stockpile before pit-exit condition is satisfied.
      */
-    private function markDestinationEntry(int $tripId, int $destinationGeofenceId, int $currentDestinationId = 0): void
+    private function markDestinationEntry(int $tripId, int $destinationGeofenceId): void
     {
-        if ($currentDestinationId > 0) {
-            return;
-        }
         $sql = "
             UPDATE vehicle_trips
             SET destination_geofence_id = ?
-            WHERE id = ? AND status = 'in_progress'
+            WHERE id = ? AND status = 'in_progress' AND destination_geofence_id IS NULL
         ";
         $this->database->execute($sql, [$destinationGeofenceId, $tripId]);
     }
 
     /**
-     * Destination geofences are every geofence except pits.
+     * Completed trips are based on stockpile entry only.
      */
-    private function isDestinationGeofence(array $geofence): bool
+    private function isStockpileGeofence(array $geofence): bool
     {
         $type = $this->normalizeGeofenceType($geofence);
-        return in_array($type, ['stockpile', 'other', 'others'], true);
+        return in_array($type, ['stockpile', 'stock_pile', 'stock pile'], true);
     }
 
     private function isPitGeofence(array $geofence): bool
@@ -231,15 +215,41 @@ class TripDetectionService
         return $type === 'pit';
     }
 
-    private function isParkingGeofence(array $geofence): bool
-    {
-        $type = $this->normalizeGeofenceType($geofence);
-        return $type === 'parking';
-    }
-
     private function normalizeGeofenceType(array $geofence): string
     {
         return strtolower(trim((string)($geofence['geofence_type'] ?? '')));
+    }
+
+    /**
+     * Confirm source pit exit happened between trip start and current event time.
+     */
+    private function hasExitedSourcePitSinceTripStart(array $activeTrip, string $eventTimestamp): bool
+    {
+        $sourceGeofenceId = (int)($activeTrip['source_geofence_id'] ?? 0);
+        if ($sourceGeofenceId <= 0) {
+            return true;
+        }
+
+        $sql = "
+            SELECT id
+            FROM geofence_events
+            WHERE vehicle_id = ?
+              AND geofence_id = ?
+              AND event_type = 'exit'
+              AND timestamp >= ?
+              AND timestamp <= ?
+            ORDER BY id DESC
+            LIMIT 1
+        ";
+
+        $row = $this->database->fetch($sql, [
+            (int)$activeTrip['vehicle_id'],
+            $sourceGeofenceId,
+            $activeTrip['start_time'],
+            $eventTimestamp
+        ]);
+
+        return $row !== null;
     }
     
     /**
@@ -250,7 +260,7 @@ class TripDetectionService
         $sql = "
             SELECT * FROM vehicle_trips 
             WHERE vehicle_id = ? AND status = 'in_progress'
-            ORDER BY start_time DESC
+            ORDER BY id DESC
             LIMIT 1
         ";
         

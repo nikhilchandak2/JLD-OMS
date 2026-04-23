@@ -5,7 +5,7 @@
             <h1 class="page-title">
                 <i class="bi bi-arrow-left-right me-2"></i>Trips
             </h1>
-            <p class="page-subtitle">Track trips from pit to destination geofences</p>
+            <p class="page-subtitle">Track trips from pit entry to stockpile entry</p>
         </div>
     </div>
 </div>
@@ -262,7 +262,7 @@ function renderTrips(trips, breakdownByVehicle = {}) {
                             <thead>
                                 <tr>
                                     <th>Entered Pit (Start)</th>
-                                    <th>Exited Destination (End)</th>
+                                    <th>Entered Stockpile (End)</th>
                                     <th>Source</th>
                                     <th>Destination</th>
                                     <th>Material</th>

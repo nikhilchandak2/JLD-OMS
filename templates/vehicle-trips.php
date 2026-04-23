@@ -19,7 +19,7 @@
 <div id="error-container" class="error-message"></div>
 
 <div class="alert alert-light border mb-3 py-2 small">
-    <strong>One trip</strong> = starts when vehicle <strong>enters Pit</strong>, then completes after it <strong>enters and exits</strong> a destination geofence (stockpile/other/parking).
+    <strong>One trip</strong> = starts when vehicle <strong>enters Pit</strong>, then completes after it <strong>exits Pit and enters Stockpile</strong>.
 </div>
 
 <!-- Statistics -->
@@ -40,7 +40,7 @@
                 <thead>
                     <tr>
                         <th>Entered Pit (Start)</th>
-                        <th>Exited Destination (End)</th>
+                        <th>Entered Stockpile (End)</th>
                         <th>Source</th>
                         <th>Destination</th>
                         <th>Material</th>
