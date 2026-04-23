@@ -18,6 +18,7 @@ class TripDetectionService
     private GPSTrackingRepository $gpsTrackingRepository;
     private TripStoppageRepository $tripStoppageRepository;
     private GeofenceService $geofenceService;
+    private bool $rebuildMode = false;
 
     public function __construct()
     {
@@ -63,7 +64,12 @@ class TripDetectionService
         $deleted = $this->clearTripAndGeofenceDataForRange($vehicleId, $startTime, $endTime);
 
         $trackingPoints = $this->gpsTrackingRepository->getTrackingBetween($vehicleId, $startTime, $endTime, 20000);
-        $replayStats = $this->replayTripsFromHistoricalPoints($vehicleId, $trackingPoints);
+        $this->rebuildMode = true;
+        try {
+            $replayStats = $this->replayTripsFromHistoricalPoints($vehicleId, $trackingPoints);
+        } finally {
+            $this->rebuildMode = false;
+        }
 
         $summarySql = "
             SELECT
@@ -227,6 +233,9 @@ class TripDetectionService
 
         $activeTrip = $this->getActiveTrip($vehicleId);
         if (!$activeTrip) {
+            if ($this->rebuildMode && $eventType === 'entry' && $this->isStockpileGeofence($geofence)) {
+                $this->createSyntheticTripAndComplete($vehicleId, $geofenceId, $trackingData);
+            }
             return;
         }
 
@@ -533,6 +542,79 @@ class TripDetectionService
         ";
         
         return $this->database->fetch($sql, [$vehicleId]);
+    }
+
+    /**
+     * Rebuild fallback: if destination entry appears without active trip, synthesize from recent pit context.
+     */
+    private function createSyntheticTripAndComplete(int $vehicleId, int $destinationGeofenceId, $trackingData): void
+    {
+        $seed = $this->findRecentPitSeedPoint($vehicleId, (string)$trackingData->timestamp);
+        if (!$seed) {
+            return;
+        }
+
+        $insertSql = "
+            INSERT INTO vehicle_trips
+            (vehicle_id, trip_type, source_geofence_id, start_time, start_latitude, start_longitude, status)
+            VALUES (?, 'pit_to_stockpile', ?, ?, ?, ?, 'in_progress')
+        ";
+        $this->database->execute($insertSql, [
+            $vehicleId,
+            (int)$seed['source_geofence_id'],
+            (string)$seed['start_time'],
+            (float)$seed['start_latitude'],
+            (float)$seed['start_longitude'],
+        ]);
+
+        $tripId = (int)$this->database->lastInsertId();
+        $activeTrip = $this->database->fetch("SELECT * FROM vehicle_trips WHERE id = ?", [$tripId]);
+        if (!$activeTrip) {
+            return;
+        }
+        $this->completeTrip($activeTrip, $destinationGeofenceId, $trackingData);
+    }
+
+    /**
+     * Find latest historical point before destination that lies in a pit geofence.
+     */
+    private function findRecentPitSeedPoint(int $vehicleId, string $beforeTimestamp): ?array
+    {
+        $pitGeofences = array_values(array_filter(
+            $this->geofenceService->getActiveGeofences(),
+            fn(array $g) => $this->isPitGeofence($g)
+        ));
+        if (empty($pitGeofences)) {
+            return null;
+        }
+
+        $rows = $this->database->fetchAll(
+            "
+            SELECT timestamp, latitude, longitude
+            FROM gps_tracking_data
+            WHERE vehicle_id = ?
+              AND timestamp < ?
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 500
+            ",
+            [$vehicleId, $beforeTimestamp]
+        );
+        foreach ($rows as $row) {
+            $lat = (float)($row['latitude'] ?? 0);
+            $lon = (float)($row['longitude'] ?? 0);
+            foreach ($pitGeofences as $pit) {
+                if ($this->geofenceService->containsPoint($lat, $lon, $pit)) {
+                    return [
+                        'source_geofence_id' => (int)$pit['id'],
+                        'start_time' => (string)$row['timestamp'],
+                        'start_latitude' => $lat,
+                        'start_longitude' => $lon,
+                    ];
+                }
+            }
+        }
+
+        return null;
     }
 
     private function clearTripAndGeofenceDataForRange(int $vehicleId, string $startTime, string $endTime): array
