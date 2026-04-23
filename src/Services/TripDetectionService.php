@@ -244,6 +244,13 @@ class TripDetectionService
             return;
         }
 
+        // Deterministic replay behavior: when rebuilding historical data, destination entry
+        // should finalize the active trip even if pit-exit evidence is sparse/missing.
+        if ($this->rebuildMode) {
+            $this->completeTrip($activeTrip, $geofenceId, $trackingData);
+            return;
+        }
+
         // Complete on destination entry once trip has reasonably progressed.
         // This avoids getting stuck when pit-exit events are missing or pit/destination overlap.
         if (!$this->canCompleteTripAtDestinationEntry($activeTrip, $trackingData, $geofenceId)) {
