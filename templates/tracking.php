@@ -84,9 +84,9 @@
     </div>
 </div>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
 <style>
     #trackingMapContainer:fullscreen {
         background: #fff;
@@ -758,6 +758,10 @@ function showError(msg) {
 
 // Initialize map and load data
 document.addEventListener('DOMContentLoaded', () => {
+    if (typeof L === 'undefined') {
+        showError('Map assets failed to load. Please refresh the page.');
+        return;
+    }
     initMap();
     doAutoRefreshCycle();
     loadSyncStatus();
