@@ -84,9 +84,8 @@
     </div>
 </div>
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
     #trackingMapContainer:fullscreen {
         background: #fff;
@@ -132,7 +131,7 @@ const MIN_ZOOM = 18;
 let mapboxStreetLayer, mapboxSatelliteLayer;
 
 function initMap() {
-    map = L.map('map', { zoomControl: true, rotate: true, touchRotate: true, bearing: 0, maxZoom: 22 }).setView([23.0225, 72.5714], DEFAULT_ZOOM);
+    map = L.map('map', { zoomControl: true, maxZoom: 22 }).setView([23.0225, 72.5714], DEFAULT_ZOOM);
 
     if (mapboxToken) {
         mapboxStreetLayer = L.tileLayer(
