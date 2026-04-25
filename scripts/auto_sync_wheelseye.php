@@ -3,7 +3,8 @@
  * Cron-friendly WheelsEye auto sync runner.
  *
  * Recommended schedule:
- *   */5 * * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php
+ *   every 5 minutes with cron, run:
+ *   /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
