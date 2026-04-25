@@ -304,13 +304,15 @@ class TripDetectionService
         }
         
         if ($eventType === 'entry' && $this->isPitGeofence($geofence)) {
-            // Vehicle entered pit - start new trip
-            $this->startTrip($vehicleId, $geofenceId, $trackingData);
+            // Daily rule: trip starts on pit entry only when no trip is currently active.
+            if (!$this->hasActiveTripForDate($vehicleId, (string)$trackingData->timestamp)) {
+                $this->startTrip($vehicleId, $geofenceId, $trackingData);
+            }
             return;
         }
 
-        // Trip ends when vehicle enters any non-pit geofence.
-        if ($eventType !== 'entry' || !$this->isStockpileGeofence($geofence)) {
+        // Daily rule: trip ends when vehicle exits pit and there is an active trip.
+        if ($eventType !== 'exit' || !$this->isPitGeofence($geofence)) {
             return;
         }
 
@@ -318,7 +320,7 @@ class TripDetectionService
         if (!$activeTrip) {
             return;
         }
-        $this->completeTrip($activeTrip, $geofenceId, $trackingData);
+        $this->completeTripOnPitExit($activeTrip, $trackingData);
     }
     
     /**
@@ -427,6 +429,73 @@ class TripDetectionService
     }
 
     /**
+     * Complete active trip when vehicle exits pit geofence.
+     * No destination geofence is required for this daily trip counting rule.
+     */
+    private function completeTripOnPitExit(array $activeTrip, $trackingData): void
+    {
+        $vehicleId = (int)$activeTrip['vehicle_id'];
+        $sourceGeofenceId = isset($activeTrip['source_geofence_id']) ? (int)$activeTrip['source_geofence_id'] : null;
+
+        $distance = $this->calculateDistance(
+            (float)$activeTrip['start_latitude'],
+            (float)$activeTrip['start_longitude'],
+            (float)$trackingData->latitude,
+            (float)$trackingData->longitude
+        );
+        $duration = $this->calculateDuration((string)$activeTrip['start_time'], (string)$trackingData->timestamp);
+        $fuelData = $this->getFuelConsumptionForTrip($vehicleId, (string)$activeTrip['start_time'], (string)$trackingData->timestamp);
+
+        $sql = "
+            UPDATE vehicle_trips
+            SET destination_geofence_id = ?,
+                material_type = ?,
+                end_time = ?,
+                end_latitude = ?,
+                end_longitude = ?,
+                distance_km = ?,
+                duration_minutes = ?,
+                fuel_consumed_liters = ?,
+                fuel_start_liters = ?,
+                fuel_end_liters = ?,
+                status = 'completed'
+            WHERE id = ?
+        ";
+        $this->database->execute($sql, [
+            $sourceGeofenceId,
+            null,
+            $trackingData->timestamp,
+            $trackingData->latitude,
+            $trackingData->longitude,
+            $distance,
+            $duration,
+            $fuelData['consumed'] ?? null,
+            $fuelData['start_fuel'] ?? null,
+            $fuelData['end_fuel'] ?? null,
+            $activeTrip['id']
+        ]);
+
+        $stoppageSummary = $this->analyzeAndSaveStoppages(
+            (int)$activeTrip['id'],
+            $vehicleId,
+            (string)$activeTrip['start_time'],
+            (string)$trackingData->timestamp
+        );
+        if ($stoppageSummary['count'] > 0) {
+            $updateSql = "
+                UPDATE vehicle_trips
+                SET stoppage_count = ?, total_stoppage_minutes = ?
+                WHERE id = ?
+            ";
+            $this->database->execute($updateSql, [
+                $stoppageSummary['count'],
+                $stoppageSummary['total_minutes'],
+                $activeTrip['id']
+            ]);
+        }
+    }
+
+    /**
      * Destination is any non-pit geofence.
      * Some deployments classify stockyards as parking/other/custom labels.
      */
@@ -460,6 +529,24 @@ class TripDetectionService
         ";
         
         return $this->database->fetch($sql, [$vehicleId]);
+    }
+
+    private function hasActiveTripForDate(int $vehicleId, string $timestamp): bool
+    {
+        try {
+            $date = (new \DateTime($timestamp))->format('Y-m-d');
+        } catch (\Exception $e) {
+            $date = date('Y-m-d');
+        }
+        $sql = "
+            SELECT id
+            FROM vehicle_trips
+            WHERE vehicle_id = ?
+              AND status = 'in_progress'
+              AND DATE(start_time) = ?
+            LIMIT 1
+        ";
+        return $this->database->fetch($sql, [$vehicleId, $date]) !== null;
     }
 
     private function clearTripAndGeofenceDataForRange(int $vehicleId, string $startTime, string $endTime): array
