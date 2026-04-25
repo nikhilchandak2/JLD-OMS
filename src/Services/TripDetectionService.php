@@ -431,7 +431,7 @@ class TripDetectionService
     private function completeTripOnPitExit(array $activeTrip, $trackingData): void
     {
         $vehicleId = (int)$activeTrip['vehicle_id'];
-        $sourceGeofenceId = isset($activeTrip['source_geofence_id']) ? (int)$activeTrip['source_geofence_id'] : null;
+        $destination = $this->resolveDestinationOutsidePit($trackingData);
 
         $distance = $this->calculateDistance(
             (float)$activeTrip['start_latitude'],
@@ -458,8 +458,8 @@ class TripDetectionService
             WHERE id = ?
         ";
         $this->database->execute($sql, [
-            $sourceGeofenceId,
-            null,
+            $destination['geofence_id'],
+            $destination['material_type'],
             $trackingData->timestamp,
             $trackingData->latitude,
             $trackingData->longitude,
@@ -489,6 +489,32 @@ class TripDetectionService
                 $activeTrip['id']
             ]);
         }
+    }
+
+    /**
+     * Resolve destination when trip ends outside pit:
+     * prefer a containing non-pit geofence (stockpile/other), otherwise null (open/other area).
+     *
+     * @return array{geofence_id:?int,material_type:?string}
+     */
+    private function resolveDestinationOutsidePit($trackingData): array
+    {
+        $containing = $this->geofenceService->getContainingGeofences(
+            (float)$trackingData->latitude,
+            (float)$trackingData->longitude
+        );
+        foreach ($containing as $geofence) {
+            if ($this->isStockpileGeofence($geofence)) {
+                return [
+                    'geofence_id' => (int)$geofence['id'],
+                    'material_type' => $geofence['material_type'] ?? null,
+                ];
+            }
+        }
+        return [
+            'geofence_id' => null,
+            'material_type' => null,
+        ];
     }
 
     /**

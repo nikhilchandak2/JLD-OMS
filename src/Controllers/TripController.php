@@ -38,8 +38,11 @@ class TripController
             $sql = "
                 SELECT t.*,
                        v.vehicle_number,
-                       sg.name as source_geofence_name,
-                       dg.name as destination_geofence_name,
+                       COALESCE(sg.name, 'Pit (Unknown)') as source_geofence_name,
+                       CASE
+                           WHEN t.status = 'completed' AND t.destination_geofence_id IS NULL THEN 'Other Area'
+                           ELSE COALESCE(dg.name, 'N/A')
+                       END as destination_geofence_name,
                        dg.material_type
                 FROM vehicle_trips t
                 JOIN vehicles v ON t.vehicle_id = v.id
@@ -134,8 +137,11 @@ class TripController
             
             $sql = "
                 SELECT t.*,
-                       sg.name as source_geofence_name,
-                       dg.name as destination_geofence_name,
+                       COALESCE(sg.name, 'Pit (Unknown)') as source_geofence_name,
+                       CASE
+                           WHEN t.status = 'completed' AND t.destination_geofence_id IS NULL THEN 'Other Area'
+                           ELSE COALESCE(dg.name, 'N/A')
+                       END as destination_geofence_name,
                        dg.material_type
                 FROM vehicle_trips t
                 LEFT JOIN geofences sg ON t.source_geofence_id = sg.id
@@ -240,8 +246,11 @@ class TripController
             $sql = "
                 SELECT t.*,
                        v.vehicle_number,
-                       sg.name as source_geofence_name,
-                       dg.name as destination_geofence_name,
+                       COALESCE(sg.name, 'Pit (Unknown)') as source_geofence_name,
+                       CASE
+                           WHEN t.status = 'completed' AND t.destination_geofence_id IS NULL THEN 'Other Area'
+                           ELSE COALESCE(dg.name, 'N/A')
+                       END as destination_geofence_name,
                        dg.material_type
                 FROM vehicle_trips t
                 JOIN vehicles v ON t.vehicle_id = v.id
