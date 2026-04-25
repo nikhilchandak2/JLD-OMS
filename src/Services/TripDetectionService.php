@@ -59,23 +59,19 @@ class TripDetectionService
             (float)$trackingData->latitude,
             (float)$trackingData->longitude
         );
-        if (empty($containingGeofences)) {
-            return;
-        }
-
         $activeTrip = $this->getActiveTrip($vehicleId);
         $pitGeofenceId = $this->findPitGeofenceId($containingGeofences);
-        $destinationGeofenceId = $this->findDestinationGeofenceId($containingGeofences);
+        $isInPit = $pitGeofenceId !== null;
 
         // If vehicle is currently in a pit and no active trip exists, start one.
-        if (!$activeTrip && $pitGeofenceId !== null) {
+        if (!$activeTrip && $isInPit) {
             $this->startTrip($vehicleId, $pitGeofenceId, $trackingData);
             return;
         }
 
-        // If trip is in progress and vehicle is in a destination geofence, complete it.
-        if ($activeTrip && $destinationGeofenceId !== null) {
-            $this->completeTrip($activeTrip, $destinationGeofenceId, $trackingData);
+        // Daily rule: if trip is active and vehicle is outside pit (stockpile or any other area), complete trip.
+        if ($activeTrip && !$isInPit) {
+            $this->completeTripOnPitExit($activeTrip, $trackingData);
         }
     }
 
