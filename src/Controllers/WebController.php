@@ -352,6 +352,22 @@ class WebController
             'mapbox_token' => $_ENV['MAPBOX_ACCESS_TOKEN'] ?? '',
         ]);
     }
+
+    public function wheelseyeData(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'operator'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Vehicle tracking access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('tracking-wheelseye-data', [
+            'title' => 'WheelsEye Pulled Data',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
     
     public function trips(): void
     {

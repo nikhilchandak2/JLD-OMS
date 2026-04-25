@@ -248,6 +248,7 @@ $router->get('/analytics/parties', 'WebController@analyticsParties');
 $router->get('/admin/busy-integration', 'WebController@busyIntegration');
 $router->get('/vehicles', 'WebController@vehicles');
 $router->get('/tracking', 'WebController@tracking');
+$router->get('/tracking/wheelseye-data', 'WebController@wheelseyeData');
 $router->get('/trips', 'WebController@trips');
 $router->get('/geofences', 'WebController@geofences');
 $router->get('/fuel', 'WebController@fuel');

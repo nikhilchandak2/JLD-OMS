@@ -8,6 +8,9 @@
             <p class="page-subtitle">Real-time vehicle location tracking</p>
         </div>
         <div>
+            <a class="btn btn-outline-secondary me-2" href="/tracking/wheelseye-data" title="View latest WheelsEye pulled payloads">
+                <i class="bi bi-table me-1"></i> View WheelsEye Data
+            </a>
             <button class="btn btn-outline-primary me-2" id="syncBtn" onclick="syncFromWheelsEye()" title="Fetch current locations from WheelsEye API">
                 <i class="bi bi-cloud-download me-1"></i> Sync from WheelsEye
             </button>
