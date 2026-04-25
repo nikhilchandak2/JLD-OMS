@@ -44,6 +44,59 @@ class TripDetectionService
         foreach ($geofenceEvents as $event) {
             $this->processGeofenceEvent($vehicleId, $event, $trackingData);
         }
+
+        // Fallback for sparse vendor points:
+        // if boundary crossing was missed, infer state from current containing geofences.
+        $this->inferTripStateFromCurrentPosition($vehicleId, $trackingData);
+    }
+
+    /**
+     * Infer trip transitions using current containing geofences when entry/exit events are not emitted.
+     */
+    private function inferTripStateFromCurrentPosition(int $vehicleId, $trackingData): void
+    {
+        $containingGeofences = $this->geofenceService->getContainingGeofences(
+            (float)$trackingData->latitude,
+            (float)$trackingData->longitude
+        );
+        if (empty($containingGeofences)) {
+            return;
+        }
+
+        $activeTrip = $this->getActiveTrip($vehicleId);
+        $pitGeofenceId = $this->findPitGeofenceId($containingGeofences);
+        $destinationGeofenceId = $this->findDestinationGeofenceId($containingGeofences);
+
+        // If vehicle is currently in a pit and no active trip exists, start one.
+        if (!$activeTrip && $pitGeofenceId !== null) {
+            $this->startTrip($vehicleId, $pitGeofenceId, $trackingData);
+            return;
+        }
+
+        // If trip is in progress and vehicle is in a destination geofence, complete it.
+        if ($activeTrip && $destinationGeofenceId !== null) {
+            $this->completeTrip($activeTrip, $destinationGeofenceId, $trackingData);
+        }
+    }
+
+    private function findPitGeofenceId(array $geofences): ?int
+    {
+        foreach ($geofences as $geofence) {
+            if ($this->isPitGeofence($geofence)) {
+                return (int)$geofence['id'];
+            }
+        }
+        return null;
+    }
+
+    private function findDestinationGeofenceId(array $geofences): ?int
+    {
+        foreach ($geofences as $geofence) {
+            if ($this->isStockpileGeofence($geofence)) {
+                return (int)$geofence['id'];
+            }
+        }
+        return null;
     }
 
     /**
