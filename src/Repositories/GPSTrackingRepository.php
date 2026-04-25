@@ -147,4 +147,62 @@ class GPSTrackingRepository
             return new GPSTrackingData($row);
         }, $results);
     }
+
+    /**
+     * Get historical pulled tracking data (newest first), with optional vehicle filter.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getPulledDataHistory(?string $vehicleFilter = null, int $limit = 50, int $offset = 0): array
+    {
+        $limit = max(1, min(500, $limit));
+        $offset = max(0, $offset);
+
+        $sql = "
+            SELECT
+                t.id,
+                t.vehicle_id,
+                v.vehicle_number,
+                t.device_id,
+                t.latitude,
+                t.longitude,
+                t.speed,
+                t.ignition_status,
+                t.timestamp,
+                t.raw_data
+            FROM gps_tracking_data t
+            LEFT JOIN vehicles v ON v.id = t.vehicle_id
+            WHERE t.raw_data IS NOT NULL
+        ";
+        $params = [];
+        if ($vehicleFilter !== null && trim($vehicleFilter) !== '') {
+            $sql .= " AND (v.vehicle_number LIKE ? OR t.device_id LIKE ?)";
+            $like = '%' . trim($vehicleFilter) . '%';
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $sql .= " ORDER BY t.timestamp DESC, t.id DESC LIMIT {$limit} OFFSET {$offset}";
+
+        return $this->database->fetchAll($sql, $params);
+    }
+
+    public function countPulledDataHistory(?string $vehicleFilter = null): int
+    {
+        $sql = "
+            SELECT COUNT(*) AS total
+            FROM gps_tracking_data t
+            LEFT JOIN vehicles v ON v.id = t.vehicle_id
+            WHERE t.raw_data IS NOT NULL
+        ";
+        $params = [];
+        if ($vehicleFilter !== null && trim($vehicleFilter) !== '') {
+            $sql .= " AND (v.vehicle_number LIKE ? OR t.device_id LIKE ?)";
+            $like = '%' . trim($vehicleFilter) . '%';
+            $params[] = $like;
+            $params[] = $like;
+        }
+        $row = $this->database->fetch($sql, $params);
+        return (int)($row['total'] ?? 0);
+    }
 }

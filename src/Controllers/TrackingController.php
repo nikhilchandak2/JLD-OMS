@@ -229,6 +229,65 @@ class TrackingController
     }
 
     /**
+     * Get historical pulled tracking rows from DB (not only latest per vehicle).
+     * GET /api/tracking/pulled-data?limit=50&offset=0&vehicle=RJ07
+     */
+    public function pulledData(): void
+    {
+        header('Content-Type: application/json');
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        try {
+            $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+            $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+            $vehicleFilter = isset($_GET['vehicle']) ? trim((string)$_GET['vehicle']) : null;
+
+            $rows = $this->gpsTrackingRepository->getPulledDataHistory($vehicleFilter, $limit, $offset);
+            $total = $this->gpsTrackingRepository->countPulledDataHistory($vehicleFilter);
+
+            $data = array_map(static function (array $row): array {
+                $rawData = null;
+                if (isset($row['raw_data']) && $row['raw_data'] !== null && $row['raw_data'] !== '') {
+                    $decoded = json_decode((string)$row['raw_data'], true);
+                    $rawData = is_array($decoded) ? $decoded : $row['raw_data'];
+                }
+
+                return [
+                    'id' => (int)($row['id'] ?? 0),
+                    'vehicle_id' => isset($row['vehicle_id']) ? (int)$row['vehicle_id'] : null,
+                    'vehicle_number' => $row['vehicle_number'] ?? '-',
+                    'device_id' => $row['device_id'] ?? '-',
+                    'latitude' => isset($row['latitude']) ? (float)$row['latitude'] : null,
+                    'longitude' => isset($row['longitude']) ? (float)$row['longitude'] : null,
+                    'speed' => isset($row['speed']) ? (float)$row['speed'] : null,
+                    'ignition_status' => isset($row['ignition_status']) && $row['ignition_status'] !== '' ? (bool)$row['ignition_status'] : null,
+                    'timestamp' => $row['timestamp'] ?? null,
+                    'raw_data' => $rawData,
+                ];
+            }, $rows);
+
+            echo json_encode([
+                'success' => true,
+                'data' => $data,
+                'meta' => [
+                    'limit' => max(1, min(500, $limit)),
+                    'offset' => max(0, $offset),
+                    'total' => $total,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Rebuild trips for a vehicle from stored GPS points in a time range.
      * GET/POST /api/tracking/rebuild-trips?vehicle_id=ID&start_time=...&end_time=...
      */

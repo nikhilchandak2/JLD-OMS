@@ -4,7 +4,7 @@
             <h1 class="page-title">
                 <i class="bi bi-database me-2"></i>WheelsEye Pulled Data
             </h1>
-            <p class="page-subtitle">Latest tracking payload pulled from WheelsEye for each mapped vehicle.</p>
+            <p class="page-subtitle">All pulled tracking payload rows stored in database (newest first).</p>
         </div>
         <div class="d-flex gap-2">
             <a class="btn btn-outline-secondary" href="/tracking">
@@ -37,7 +37,7 @@
                 </select>
             </div>
             <div class="col-md-4">
-                <button class="btn btn-outline-primary w-100" type="button" onclick="renderTable()">
+                <button class="btn btn-outline-primary w-100" type="button" onclick="applyFilter()">
                     <i class="bi bi-funnel me-1"></i>Apply Filter
                 </button>
             </div>
@@ -47,7 +47,7 @@
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-table me-1"></i>Latest Pulled Records</span>
+        <span><i class="bi bi-table me-1"></i>Pulled Records History</span>
         <small id="lastUpdatedText" class="text-muted">Last updated: -</small>
     </div>
     <div class="card-body">
@@ -69,11 +69,25 @@
                 </tbody>
             </table>
         </div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 gap-2">
+            <small id="historyMetaText" class="text-muted">Showing 0 of 0</small>
+            <div class="btn-group" role="group">
+                <button type="button" id="prevPageBtn" class="btn btn-sm btn-outline-secondary" onclick="changePage(-1)">
+                    <i class="bi bi-chevron-left"></i> Previous
+                </button>
+                <button type="button" id="nextPageBtn" class="btn btn-sm btn-outline-secondary" onclick="changePage(1)">
+                    Next <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
 let wheelsEyeRows = [];
+let historyOffset = 0;
+let historyTotal = 0;
+let activeFilter = '';
 
 function setLoadingState(isLoading) {
     const btn = document.getElementById('refreshWheelsEyeDataBtn');
@@ -96,29 +110,24 @@ function formatLocation(track) {
 
 function loadWheelsEyeData(syncNow) {
     setLoadingState(true);
-    const syncPart = syncNow ? '&sync_now=1' : '';
-    const url = '/api/tracking/live?path_hours=24&path_limit=2000' + syncPart + '&_=' + Date.now();
-    fetch(url, { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(res => {
-            if (!res.success || !Array.isArray(res.data)) {
-                throw new Error(res.error || 'Failed to load WheelsEye data');
+    const run = syncNow
+        ? fetch('/api/tracking/sync', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' }
+        }).then(r => r.json())
+        : Promise.resolve({ success: true });
+
+    run
+        .then(syncRes => {
+            if (syncNow && !syncRes.success) {
+                throw new Error(syncRes.message || syncRes.error || 'Sync failed');
             }
-            wheelsEyeRows = res.data.map(vehicle => ({
-                vehicle_number: vehicle.vehicle_number || '-',
-                device_id: vehicle.latest_tracking?.device_id || '-',
-                timestamp: vehicle.latest_tracking?.timestamp || '-',
-                speed: vehicle.latest_tracking?.speed,
-                ignition: vehicle.latest_tracking?.ignition_status,
-                location: vehicle.latest_tracking ? formatLocation(vehicle.latest_tracking) : 'N/A',
-                raw_data: vehicle.latest_tracking?.raw_data || null
-            }));
-            document.getElementById('lastUpdatedText').textContent =
-                'Last updated: ' + new Date().toLocaleString();
-            renderTable();
             if (syncNow) {
-                showSuccess('Sync completed. Latest WheelsEye data loaded.');
+                const syncedCount = Number(syncRes.synced || 0);
+                showSuccess('Sync completed. ' + syncedCount + ' row(s) inserted/updated.');
             }
+            return fetchHistoryPage();
         })
         .catch(err => {
             showError(err.message || 'Failed to load data');
@@ -128,13 +137,42 @@ function loadWheelsEyeData(syncNow) {
         });
 }
 
+function fetchHistoryPage() {
+    const limit = Number(document.getElementById('rowsLimitSelect').value) || 25;
+    const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(historyOffset)
+    });
+    if (activeFilter) {
+        params.set('vehicle', activeFilter);
+    }
+    const url = '/api/tracking/pulled-data?' + params.toString() + '&_=' + Date.now();
+    return fetch(url, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success || !Array.isArray(res.data)) {
+                throw new Error(res.error || 'Failed to load WheelsEye history');
+            }
+            wheelsEyeRows = res.data.map(row => ({
+                vehicle_number: row.vehicle_number || '-',
+                device_id: row.device_id || '-',
+                timestamp: row.timestamp || '-',
+                speed: row.speed,
+                ignition: row.ignition_status,
+                location: formatLocation(row),
+                raw_data: row.raw_data || null
+            }));
+            historyTotal = Number(res.meta?.total || 0);
+            renderTable();
+            document.getElementById('lastUpdatedText').textContent =
+                'Last updated: ' + new Date().toLocaleString();
+            updatePaginationMeta(limit);
+        });
+}
+
 function renderTable() {
     const body = document.getElementById('wheelsEyeDataBody');
-    const filter = (document.getElementById('vehicleFilterInput').value || '').trim().toLowerCase();
-    const limit = Number(document.getElementById('rowsLimitSelect').value) || 25;
-    const filtered = wheelsEyeRows
-        .filter(row => !filter || row.vehicle_number.toLowerCase().includes(filter))
-        .slice(0, limit);
+    const filtered = wheelsEyeRows;
 
     if (!filtered.length) {
         body.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No matching data found.</td></tr>';
@@ -162,7 +200,44 @@ function renderTable() {
     }).join('');
 }
 
+function updatePaginationMeta(limit) {
+    const meta = document.getElementById('historyMetaText');
+    const showingFrom = historyTotal === 0 ? 0 : historyOffset + 1;
+    const showingTo = Math.min(historyOffset + wheelsEyeRows.length, historyTotal);
+    meta.textContent = 'Showing ' + showingFrom + '-' + showingTo + ' of ' + historyTotal;
+
+    const prevBtn = document.getElementById('prevPageBtn');
+    const nextBtn = document.getElementById('nextPageBtn');
+    prevBtn.disabled = historyOffset <= 0;
+    nextBtn.disabled = (historyOffset + limit) >= historyTotal;
+}
+
+function applyFilter() {
+    activeFilter = (document.getElementById('vehicleFilterInput').value || '').trim();
+    historyOffset = 0;
+    fetchHistoryPage().catch(err => showError(err.message || 'Failed to load filtered data'));
+}
+
+function changePage(direction) {
+    const limit = Number(document.getElementById('rowsLimitSelect').value) || 25;
+    const nextOffset = historyOffset + (direction * limit);
+    if (nextOffset < 0) return;
+    if (direction > 0 && nextOffset >= historyTotal) return;
+    historyOffset = nextOffset;
+    fetchHistoryPage().catch(err => showError(err.message || 'Failed to load page'));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadWheelsEyeData(false);
+    document.getElementById('rowsLimitSelect').addEventListener('change', () => {
+        historyOffset = 0;
+        fetchHistoryPage().catch(err => showError(err.message || 'Failed to load data'));
+    });
+    document.getElementById('vehicleFilterInput').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            applyFilter();
+        }
+    });
 });
 </script>

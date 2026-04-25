@@ -81,6 +81,7 @@ $router->group('/api', function($router) {
         // Live Tracking
         $router->get('/tracking/live', 'TrackingController@live');
         $router->get('/tracking/vehicle/{id}', 'TrackingController@vehicleHistory');
+        $router->get('/tracking/pulled-data', 'TrackingController@pulledData');
         $router->get('/tracking/sync', 'TrackingController@syncFromWheelsEye');
         $router->post('/tracking/sync', 'TrackingController@syncFromWheelsEye');
         $router->get('/tracking/sync-status', 'TrackingController@syncStatus');
