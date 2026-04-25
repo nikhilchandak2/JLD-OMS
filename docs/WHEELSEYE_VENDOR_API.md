@@ -60,18 +60,31 @@ The link is a **pull API**: it returns current GPS position for all vehicles on 
 - Sync matches each API vehicle to an OMS vehicle by **vehicle number** (e.g. `RJ07GD5241`) or by **GPS device IMEI** (e.g. `866992050999441`).
 - If a vehicle appears in the API but not in OMS, add it in Vehicles with the same **Vehicle number** (and optionally the same **GPS Device IMEI**), then run sync again.
 
-### Optional: automate with cron (no need to click Sync)
+### Optional: automate every 5 minutes (recommended)
+
+Use the dedicated script so sync + trip counting logic runs from server-side cron:
+
+```bash
+# Every 5 minutes
+*/5 * * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php >> /var/log/wheelseye-sync.log 2>&1
+```
+
+This script:
+- Pulls latest data from WheelsEye and saves it to `gps_tracking_data`
+- Runs your existing trip logic (`TripDetectionService::processTrackingData`) on each point
+- Updates `storage/last_tracking_sync.json` with sync summary and `trip_count_delta`
+
+If you prefer URL-based cron, this still works:
 
 1. In your `.env` on the server, set a secret:  
    `TRACKING_SYNC_KEY=your-random-secret-string`
-2. Call the sync URL every few minutes (e.g. every 5 min). No login needed when the key is correct:
+2. Use:
 
 ```bash
-# Every 5 minutes (replace YOUR_SECRET with the value of TRACKING_SYNC_KEY)
 */5 * * * * curl -s "https://oms.jldminerals.com/api/tracking/sync?key=YOUR_SECRET"
 ```
 
-Then the portal will have fresh locations without you clicking Sync. Turn on **Auto-refresh (30s)** on the Live Tracking page to refresh the map from the latest saved data.
+Then the portal will have fresh locations without manual sync clicks.
 
 ---
 

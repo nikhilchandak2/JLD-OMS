@@ -52,6 +52,7 @@ class WheelsEyeApiService
      */
     public function syncCurrentLocations(): array
     {
+        $tripCountsBefore = $this->getTripStatusCounts();
         $token = $_ENV['WHEELSEYE_ACCESS_TOKEN'] ?? 'b6fbb5d6-fc43-44e9-884a-4323c0d56df3';
         $baseUrl = rtrim($_ENV['WHEELSEYE_API_BASE_URL'] ?? self::DEFAULT_BASE_URL, '/');
         $url = $baseUrl . self::CURRENT_LOC_PATH . '?accessToken=' . urlencode($token);
@@ -147,6 +148,14 @@ class WheelsEyeApiService
             }
         }
 
+        $tripCountsAfter = $this->getTripStatusCounts();
+        $tripCountDelta = [
+            'total' => max(0, $tripCountsAfter['total'] - $tripCountsBefore['total']),
+            'in_progress' => max(0, $tripCountsAfter['in_progress'] - $tripCountsBefore['in_progress']),
+            'completed' => max(0, $tripCountsAfter['completed'] - $tripCountsBefore['completed']),
+            'cancelled' => max(0, $tripCountsAfter['cancelled'] - $tripCountsBefore['cancelled']),
+        ];
+
         return [
             'success' => true,
             'message' => 'Synced ' . $synced . ' GPS point(s) across ' . $vehiclesSynced . ' vehicle(s) from WheelsEye',
@@ -155,7 +164,32 @@ class WheelsEyeApiService
             'skipped' => $skipped,
             'fuel_saved' => $fuelSaved,
             'fuel_missing' => $fuelMissing,
+            'trip_count_delta' => $tripCountDelta,
             'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Snapshot trip counts by status so each sync run can report trip increments.
+     *
+     * @return array{total:int,in_progress:int,completed:int,cancelled:int}
+     */
+    private function getTripStatusCounts(): array
+    {
+        $sql = "
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
+            FROM vehicle_trips
+        ";
+        $row = $this->database->fetch($sql) ?? [];
+        return [
+            'total' => (int)($row['total'] ?? 0),
+            'in_progress' => (int)($row['in_progress'] ?? 0),
+            'completed' => (int)($row['completed'] ?? 0),
+            'cancelled' => (int)($row['cancelled'] ?? 0),
         ];
     }
 
