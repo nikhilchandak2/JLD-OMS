@@ -432,7 +432,7 @@ class TripDetectionService
     private function isStockpileGeofence(array $geofence): bool
     {
         $type = $this->normalizeGeofenceType($geofence);
-        return $type !== '' && $type !== 'pit';
+        return in_array($type, ['stockpile', 'other'], true);
     }
 
     private function isPitGeofence(array $geofence): bool
@@ -445,6 +445,7 @@ class TripDetectionService
     {
         return strtolower(trim((string)($geofence['geofence_type'] ?? '')));
     }
+
 
     /**
      * Get active trip for vehicle
