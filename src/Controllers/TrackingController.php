@@ -62,9 +62,9 @@ class TrackingController
                 $trackingMap[$tracking->vehicleId] = $tracking->toArray();
             }
             
-            $pathHours = isset($_GET['path_hours']) ? (int)$_GET['path_hours'] : 24;
-            $pathLimit = isset($_GET['path_limit']) ? min((int)$_GET['path_limit'], 2000) : 500;
-            $pathHours = max(1, min(168, $pathHours)); // 1h to 7 days
+            $pathHours = isset($_GET['path_hours']) ? (int)$_GET['path_hours'] : 2;
+            $pathLimit = isset($_GET['path_limit']) ? min((int)$_GET['path_limit'], 500) : 300;
+            $pathHours = max(1, min(24, $pathHours)); // 1h to 24h
             
             $result = [];
             foreach ($vehicles as $vehicle) {

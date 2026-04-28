@@ -54,7 +54,7 @@
                     <i class="bi bi-arrow-repeat me-1"></i> Pull + Rebuild Trips
                 </button>
                 <label class="ms-3">
-                    <input type="checkbox" id="autoRefreshTrips" onchange="toggleTripsAutoRefresh()" checked> Auto-refresh (15s)
+                    <input type="checkbox" id="autoRefreshTrips" onchange="toggleTripsAutoRefresh()" checked> Auto-refresh (45s)
                 </label>
             </div>
         </div>
@@ -141,8 +141,9 @@
 <script>
 let tripsAutoRefreshInterval = null;
 let stoppagesModalInstance = null;
+let isTripsLoading = false;
 
-async function fetchJsonSafe(url, options = {}, timeoutMs = 25000) {
+async function fetchJsonSafe(url, options = {}, timeoutMs = 90000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -158,6 +159,11 @@ async function fetchJsonSafe(url, options = {}, timeoutMs = 25000) {
             throw new Error((data && (data.error || data.message)) || `Request failed (${response.status})`);
         }
         return data;
+    } catch (error) {
+        if (error && (error.name === 'AbortError' || String(error.message || '').toLowerCase().includes('aborted'))) {
+            throw new Error('Trips API is taking too long. Please retry in a few seconds.');
+        }
+        throw error;
     } finally {
         clearTimeout(timeoutId);
     }
@@ -167,7 +173,7 @@ function toggleTripsAutoRefresh() {
     const enabled = document.getElementById('autoRefreshTrips').checked;
     if (enabled) {
         loadTrips();
-        tripsAutoRefreshInterval = setInterval(loadTrips, 15000);
+        tripsAutoRefreshInterval = setInterval(loadTrips, 45000);
     } else {
         if (tripsAutoRefreshInterval) {
             clearInterval(tripsAutoRefreshInterval);
@@ -177,6 +183,10 @@ function toggleTripsAutoRefresh() {
 }
 
 function loadTrips() {
+    if (isTripsLoading) {
+        return;
+    }
+    isTripsLoading = true;
     document.getElementById('loading').style.display = 'flex';
     
     const params = new URLSearchParams();
@@ -207,6 +217,9 @@ function loadTrips() {
         .catch(e => {
             document.getElementById('loading').style.display = 'none';
             showError('Error loading trips: ' + e.message);
+        })
+        .finally(() => {
+            isTripsLoading = false;
         });
 }
 

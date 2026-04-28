@@ -18,7 +18,7 @@
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
             <label class="ms-3">
-                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" checked> Auto-refresh (15s)
+                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" checked> Auto-refresh (30s)
             </label>
         </div>
     </div>
@@ -237,7 +237,7 @@ function initMap() {
 function loadTracking() {
     const cacheBust = Date.now();
     Promise.all([
-        fetchJsonSafe('/api/tracking/live?path_hours=24&path_limit=2000&_=' + cacheBust, { credentials: 'same-origin' }),
+        fetchJsonSafe('/api/tracking/live?path_hours=2&path_limit=300&_=' + cacheBust, { credentials: 'same-origin' }),
         fetchJsonSafe('/api/geofences?_=' + cacheBust, { credentials: 'same-origin' })
     ]).then(([trackingRes, geofencesRes]) => {
         if (trackingRes.success) {
@@ -746,7 +746,7 @@ function toggleAutoRefresh(runImmediate = true) {
         if (runImmediate) {
             doAutoRefreshCycle();
         }
-        autoRefreshInterval = setInterval(doAutoRefreshCycle, 10000); // every 10s fetch live synced data
+        autoRefreshInterval = setInterval(doAutoRefreshCycle, 30000); // every 30s fetch live data
     } else {
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);
