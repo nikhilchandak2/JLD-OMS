@@ -43,7 +43,7 @@ class TrackingController
                     $service = new WheelsEyeApiService();
                     $syncResult = $service->syncCurrentLocations();
                     $this->saveSyncStatus(array_merge($syncResult, ['last_run' => date('Y-m-d H:i:s')]));
-                } catch (\Exception $syncException) {
+                } catch (\Throwable $syncException) {
                     $syncResult = [
                         'success' => false,
                         'message' => $syncException->getMessage(),
@@ -102,7 +102,7 @@ class TrackingController
                 'timestamp' => date('Y-m-d H:i:s'),
                 'sync_result' => $syncResult
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -147,7 +147,7 @@ class TrackingController
                 'vehicle' => $vehicle->toArray(),
                 'data' => array_map(fn($t) => $t->toArray(), $history)
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -178,7 +178,7 @@ class TrackingController
             $result = $service->syncCurrentLocations();
             $this->saveSyncStatus(array_merge($result, ['last_run' => date('Y-m-d H:i:s')]));
             echo json_encode(array_merge(['success' => $result['success']], $result));
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->saveSyncStatus([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -281,7 +281,7 @@ class TrackingController
                     'total' => $total,
                 ],
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -384,7 +384,7 @@ class TrackingController
                     $totals['pit_entries'] += (int)($row['diagnostics']['pit_entries'] ?? 0);
                     $totals['pit_exits'] += (int)($row['diagnostics']['pit_exits'] ?? 0);
                     $totals['destination_entries'] += (int)($row['diagnostics']['destination_entries'] ?? 0);
-                } catch (\Exception $vehicleException) {
+                } catch (\Throwable $vehicleException) {
                     $errors[] = 'Vehicle ' . $targetVehicle->vehicleNumber . ': ' . $vehicleException->getMessage();
                 }
             }
@@ -406,7 +406,7 @@ class TrackingController
         } catch (\InvalidArgumentException $e) {
             http_response_code(422);
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }

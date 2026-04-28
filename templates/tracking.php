@@ -216,7 +216,7 @@ function initMap() {
 function loadTracking() {
     const cacheBust = Date.now();
     Promise.all([
-        fetch('/api/tracking/live?sync_now=1&path_hours=24&path_limit=2000&_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json()),
+        fetch('/api/tracking/live?path_hours=24&path_limit=2000&_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json()),
         fetch('/api/geofences?_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json())
     ]).then(([trackingRes, geofencesRes]) => {
         if (trackingRes.success) {
