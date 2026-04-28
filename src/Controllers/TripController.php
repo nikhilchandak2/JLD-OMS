@@ -106,7 +106,7 @@ class TripController
                 'stoppage_summary_by_vehicle' => $stoppageSummaryByVehicle,
                 'today_stoppage_summary' => $todayStoppageSummary
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -166,7 +166,7 @@ class TripController
                 'statistics' => $stats,
                 'destination_breakdown' => $destinationBreakdown
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -221,7 +221,7 @@ class TripController
                 'vehicle' => $vehicle->toArray(),
                 'data' => $rows
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -272,7 +272,7 @@ class TripController
                 'data' => $trips,
                 'statistics' => $stats
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -321,7 +321,7 @@ class TripController
                 'trip' => $trip,
                 'data' => $stoppages
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }

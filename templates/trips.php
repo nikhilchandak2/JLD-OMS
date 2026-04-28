@@ -142,6 +142,27 @@
 let tripsAutoRefreshInterval = null;
 let stoppagesModalInstance = null;
 
+async function fetchJsonSafe(url, options = {}, timeoutMs = 25000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        const raw = await response.text();
+        let data = null;
+        try {
+            data = raw ? JSON.parse(raw) : null;
+        } catch (parseError) {
+            throw new Error(`Server returned non-JSON response (${response.status})`);
+        }
+        if (!response.ok) {
+            throw new Error((data && (data.error || data.message)) || `Request failed (${response.status})`);
+        }
+        return data;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 function toggleTripsAutoRefresh() {
     const enabled = document.getElementById('autoRefreshTrips').checked;
     if (enabled) {
@@ -172,8 +193,7 @@ function loadTrips() {
         params.append('status', document.getElementById('filterStatus').value);
     }
     
-    fetch(`/api/trips?${params}`)
-        .then(r => r.json())
+    fetchJsonSafe(`/api/trips?${params}`)
         .then(data => {
             document.getElementById('loading').style.display = 'none';
             if (data.success) {
@@ -408,20 +428,19 @@ async function pullAndRebuildTrips() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Processing...';
 
     try {
-        const syncResp = await fetch('/api/tracking/sync', {
+        const syncData = await fetchJsonSafe('/api/tracking/sync', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
                 'X-CSRF-Token': '<?= $csrf_token ?>'
             }
         });
-        const syncData = await syncResp.json();
         if (!syncData.success) {
             throw new Error(syncData.message || syncData.error || 'Failed to pull latest WheelsEye data');
         }
 
         const rebuildPayload = getSelectedRangeForRebuild();
-        const rebuildResp = await fetch('/api/tracking/rebuild-trips', {
+        const rebuildData = await fetchJsonSafe('/api/tracking/rebuild-trips', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -430,7 +449,6 @@ async function pullAndRebuildTrips() {
             },
             body: JSON.stringify(rebuildPayload)
         });
-        const rebuildData = await rebuildResp.json();
         if (!rebuildData.success) {
             throw new Error(rebuildData.error || 'Failed to rebuild trips');
         }
@@ -464,8 +482,7 @@ function viewTripStoppages(tripId) {
     document.getElementById('stoppagesModalTitle').textContent = `Trip #${tripId} Stoppages`;
     stoppagesModalInstance.show();
 
-    fetch(`/api/trips/${tripId}/stoppages`)
-        .then(r => r.json())
+    fetchJsonSafe(`/api/trips/${tripId}/stoppages`)
         .then(data => {
             if (!data.success) {
                 throw new Error(data.error || 'Failed to load stoppages');
@@ -508,7 +525,6 @@ function renderTripStoppages(trip, stoppages) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadTrips();
     toggleTripsAutoRefresh();
 });
 </script>
