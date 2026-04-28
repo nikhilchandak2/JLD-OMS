@@ -61,6 +61,7 @@ class TripDetectionService
         );
         $activeTrip = $this->getActiveTrip($vehicleId);
         $pitGeofenceId = $this->findPitGeofenceId($containingGeofences);
+        $destinationGeofenceId = $this->findDestinationGeofenceId($containingGeofences);
         $isInPit = $pitGeofenceId !== null;
 
         // If vehicle is currently in a pit and no active trip exists, start one.
@@ -69,9 +70,9 @@ class TripDetectionService
             return;
         }
 
-        // Daily rule: if trip is active and vehicle is outside pit (stockpile or any other area), complete trip.
-        if ($activeTrip && !$isInPit) {
-            $this->completeTripOnPitExit($activeTrip, $trackingData);
+        // Complete only when vehicle is inside any non-pit geofence (stockpile/other area).
+        if ($activeTrip && $destinationGeofenceId !== null) {
+            $this->completeTrip($activeTrip, $destinationGeofenceId, $trackingData);
         }
     }
 
@@ -307,8 +308,8 @@ class TripDetectionService
             return;
         }
 
-        // Daily rule: trip ends when vehicle exits pit and there is an active trip.
-        if ($eventType !== 'exit' || !$this->isPitGeofence($geofence)) {
+        // Trip ends only when vehicle enters any non-pit geofence and a trip is active.
+        if ($eventType !== 'entry' || !$this->isStockpileGeofence($geofence)) {
             return;
         }
 
@@ -316,7 +317,7 @@ class TripDetectionService
         if (!$activeTrip) {
             return;
         }
-        $this->completeTripOnPitExit($activeTrip, $trackingData);
+        $this->completeTrip($activeTrip, $geofenceId, $trackingData);
     }
     
     /**
@@ -422,99 +423,6 @@ class TripDetectionService
                 $activeTrip['id']
             ]);
         }
-    }
-
-    /**
-     * Complete active trip when vehicle exits pit geofence.
-     * No destination geofence is required for this daily trip counting rule.
-     */
-    private function completeTripOnPitExit(array $activeTrip, $trackingData): void
-    {
-        $vehicleId = (int)$activeTrip['vehicle_id'];
-        $destination = $this->resolveDestinationOutsidePit($trackingData);
-
-        $distance = $this->calculateDistance(
-            (float)$activeTrip['start_latitude'],
-            (float)$activeTrip['start_longitude'],
-            (float)$trackingData->latitude,
-            (float)$trackingData->longitude
-        );
-        $duration = $this->calculateDuration((string)$activeTrip['start_time'], (string)$trackingData->timestamp);
-        $fuelData = $this->getFuelConsumptionForTrip($vehicleId, (string)$activeTrip['start_time'], (string)$trackingData->timestamp);
-
-        $sql = "
-            UPDATE vehicle_trips
-            SET destination_geofence_id = ?,
-                material_type = ?,
-                end_time = ?,
-                end_latitude = ?,
-                end_longitude = ?,
-                distance_km = ?,
-                duration_minutes = ?,
-                fuel_consumed_liters = ?,
-                fuel_start_liters = ?,
-                fuel_end_liters = ?,
-                status = 'completed'
-            WHERE id = ?
-        ";
-        $this->database->execute($sql, [
-            $destination['geofence_id'],
-            $destination['material_type'],
-            $trackingData->timestamp,
-            $trackingData->latitude,
-            $trackingData->longitude,
-            $distance,
-            $duration,
-            $fuelData['consumed'] ?? null,
-            $fuelData['start_fuel'] ?? null,
-            $fuelData['end_fuel'] ?? null,
-            $activeTrip['id']
-        ]);
-
-        $stoppageSummary = $this->analyzeAndSaveStoppages(
-            (int)$activeTrip['id'],
-            $vehicleId,
-            (string)$activeTrip['start_time'],
-            (string)$trackingData->timestamp
-        );
-        if ($stoppageSummary['count'] > 0) {
-            $updateSql = "
-                UPDATE vehicle_trips
-                SET stoppage_count = ?, total_stoppage_minutes = ?
-                WHERE id = ?
-            ";
-            $this->database->execute($updateSql, [
-                $stoppageSummary['count'],
-                $stoppageSummary['total_minutes'],
-                $activeTrip['id']
-            ]);
-        }
-    }
-
-    /**
-     * Resolve destination when trip ends outside pit:
-     * prefer a containing non-pit geofence (stockpile/other), otherwise null (open/other area).
-     *
-     * @return array{geofence_id:?int,material_type:?string}
-     */
-    private function resolveDestinationOutsidePit($trackingData): array
-    {
-        $containing = $this->geofenceService->getContainingGeofences(
-            (float)$trackingData->latitude,
-            (float)$trackingData->longitude
-        );
-        foreach ($containing as $geofence) {
-            if ($this->isStockpileGeofence($geofence)) {
-                return [
-                    'geofence_id' => (int)$geofence['id'],
-                    'material_type' => $geofence['material_type'] ?? null,
-                ];
-            }
-        }
-        return [
-            'geofence_id' => null,
-            'material_type' => null,
-        ];
     }
 
     /**
