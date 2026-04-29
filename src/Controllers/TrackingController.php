@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Services\WheelsEyeApiService;
+use App\Services\WheelsEyeHistoricalTripsService;
 use App\Services\TripDetectionService;
 use App\Repositories\VehicleRepository;
 use App\Repositories\GPSTrackingRepository;
@@ -195,6 +196,61 @@ class TrackingController
                 'skipped' => 0,
                 'errors' => [],
             ]);
+        }
+    }
+
+    /**
+     * Sync historical (yesterday) trip segments from WheelsEye into `vehicle_trips`.
+     * GET/POST /api/tracking/sync-yesterday-trips?vehicle_id=ID&key=YOUR_SECRET
+     *
+     * Auth: logged-in user OR valid TRACKING_SYNC_KEY.
+     */
+    public function syncYesterdayTrips(): void
+    {
+        header('Content-Type: application/json');
+
+        $syncKey = $_GET['key'] ?? $_SERVER['HTTP_X_SYNC_KEY'] ?? null;
+        $validSyncKey = $_ENV['TRACKING_SYNC_KEY'] ?? null;
+        $allowedByKey = $validSyncKey !== null && $validSyncKey !== '' && hash_equals((string)$validSyncKey, (string)$syncKey);
+
+        $user = $this->authService->getCurrentUser();
+        if (!$allowedByKey && !$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        $payload = $_POST;
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $raw = file_get_contents('php://input');
+            if ($raw !== false && trim($raw) !== '') {
+                $json = json_decode($raw, true);
+                if (is_array($json)) {
+                    $payload = array_merge($payload, $json);
+                }
+            }
+        }
+
+        $vehicleId = isset($payload['vehicle_id']) ? (int)$payload['vehicle_id'] : (isset($_GET['vehicle_id']) ? (int)$_GET['vehicle_id'] : 0);
+        $vehicleNumber = isset($payload['vehicle_number']) ? trim((string)$payload['vehicle_number']) : (isset($_GET['vehicle_number']) ? trim((string)$_GET['vehicle_number']) : '');
+        if ($vehicleId <= 0 && $vehicleNumber !== '') {
+            $vehicle = $this->vehicleRepository->findByVehicleNumber($vehicleNumber);
+            $vehicleId = $vehicle ? (int)$vehicle->id : 0;
+        }
+
+        if ($vehicleId <= 0) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'error' => 'vehicle_id is required (or provide vehicle_number)']);
+            return;
+        }
+
+        try {
+            $service = new WheelsEyeHistoricalTripsService();
+            $result = $service->syncYesterdayTrips($vehicleId);
+            echo json_encode($result);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 
