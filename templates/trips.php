@@ -54,7 +54,7 @@
                     <i class="bi bi-arrow-repeat me-1"></i> Pull + Rebuild Trips
                 </button>
                 <label class="ms-3">
-                    <input type="checkbox" id="autoRefreshTrips" onchange="toggleTripsAutoRefresh()" checked> Auto-refresh (45s)
+                    <input type="checkbox" id="autoRefreshTrips" onchange="toggleTripsAutoRefresh()" checked> Auto-refresh (15s)
                 </label>
             </div>
         </div>
@@ -141,39 +141,12 @@
 <script>
 let tripsAutoRefreshInterval = null;
 let stoppagesModalInstance = null;
-let isTripsLoading = false;
-
-async function fetchJsonSafe(url, options = {}, timeoutMs = 90000) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
-        const raw = await response.text();
-        let data = null;
-        try {
-            data = raw ? JSON.parse(raw) : null;
-        } catch (parseError) {
-            throw new Error(`Server returned non-JSON response (${response.status})`);
-        }
-        if (!response.ok) {
-            throw new Error((data && (data.error || data.message)) || `Request failed (${response.status})`);
-        }
-        return data;
-    } catch (error) {
-        if (error && (error.name === 'AbortError' || String(error.message || '').toLowerCase().includes('aborted'))) {
-            throw new Error('Trips API is taking too long. Please retry in a few seconds.');
-        }
-        throw error;
-    } finally {
-        clearTimeout(timeoutId);
-    }
-}
 
 function toggleTripsAutoRefresh() {
     const enabled = document.getElementById('autoRefreshTrips').checked;
     if (enabled) {
         loadTrips();
-        tripsAutoRefreshInterval = setInterval(loadTrips, 45000);
+        tripsAutoRefreshInterval = setInterval(loadTrips, 15000);
     } else {
         if (tripsAutoRefreshInterval) {
             clearInterval(tripsAutoRefreshInterval);
@@ -183,10 +156,6 @@ function toggleTripsAutoRefresh() {
 }
 
 function loadTrips() {
-    if (isTripsLoading) {
-        return;
-    }
-    isTripsLoading = true;
     document.getElementById('loading').style.display = 'flex';
     
     const params = new URLSearchParams();
@@ -203,7 +172,8 @@ function loadTrips() {
         params.append('status', document.getElementById('filterStatus').value);
     }
     
-    fetchJsonSafe(`/api/trips?${params}`)
+    fetch(`/api/trips?${params}`)
+        .then(r => r.json())
         .then(data => {
             document.getElementById('loading').style.display = 'none';
             if (data.success) {
@@ -217,9 +187,6 @@ function loadTrips() {
         .catch(e => {
             document.getElementById('loading').style.display = 'none';
             showError('Error loading trips: ' + e.message);
-        })
-        .finally(() => {
-            isTripsLoading = false;
         });
 }
 
@@ -441,19 +408,20 @@ async function pullAndRebuildTrips() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Processing...';
 
     try {
-        const syncData = await fetchJsonSafe('/api/tracking/sync', {
+        const syncResp = await fetch('/api/tracking/sync', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
                 'X-CSRF-Token': '<?= $csrf_token ?>'
             }
         });
+        const syncData = await syncResp.json();
         if (!syncData.success) {
             throw new Error(syncData.message || syncData.error || 'Failed to pull latest WheelsEye data');
         }
 
         const rebuildPayload = getSelectedRangeForRebuild();
-        const rebuildData = await fetchJsonSafe('/api/tracking/rebuild-trips', {
+        const rebuildResp = await fetch('/api/tracking/rebuild-trips', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -462,6 +430,7 @@ async function pullAndRebuildTrips() {
             },
             body: JSON.stringify(rebuildPayload)
         });
+        const rebuildData = await rebuildResp.json();
         if (!rebuildData.success) {
             throw new Error(rebuildData.error || 'Failed to rebuild trips');
         }
@@ -495,7 +464,8 @@ function viewTripStoppages(tripId) {
     document.getElementById('stoppagesModalTitle').textContent = `Trip #${tripId} Stoppages`;
     stoppagesModalInstance.show();
 
-    fetchJsonSafe(`/api/trips/${tripId}/stoppages`)
+    fetch(`/api/trips/${tripId}/stoppages`)
+        .then(r => r.json())
         .then(data => {
             if (!data.success) {
                 throw new Error(data.error || 'Failed to load stoppages');
@@ -538,6 +508,7 @@ function renderTripStoppages(trip, stoppages) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    loadTrips();
     toggleTripsAutoRefresh();
 });
 </script>

@@ -43,7 +43,7 @@ class TrackingController
                     $service = new WheelsEyeApiService();
                     $syncResult = $service->syncCurrentLocations();
                     $this->saveSyncStatus(array_merge($syncResult, ['last_run' => date('Y-m-d H:i:s')]));
-                } catch (\Throwable $syncException) {
+                } catch (\Exception $syncException) {
                     $syncResult = [
                         'success' => false,
                         'message' => $syncException->getMessage(),
@@ -62,9 +62,9 @@ class TrackingController
                 $trackingMap[$tracking->vehicleId] = $tracking->toArray();
             }
             
-            $pathHours = isset($_GET['path_hours']) ? (int)$_GET['path_hours'] : 2;
-            $pathLimit = isset($_GET['path_limit']) ? min((int)$_GET['path_limit'], 500) : 300;
-            $pathHours = max(1, min(24, $pathHours)); // 1h to 24h
+            $pathHours = isset($_GET['path_hours']) ? (int)$_GET['path_hours'] : 24;
+            $pathLimit = isset($_GET['path_limit']) ? min((int)$_GET['path_limit'], 2000) : 500;
+            $pathHours = max(1, min(168, $pathHours)); // 1h to 7 days
             
             $result = [];
             foreach ($vehicles as $vehicle) {
@@ -102,7 +102,7 @@ class TrackingController
                 'timestamp' => date('Y-m-d H:i:s'),
                 'sync_result' => $syncResult
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -147,7 +147,7 @@ class TrackingController
                 'vehicle' => $vehicle->toArray(),
                 'data' => array_map(fn($t) => $t->toArray(), $history)
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -178,7 +178,7 @@ class TrackingController
             $result = $service->syncCurrentLocations();
             $this->saveSyncStatus(array_merge($result, ['last_run' => date('Y-m-d H:i:s')]));
             echo json_encode(array_merge(['success' => $result['success']], $result));
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             $this->saveSyncStatus([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -281,7 +281,7 @@ class TrackingController
                     'total' => $total,
                 ],
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -384,7 +384,7 @@ class TrackingController
                     $totals['pit_entries'] += (int)($row['diagnostics']['pit_entries'] ?? 0);
                     $totals['pit_exits'] += (int)($row['diagnostics']['pit_exits'] ?? 0);
                     $totals['destination_entries'] += (int)($row['diagnostics']['destination_entries'] ?? 0);
-                } catch (\Throwable $vehicleException) {
+                } catch (\Exception $vehicleException) {
                     $errors[] = 'Vehicle ' . $targetVehicle->vehicleNumber . ': ' . $vehicleException->getMessage();
                 }
             }
@@ -406,7 +406,7 @@ class TrackingController
         } catch (\InvalidArgumentException $e) {
             http_response_code(422);
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }

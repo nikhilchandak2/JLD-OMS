@@ -18,7 +18,7 @@
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
             <label class="ms-3">
-                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" checked> Auto-refresh (30s)
+                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" checked> Auto-refresh (15s)
             </label>
         </div>
     </div>
@@ -130,27 +130,6 @@ const DEFAULT_ZOOM = 19;
 const MIN_ZOOM = 18;
 let mapboxStreetLayer, mapboxSatelliteLayer;
 
-async function fetchJsonSafe(url, options = {}, timeoutMs = 20000) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
-        const raw = await response.text();
-        let data = null;
-        try {
-            data = raw ? JSON.parse(raw) : null;
-        } catch (parseError) {
-            throw new Error(`Server returned non-JSON response (${response.status})`);
-        }
-        if (!response.ok) {
-            throw new Error((data && (data.error || data.message)) || `Request failed (${response.status})`);
-        }
-        return data;
-    } finally {
-        clearTimeout(timeoutId);
-    }
-}
-
 function initMap() {
     map = L.map('map', { zoomControl: true, maxZoom: 22 }).setView([23.0225, 72.5714], DEFAULT_ZOOM);
 
@@ -237,8 +216,8 @@ function initMap() {
 function loadTracking() {
     const cacheBust = Date.now();
     Promise.all([
-        fetchJsonSafe('/api/tracking/live?path_hours=2&path_limit=300&_=' + cacheBust, { credentials: 'same-origin' }),
-        fetchJsonSafe('/api/geofences?_=' + cacheBust, { credentials: 'same-origin' })
+        fetch('/api/tracking/live?sync_now=1&path_hours=24&path_limit=2000&_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json()),
+        fetch('/api/geofences?_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json())
     ]).then(([trackingRes, geofencesRes]) => {
         if (trackingRes.success) {
             const geofences = (geofencesRes.success && geofencesRes.data) ? geofencesRes.data : [];
@@ -260,7 +239,8 @@ function loadTracking() {
 }
 
 function loadSyncStatus() {
-    fetchJsonSafe('/api/tracking/sync-status', { credentials: 'same-origin' })
+    fetch('/api/tracking/sync-status', { credentials: 'same-origin' })
+        .then(r => r.json())
         .then(res => {
             if (res.success && res.data) updateRouteUpdateStatus(res.data);
         })
@@ -350,11 +330,12 @@ function syncFromWheelsEye() {
     const origHtml = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Syncing...';
-    fetchJsonSafe('/api/tracking/sync', {
+    fetch('/api/tracking/sync', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' }
     })
+        .then(r => r.json())
         .then(data => {
             updateRouteUpdateStatus({ ...data, last_run: new Date().toISOString().slice(0, 19).replace('T', ' ') });
             if (data.success) {
@@ -746,7 +727,7 @@ function toggleAutoRefresh(runImmediate = true) {
         if (runImmediate) {
             doAutoRefreshCycle();
         }
-        autoRefreshInterval = setInterval(doAutoRefreshCycle, 30000); // every 30s fetch live data
+        autoRefreshInterval = setInterval(doAutoRefreshCycle, 10000); // every 10s fetch live synced data
     } else {
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);

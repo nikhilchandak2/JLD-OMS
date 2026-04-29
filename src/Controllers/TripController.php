@@ -79,11 +79,11 @@ class TripController
                 $params[] = $_GET['status'];
             }
             
-            $sql .= " ORDER BY t.start_time DESC LIMIT 500";
+            $sql .= " ORDER BY t.start_time DESC LIMIT 1000";
             
             $trips = $this->database->fetchAll($sql, $params);
             
-            // Build filters once for summaries and grouped metrics.
+            // Get statistics with same filters (pass explicit filter values, not flat params)
             $filters = [
                 'vehicle_id' => $_GET['vehicle_id'] ?? null,
                 'start_date' => $_GET['start_date'] ?? null,
@@ -91,9 +91,9 @@ class TripController
                 'material_type' => $_GET['material_type'] ?? null,
                 'status' => $_GET['status'] ?? null,
             ];
-            $stats = $this->buildTripStatisticsFromRows($trips);
-            $destinationBreakdown = $this->buildDestinationBreakdownFromRows($trips);
-            $destinationBreakdownByVehicle = $this->buildDestinationBreakdownByVehicleFromRows($trips);
+            $stats = $this->getTripStatistics($filters);
+            $destinationBreakdown = $this->getDestinationBreakdown($filters);
+            $destinationBreakdownByVehicle = $this->getDestinationBreakdownByVehicle($filters);
             $stoppageSummaryByVehicle = $this->getStoppageSummaryByVehicle($filters);
             $todayStoppageSummary = $this->getTodayStoppageSummary();
             
@@ -106,7 +106,7 @@ class TripController
                 'stoppage_summary_by_vehicle' => $stoppageSummaryByVehicle,
                 'today_stoppage_summary' => $todayStoppageSummary
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -166,7 +166,7 @@ class TripController
                 'statistics' => $stats,
                 'destination_breakdown' => $destinationBreakdown
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -221,7 +221,7 @@ class TripController
                 'vehicle' => $vehicle->toArray(),
                 'data' => $rows
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -272,7 +272,7 @@ class TripController
                 'data' => $trips,
                 'statistics' => $stats
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -321,7 +321,7 @@ class TripController
                 'trip' => $trip,
                 'data' => $stoppages
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -429,105 +429,6 @@ class TripController
         }
 
         return $grouped;
-    }
-
-    /**
-     * Build overview statistics from the already fetched trip rows.
-     */
-    private function buildTripStatisticsFromRows(array $trips): array
-    {
-        $totalTrips = count($trips);
-        $completedTrips = 0;
-        $distance = 0.0;
-        $fuel = 0.0;
-        $durationTotal = 0.0;
-        $durationCount = 0;
-
-        foreach ($trips as $trip) {
-            if (($trip['status'] ?? '') === 'completed') {
-                $completedTrips++;
-            }
-            if (isset($trip['distance_km']) && $trip['distance_km'] !== null && $trip['distance_km'] !== '') {
-                $distance += (float)$trip['distance_km'];
-            }
-            if (isset($trip['fuel_consumed_liters']) && $trip['fuel_consumed_liters'] !== null && $trip['fuel_consumed_liters'] !== '') {
-                $fuel += (float)$trip['fuel_consumed_liters'];
-            }
-            if (isset($trip['duration_minutes']) && $trip['duration_minutes'] !== null && $trip['duration_minutes'] !== '') {
-                $durationTotal += (float)$trip['duration_minutes'];
-                $durationCount++;
-            }
-        }
-
-        return [
-            'total_trips' => $totalTrips,
-            'completed_trips' => $completedTrips,
-            'total_distance' => $distance,
-            'total_fuel_consumed' => $fuel,
-            'avg_duration' => $durationCount > 0 ? ($durationTotal / $durationCount) : 0,
-        ];
-    }
-
-    private function buildDestinationBreakdownFromRows(array $trips): array
-    {
-        $counts = [];
-        foreach ($trips as $trip) {
-            if (($trip['status'] ?? '') !== 'completed') {
-                continue;
-            }
-            $name = (string)($trip['destination_geofence_name'] ?? 'N/A');
-            if (!isset($counts[$name])) {
-                $counts[$name] = 0;
-            }
-            $counts[$name]++;
-        }
-
-        arsort($counts);
-        $rows = [];
-        foreach ($counts as $destinationName => $tripCount) {
-            $rows[] = [
-                'destination_name' => $destinationName,
-                'trip_count' => $tripCount,
-            ];
-        }
-        return $rows;
-    }
-
-    private function buildDestinationBreakdownByVehicleFromRows(array $trips): array
-    {
-        $grouped = [];
-        foreach ($trips as $trip) {
-            if (($trip['status'] ?? '') !== 'completed') {
-                continue;
-            }
-            $vehicleId = (int)($trip['vehicle_id'] ?? 0);
-            if ($vehicleId <= 0) {
-                continue;
-            }
-            $destinationName = (string)($trip['destination_geofence_name'] ?? 'N/A');
-            if (!isset($grouped[$vehicleId])) {
-                $grouped[$vehicleId] = [];
-            }
-            if (!isset($grouped[$vehicleId][$destinationName])) {
-                $grouped[$vehicleId][$destinationName] = 0;
-            }
-            $grouped[$vehicleId][$destinationName]++;
-        }
-
-        $result = [];
-        foreach ($grouped as $vehicleId => $destinationCounts) {
-            arsort($destinationCounts);
-            $result[$vehicleId] = [];
-            foreach ($destinationCounts as $destinationName => $tripCount) {
-                $result[$vehicleId][] = [
-                    'destination_geofence_id' => null,
-                    'destination_name' => $destinationName,
-                    'trip_count' => $tripCount,
-                ];
-            }
-        }
-
-        return $result;
     }
 
     private function buildTripFilterClause(array $filters): array

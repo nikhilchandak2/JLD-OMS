@@ -7,10 +7,35 @@ use App\Core\Database;
 class GeofenceService
 {
     private Database $database;
+
+    // Tolerance (meters) to prevent boundary flapping when geofences are very close
+    // or when GPS coordinates jitter slightly.
+    private const DEFAULT_CIRCLE_EDGE_TOLERANCE_METERS = 3.0;
+    private const DEFAULT_POLYGON_EDGE_TOLERANCE_METERS = 3.0;
     
     public function __construct()
     {
         $this->database = new Database();
+    }
+
+    private function getCircleEdgeToleranceMeters(): float
+    {
+        $raw = $_ENV['GEOFENCE_CIRCLE_EDGE_TOLERANCE_METERS'] ?? null;
+        if ($raw === null || $raw === '') {
+            return self::DEFAULT_CIRCLE_EDGE_TOLERANCE_METERS;
+        }
+        $val = (float)$raw;
+        return $val > 0 ? $val : self::DEFAULT_CIRCLE_EDGE_TOLERANCE_METERS;
+    }
+
+    private function getPolygonEdgeToleranceMeters(): float
+    {
+        $raw = $_ENV['GEOFENCE_POLYGON_EDGE_TOLERANCE_METERS'] ?? null;
+        if ($raw === null || $raw === '') {
+            return self::DEFAULT_POLYGON_EDGE_TOLERANCE_METERS;
+        }
+        $val = (float)$raw;
+        return $val > 0 ? $val : self::DEFAULT_POLYGON_EDGE_TOLERANCE_METERS;
     }
     
     /**
@@ -109,7 +134,9 @@ class GeofenceService
             return false;
         }
         $distance = $this->calculateDistance($lat, $lon, $centerLat, $centerLon);
-        return $distance <= ($radiusMeters / 1000); // Convert meters to km
+        $toleranceMeters = $this->getCircleEdgeToleranceMeters();
+        // Treat points slightly outside as inside to absorb GPS noise.
+        return $distance <= (($radiusMeters + $toleranceMeters) / 1000); // Convert meters to km
     }
 
     /**
@@ -117,10 +144,17 @@ class GeofenceService
      */
     private function isPointInPolygon(float $lat, float $lon, array $polygonPoints): bool
     {
+        $toleranceMeters = $this->getPolygonEdgeToleranceMeters();
         $inside = false;
         $count = count($polygonPoints);
         if ($count < 3) {
             return false;
+        }
+
+        // If the point is on/very near any polygon edge, consider it inside.
+        // This is critical when geofences are extremely close to each other.
+        if ($this->isPointNearPolygonEdge($lat, $lon, $polygonPoints, $toleranceMeters)) {
+            return true;
         }
 
         for ($i = 0, $j = $count - 1; $i < $count; $j = $i++) {
@@ -137,6 +171,73 @@ class GeofenceService
         }
 
         return $inside;
+    }
+
+    private function isPointNearPolygonEdge(float $lat, float $lon, array $polygonPoints, float $toleranceMeters): bool
+    {
+        $count = count($polygonPoints);
+        if ($count < 2) {
+            return false;
+        }
+
+        for ($i = 0, $j = $count - 1; $i < $count; $j = $i++) {
+            $latA = $polygonPoints[$j]['lat'];
+            $lonA = $polygonPoints[$j]['lng'];
+            $latB = $polygonPoints[$i]['lat'];
+            $lonB = $polygonPoints[$i]['lng'];
+
+            $distMeters = $this->distancePointToSegmentMeters($lat, $lon, $latA, $lonA, $latB, $lonB);
+            if ($distMeters <= $toleranceMeters) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Distance from point P to segment AB using a local meters-projection.
+     * This is accurate enough for small geofences (tens to hundreds of meters).
+     */
+    private function distancePointToSegmentMeters(
+        float $latP,
+        float $lonP,
+        float $latA,
+        float $lonA,
+        float $latB,
+        float $lonB
+    ): float {
+        // Project lat/lon into a local tangent plane in meters around point P.
+        // Using P as reference keeps values small and stable.
+        $metersPerDegLat = 110540.0; // approx meters per 1 degree latitude
+        $cosLat = cos(deg2rad($latP));
+        $metersPerDegLon = 111320.0 * $cosLat; // approx meters per 1 degree longitude at this latitude
+
+        // P is (0,0) in this coordinate system.
+        $ax = ($lonA - $lonP) * $metersPerDegLon;
+        $ay = ($latA - $latP) * $metersPerDegLat;
+        $bx = ($lonB - $lonP) * $metersPerDegLon;
+        $by = ($latB - $latP) * $metersPerDegLat;
+
+        $abx = $bx - $ax;
+        $aby = $by - $ay;
+        $abLenSq = $abx * $abx + $aby * $aby;
+
+        // Segment is effectively a point.
+        if ($abLenSq <= 1e-12) {
+            return sqrt($ax * $ax + $ay * $ay);
+        }
+
+        // Closest point on AB to P (P is at origin).
+        $apx = -$ax;
+        $apy = -$ay;
+        $t = ($apx * $abx + $apy * $aby) / $abLenSq;
+        $t = max(0.0, min(1.0, $t));
+
+        $nx = $ax + $t * $abx;
+        $ny = $ay + $t * $aby;
+
+        return sqrt($nx * $nx + $ny * $ny);
     }
 
     /**
