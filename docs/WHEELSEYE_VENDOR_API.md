@@ -65,14 +65,25 @@ The link is a **pull API**: it returns current GPS position for all vehicles on 
 Use the dedicated script so sync + trip counting logic runs from server-side cron:
 
 ```bash
-# Every 5 minutes
-*/5 * * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php >> /var/log/wheelseye-sync.log 2>&1
+# Every 1 minute from 7:00 AM to 6:59 PM
+* 7-18 * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php >> /var/log/wheelseye-sync.log 2>&1
+
+# Final run at 7:00 PM
+0 19 * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php >> /var/log/wheelseye-sync.log 2>&1
 ```
 
 This script:
 - Pulls latest data from WheelsEye and saves it to `gps_tracking_data`
 - Runs your existing trip logic (`TripDetectionService::processTrackingData`) on each point
 - Updates `storage/last_tracking_sync.json` with sync summary and `trip_count_delta`
+- Appends every run (success/failure) to `storage/logs/wheelseye-sync.log` as JSON lines for persistent audit history
+
+Quick checks:
+
+```bash
+tail -f /var/www/tracking/storage/logs/wheelseye-sync.log
+tail -f /var/log/wheelseye-sync.log
+```
 
 If you prefer URL-based cron, this still works:
 
@@ -81,10 +92,51 @@ If you prefer URL-based cron, this still works:
 2. Use:
 
 ```bash
-*/5 * * * * curl -s "https://oms.jldminerals.com/api/tracking/sync?key=YOUR_SECRET"
+# Every 1 minute from 7:00 AM to 6:59 PM
+* 7-18 * * * curl -s "https://oms.jldminerals.com/api/tracking/sync?key=YOUR_SECRET"
+
+# Final run at 7:00 PM
+0 19 * * * curl -s "https://oms.jldminerals.com/api/tracking/sync?key=YOUR_SECRET"
 ```
 
 Then the portal will have fresh locations without manual sync clicks.
+
+---
+
+## Historical (yesterday) trip sync
+
+If you need to backfill yesterday's trips for a vehicle, use:
+
+- **Endpoint:** `GET /api/tracking/sync-yesterday-trips`
+- **Auth:** logged-in session OR `TRACKING_SYNC_KEY`
+- **Required:** `vehicle_id` **or** `vehicle_number`
+
+Examples:
+
+```bash
+# By vehicle number
+curl -s "https://oms.jldminerals.com/api/tracking/sync-yesterday-trips?vehicle_number=RJ07GD4606&key=YOUR_SECRET"
+
+# By OMS vehicle ID
+curl -s "https://oms.jldminerals.com/api/tracking/sync-yesterday-trips?vehicle_id=12&key=YOUR_SECRET"
+```
+
+Server `.env` options for vendor historical APIs:
+
+```dotenv
+WHEELSEYE_API_BASE_URL=https://api.wheelseye.com
+WHEELSEYE_ACCESS_TOKEN=your-access-token
+WHEELSEYE_ITINERARY_PATH=/getItinerary
+WHEELSEYE_PATH_DETAIL_PATH=/getPathDetail
+# Optional (default 5)
+WHEELSEYE_POLYLINE_PRECISION=5
+```
+
+If your vendor account uses different historical endpoint paths, update:
+- `WHEELSEYE_ITINERARY_PATH`
+- `WHEELSEYE_PATH_DETAIL_PATH`
+
+without changing application code.
 
 ---
 
