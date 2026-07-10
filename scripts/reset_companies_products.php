@@ -32,6 +32,10 @@ $companies = [
         'name' => 'JLD Minerals Private Limited',
         'code' => 'JLD_MINERALS_PRIVATE_LIMITED',
     ],
+    [
+        'name' => 'J L daga Mines & Minerals',
+        'code' => 'JL_DAGA_MINES_MINERALS',
+    ],
 ];
 
 $companySelect = $pdo->prepare("SELECT id FROM companies WHERE name = ? LIMIT 1");
