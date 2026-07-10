@@ -1,15 +1,22 @@
 <!-- Page Header -->
 <div class="page-header">
-    <div class="d-flex justify-content-between align-items-start">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
             <h1 class="page-title">
                 <i class="bi bi-box me-2"></i>Product Management
             </h1>
-            <p class="page-subtitle">Manage product catalog and inventory</p>
+            <p class="page-subtitle">Manage product catalog and HSN codes</p>
         </div>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#productModal" onclick="openProductModal()">
-            <i class="bi bi-plus-circle me-1"></i> Add New Product
-        </button>
+        <div class="d-flex gap-2">
+            <?php if (!empty($is_admin)): ?>
+            <a href="/admin/products/import" class="btn btn-outline-primary">
+                <i class="bi bi-upload me-1"></i> Import from CSV
+            </a>
+            <?php endif; ?>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#productModal" onclick="openProductModal()">
+                <i class="bi bi-plus-circle me-1"></i> Add New Product
+            </button>
+        </div>
     </div>
 </div>
 
@@ -19,24 +26,19 @@
         <i class="bi bi-table me-2"></i>All Products
     </div>
     <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped" id="productsTable">
-                            <thead>
-                                <tr>
-                                    <th>Code</th>
-                                    <th>Name</th>
-                                    <th>Status</th>
-                                    <th>Created</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Data loaded via JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+        <div class="table-responsive">
+            <table class="table table-striped" id="productsTable">
+                <thead>
+                    <tr>
+                        <th>Product Name</th>
+                        <th>HSN Code</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -52,25 +54,27 @@
             <form id="productForm">
                 <div class="modal-body">
                     <input type="hidden" id="productId" name="id">
-                    
+
                     <div class="mb-3">
                         <label for="productCode" class="form-label">Product Code *</label>
-                        <input type="text" class="form-control" id="productCode" name="code" required>
-                        <div class="form-text">Unique identifier for the product (e.g., PROD-001)</div>
+                        <input type="text" class="form-control" id="productCode" name="code" required maxlength="50">
+                        <div class="form-text">Usually same as product name (max 50 characters)</div>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="productName" class="form-label">Product Name *</label>
                         <input type="text" class="form-control" id="productName" name="name" required>
-                        <div class="form-text">Descriptive name for the product</div>
                     </div>
-                    
+
+                    <div class="mb-3">
+                        <label for="hsnCode" class="form-label">HSN Code</label>
+                        <input type="text" class="form-control" id="hsnCode" name="hsn_code" maxlength="20" placeholder="e.g. 250840">
+                    </div>
+
                     <div class="mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="isActive" name="is_active" checked>
-                            <label class="form-check-label" for="isActive">
-                                Active
-                            </label>
+                            <label class="form-check-label" for="isActive">Active</label>
                         </div>
                     </div>
                 </div>
@@ -84,10 +88,10 @@
 </div>
 
 <script>
+const isProductAdmin = <?= !empty($is_admin) ? 'true' : 'false' ?>;
 let products = [];
 let editingProductId = null;
 
-// Load products on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadProducts();
 });
@@ -96,7 +100,6 @@ async function loadProducts() {
     try {
         const response = await fetch('/api/products');
         const result = await response.json();
-        
         if (result.success) {
             products = result.data;
             renderProductsTable();
@@ -111,27 +114,22 @@ async function loadProducts() {
 function renderProductsTable() {
     const tbody = document.querySelector('#productsTable tbody');
     tbody.innerHTML = '';
-    
+
     products.forEach(product => {
         const row = document.createElement('tr');
-        const createdDate = new Date(product.created_at).toLocaleDateString();
-        
+        const createdDate = product.created_at ? new Date(product.created_at).toLocaleDateString() : '-';
+        const deleteBtn = isProductAdmin
+            ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteProduct(${Number(product.id) || 0})" title="Delete"><i class="bi bi-trash"></i></button>`
+            : '';
+
         row.innerHTML = `
-            <td><code>${escapeHtml(product.code)}</code></td>
             <td>${escapeHtml(product.name)}</td>
-            <td>
-                <span class="badge ${product.is_active ? 'bg-success' : 'bg-secondary'}">
-                    ${product.is_active ? 'Active' : 'Inactive'}
-                </span>
-            </td>
+            <td><code>${escapeHtml(product.hsn_code || '-')}</code></td>
+            <td><span class="badge ${product.is_active ? 'bg-success' : 'bg-secondary'}">${product.is_active ? 'Active' : 'Inactive'}</span></td>
             <td>${createdDate}</td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="editProduct(${product.id})">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct(${product.id})">
-                    <i class="fas fa-trash"></i>
-                </button>
+            <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editProduct(${Number(product.id) || 0})" title="Edit"><i class="bi bi-pencil"></i></button>
+                ${deleteBtn}
             </td>
         `;
         tbody.appendChild(row);
@@ -140,12 +138,10 @@ function renderProductsTable() {
 
 function openProductModal(productId = null) {
     editingProductId = productId;
-    const modal = document.getElementById('productModal');
     const form = document.getElementById('productForm');
     const title = document.getElementById('productModalTitle');
-    
     form.reset();
-    
+
     if (productId) {
         title.textContent = 'Edit Product';
         const product = products.find(p => p.id === productId);
@@ -153,6 +149,7 @@ function openProductModal(productId = null) {
             document.getElementById('productId').value = product.id;
             document.getElementById('productCode').value = product.code;
             document.getElementById('productName').value = product.name;
+            document.getElementById('hsnCode').value = product.hsn_code || '';
             document.getElementById('isActive').checked = product.is_active;
         }
     } else {
@@ -167,75 +164,61 @@ function editProduct(productId) {
 }
 
 async function deleteProduct(productId) {
+    if (!isProductAdmin) return;
     const product = products.find(p => p.id === productId);
     if (!product) return;
-    
-    if (!confirm(`Are you sure you want to delete "${product.name}"?`)) {
+
+    if (!confirm('Delete product "' + product.name + '"? This cannot be undone.')) {
         return;
     }
-    
+
     try {
-        const response = await fetch(`/api/products/${productId}`, {
+        const response = await fetch('/api/products/' + productId, {
             method: 'DELETE',
-            headers: {
-                'X-CSRF-Token': '<?= $csrf_token ?>'
-            }
+            headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' }
         });
-        
         const result = await response.json();
-        
         if (result.success) {
             showAlert('Product deleted successfully', 'success');
             loadProducts();
         } else {
-            showAlert('Error deleting product: ' + result.error, 'danger');
+            showAlert('Error deleting product: ' + (result.error || 'Unknown error'), 'danger');
         }
     } catch (error) {
         showAlert('Error deleting product: ' + error.message, 'danger');
     }
 }
 
-// Handle form submission
 document.getElementById('productForm').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
     const formData = new FormData(this);
     const data = {
         code: formData.get('code'),
         name: formData.get('name'),
+        hsn_code: formData.get('hsn_code') || '',
         is_active: formData.has('is_active')
     };
-    
+
     try {
-        let response;
-        if (editingProductId) {
-            response = await fetch(`/api/products/${editingProductId}`, {
+        const response = editingProductId
+            ? await fetch('/api/products/' + editingProductId, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': '<?= $csrf_token ?>'
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                 body: JSON.stringify(data)
-            });
-        } else {
-            response = await fetch('/api/products', {
+            })
+            : await fetch('/api/products', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': '<?= $csrf_token ?>'
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                 body: JSON.stringify(data)
             });
-        }
-        
+
         const result = await response.json();
-        
         if (result.success) {
             showAlert(result.message, 'success');
             bootstrap.Modal.getInstance(document.getElementById('productModal')).hide();
             loadProducts();
         } else {
-            showAlert('Error: ' + result.error, 'danger');
+            showAlert('Error: ' + (result.error || 'Save failed'), 'danger');
         }
     } catch (error) {
         showAlert('Error: ' + error.message, 'danger');
@@ -244,23 +227,16 @@ document.getElementById('productForm').addEventListener('submit', async function
 
 function escapeHtml(text) {
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = text == null ? '' : text;
     return div.innerHTML;
 }
 
 function showAlert(message, type) {
     const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    const container = document.querySelector('.container-fluid');
+    alertDiv.className = 'alert alert-' + type + ' alert-dismissible fade show';
+    alertDiv.innerHTML = message + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    const container = document.querySelector('.container-fluid') || document.body;
     container.insertBefore(alertDiv, container.firstChild);
-    
-    setTimeout(() => {
-        alertDiv.remove();
-    }, 5000);
+    setTimeout(function() { alertDiv.remove(); }, 5000);
 }
 </script>

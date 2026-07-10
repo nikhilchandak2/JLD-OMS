@@ -48,15 +48,26 @@ class ProductRepository
         return $row ? new Product($row) : null;
     }
 
+    public function findByName(string $name): ?Product
+    {
+        $sql = "SELECT * FROM products WHERE name = ? LIMIT 1";
+        $stmt = $this->database->getConnection()->prepare($sql);
+        $stmt->execute([$name]);
+
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ? new Product($row) : null;
+    }
+
     public function create(Product $product): Product
     {
-        $sql = "INSERT INTO products (code, name, is_active, created_at, updated_at) 
-                VALUES (?, ?, ?, NOW(), NOW())";
+        $sql = "INSERT INTO products (code, name, hsn_code, is_active, created_at, updated_at) 
+                VALUES (?, ?, ?, ?, NOW(), NOW())";
         
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([
             $product->code,
             $product->name,
+            $product->hsnCode !== '' ? $product->hsnCode : null,
             $product->isActive ? 1 : 0
         ]);
         
@@ -69,7 +80,7 @@ class ProductRepository
         $fields = [];
         $values = [];
         
-        $allowedFields = ['code', 'name', 'is_active'];
+        $allowedFields = ['code', 'name', 'hsn_code', 'is_active'];
         
         foreach ($allowedFields as $field) {
             if (array_key_exists($field, $data)) {

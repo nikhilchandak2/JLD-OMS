@@ -3,11 +3,14 @@
 namespace App\Controllers;
 
 use App\Services\AuthService;
+use App\Services\ProductImportService;
 use App\Repositories\ProductRepository;
 use App\Models\Product;
 
 class ProductController
 {
+    private const MAX_UPLOAD_BYTES = 5242880; // 5MB
+
     private AuthService $authService;
     private ProductRepository $productRepository;
     
@@ -99,6 +102,7 @@ class ProductController
             $product = new Product();
             $product->code = trim($input['code'] ?? '');
             $product->name = trim($input['name'] ?? '');
+            $product->hsnCode = trim($input['hsn_code'] ?? '');
             $product->isActive = isset($input['is_active']) ? (bool)$input['is_active'] : true;
             
             // Validate
@@ -185,6 +189,10 @@ class ProductController
             if (isset($input['name']) && !empty($input['name'])) {
                 $updateData['name'] = trim($input['name']);
             }
+
+            if (array_key_exists('hsn_code', $input)) {
+                $updateData['hsn_code'] = trim((string)$input['hsn_code']);
+            }
             
             if (isset($input['is_active'])) {
                 $updateData['is_active'] = (bool)$input['is_active'];
@@ -219,11 +227,11 @@ class ProductController
             return;
         }
         
-        // Check permissions - allow both entry and admin users
+        // Delete products — admin only
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts'])) {
+        if (!$user || !$this->authService->hasRole('admin')) {
             http_response_code(403);
-            echo json_encode(['error' => 'Entry or Admin access required']);
+            echo json_encode(['error' => 'Admin access required']);
             return;
         }
         
@@ -242,6 +250,80 @@ class ProductController
         } catch (\Exception $e) {
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Import products from CSV (Product Name + HSN Code). Admin only.
+     */
+    public function importFromCsv(): void
+    {
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user || !$this->authService->hasRole('admin')) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Admin access required']);
+            return;
+        }
+
+        $file = $_FILES['file'] ?? null;
+        if (!$file || ($file['error'] ?? 0) !== UPLOAD_ERR_OK) {
+            http_response_code(400);
+            echo json_encode(['error' => 'No file uploaded or upload error.']);
+            return;
+        }
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($ext !== 'csv') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Only CSV files are allowed.']);
+            return;
+        }
+
+        $size = (int)($file['size'] ?? 0);
+        if ($size <= 0 || $size > self::MAX_UPLOAD_BYTES) {
+            http_response_code(400);
+            echo json_encode(['error' => 'CSV file must be between 1 byte and 5MB']);
+            return;
+        }
+
+        $tmpName = (string)($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid uploaded file']);
+            return;
+        }
+
+        $content = file_get_contents($tmpName);
+        if ($content === false) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Could not read file.']);
+            return;
+        }
+
+        try {
+            $result = (new ProductImportService())->importFromCsv($content);
+            if (!$result['success']) {
+                http_response_code(422);
+            }
+            echo json_encode([
+                'success' => $result['success'],
+                'created' => $result['created'],
+                'updated' => $result['updated'],
+                'skipped' => $result['skipped'],
+                'errors' => $result['errors'],
+                'preview' => $result['preview'],
+                'columns' => $result['columns'] ?? null,
+            ]);
+        } catch (\Exception $e) {
+            error_log('Failed to import products CSV: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to import products CSV']);
         }
     }
 }

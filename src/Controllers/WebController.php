@@ -302,7 +302,27 @@ class WebController
         $this->renderTemplate('products', [
             'title' => 'Product Management',
             'user' => $user,
+            'is_admin' => $this->authService->hasRole('admin'),
             'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
+    public function productsImport(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasRole('admin')) {
+            http_response_code(403);
+            $this->renderTemplate('error', [
+                'title' => 'Access Denied',
+                'message' => 'Admin access required to import products.',
+            ]);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('products-import', [
+            'title' => 'Import products',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken(),
         ]);
     }
     

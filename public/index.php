@@ -157,6 +157,7 @@ $router->group('/api', function($router) {
         $router->post('/products', 'ProductController@create');
         $router->put('/products/{id}', 'ProductController@update');
         $router->delete('/products/{id}', 'ProductController@delete');
+        $router->post('/products/import', 'ProductController@importFromCsv');
         
         // Company management API
         $router->get('/companies', 'CompanyController@index');
@@ -276,6 +277,7 @@ $router->get('/admin/credit-approvals', 'WebController@creditApprovalsPage');
 $router->get('/admin/parties/import', 'WebController@partiesImport');
 $router->get('/admin/parties', 'WebController@parties');
 $router->get('/admin/products', 'WebController@products');
+$router->get('/admin/products/import', 'WebController@productsImport');
 $router->get('/admin/reminders', 'WebController@reminders');
 $router->get('/admin/bills/import', 'WebController@adminImportBills');
 $router->get('/analytics/orders', 'WebController@analyticsOrders');

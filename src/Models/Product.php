@@ -7,6 +7,7 @@ class Product
     public int $id = 0;
     public string $code = '';
     public string $name = '';
+    public string $hsnCode = '';
     public bool $isActive = true;
     public string $createdAt = '';
     public string $updatedAt = '';
@@ -23,6 +24,7 @@ class Product
         $this->id = (int)($data['id'] ?? 0);
         $this->code = $data['code'] ?? '';
         $this->name = $data['name'] ?? '';
+        $this->hsnCode = trim((string)($data['hsn_code'] ?? ''));
         $this->isActive = (bool)($data['is_active'] ?? true);
         $this->createdAt = $data['created_at'] ?? '';
         $this->updatedAt = $data['updated_at'] ?? '';
@@ -34,6 +36,7 @@ class Product
             'id' => $this->id,
             'code' => $this->code,
             'name' => $this->name,
+            'hsn_code' => $this->hsnCode,
             'is_active' => $this->isActive,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt
