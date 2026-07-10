@@ -79,8 +79,23 @@ document.getElementById('importForm').addEventListener('submit', async function(
         });
         const data = await response.json();
 
-        if (!response.ok) {
-            showError(data.error || 'Import failed');
+        if (!response.ok || data.success === false) {
+            document.getElementById('resultCard').style.display = 'block';
+            document.getElementById('resultSummary').innerHTML = `
+                <p class="mb-1"><strong>Created:</strong> ${data.created ?? 0}</p>
+                <p class="mb-1"><strong>Updated:</strong> ${data.updated ?? 0}</p>
+                <p class="mb-1"><strong>Skipped:</strong> ${data.skipped ?? 0}</p>
+            `;
+            const errEl = document.getElementById('resultErrors');
+            const errs = data.errors && data.errors.length ? data.errors : [data.error || 'Import failed'];
+            errEl.innerHTML = '<strong>Errors:</strong><ul class="mb-0">' + errs.map(function(x) {
+                const d = document.createElement('div'); d.textContent = x; return '<li>' + d.innerHTML + '</li>';
+            }).join('') + '</ul>';
+            if (data.columns && data.columns.headers) {
+                errEl.innerHTML += '<p class="mt-2 mb-0"><strong>Detected columns:</strong> ' +
+                    data.columns.headers.map(function(h) { return h || '(blank)'; }).join(', ') + '</p>';
+            }
+            document.getElementById('success-container').style.display = 'none';
             document.getElementById('btnImport').disabled = false;
             return;
         }
@@ -113,7 +128,9 @@ document.getElementById('importForm').addEventListener('submit', async function(
             previewEl.innerHTML = '';
         }
         document.getElementById('success-container').style.display = 'block';
-        document.getElementById('success-container').textContent = 'Import completed.';
+        const total = (data.created ?? 0) + (data.updated ?? 0);
+        document.getElementById('success-container').textContent =
+            total > 0 ? ('Import completed. ' + total + ' party/parties saved.') : 'Import completed (no changes).';
         document.getElementById('btnImport').disabled = false;
         fileInput.value = '';
     } catch (err) {

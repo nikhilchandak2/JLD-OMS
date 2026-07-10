@@ -490,6 +490,9 @@ class PartyController
         try {
             $service = new PartyImportService();
             $result = $service->importFromCsv($content);
+            if (!$result['success']) {
+                http_response_code(422);
+            }
             echo json_encode([
                 'success' => $result['success'],
                 'created' => $result['created'],
@@ -497,6 +500,7 @@ class PartyController
                 'skipped' => $result['skipped'],
                 'errors' => $result['errors'],
                 'preview' => $result['preview'],
+                'columns' => $result['columns'] ?? null,
             ]);
         } catch (\Exception $e) {
             $this->respondServerError('Failed to import parties CSV', $e);
