@@ -9,7 +9,7 @@
                 </ol>
             </nav>
             <h1 class="page-title mt-2"><i class="bi bi-upload me-2"></i>Import parties</h1>
-            <p class="page-subtitle mb-0">Upload a CSV with columns <strong>Parties</strong> (customer name) and <strong>email</strong></p>
+            <p class="page-subtitle mb-0">Upload a CSV with party name and GST number (email optional)</p>
         </div>
         <a href="/admin/parties" class="btn btn-outline-secondary">Back to parties</a>
     </div>
@@ -23,8 +23,9 @@
     <div class="card-body">
         <p class="text-muted">Your CSV must have a <strong>header row</strong> with:</p>
         <ul class="small text-muted mb-3">
-            <li><strong>Parties</strong> (or Party, Name, Customer) – name of the customer</li>
-            <li><strong>email</strong> – email address for that party</li>
+            <li><strong>Parties</strong> (or Party, Name, Customer) – party / customer name</li>
+            <li><strong>GST</strong> (or GST No, GSTIN) – 15-character GST number</li>
+            <li><strong>email</strong> – optional; a placeholder is used if blank</li>
         </ul>
         <form id="importForm">
             <div class="mb-3">
@@ -100,12 +101,13 @@ document.getElementById('importForm').addEventListener('submit', async function(
         }
         const previewEl = document.getElementById('resultPreview');
         if (data.preview && data.preview.length) {
-            previewEl.innerHTML = '<strong>Sample:</strong><table class="table table-sm mt-1"><thead><tr><th>Party</th><th>Email</th><th>Action</th></tr></thead><tbody>' +
+            previewEl.innerHTML = '<strong>Sample:</strong><table class="table table-sm mt-1"><thead><tr><th>Party</th><th>GST</th><th>Email</th><th>Action</th></tr></thead><tbody>' +
                 data.preview.map(function(r) {
                     const d = document.createElement('div');
                     d.textContent = r.name; const name = d.innerHTML;
+                    d.textContent = r.gst_number || ''; const gst = d.innerHTML;
                     d.textContent = r.email || ''; const email = d.innerHTML;
-                    return '<tr><td>' + name + '</td><td>' + email + '</td><td>' + (r.action || '') + '</td></tr>';
+                    return '<tr><td>' + name + '</td><td>' + gst + '</td><td>' + email + '</td><td>' + (r.action || '') + '</td></tr>';
                 }).join('') + '</tbody></table>';
         } else {
             previewEl.innerHTML = '';
