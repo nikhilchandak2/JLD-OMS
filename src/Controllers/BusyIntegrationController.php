@@ -90,10 +90,10 @@ class BusyIntegrationController
             return;
         }
 
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if (!in_array($ext, ['csv', 'pdf'], true)) {
+        $tmpName = (string)($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
             http_response_code(400);
-            echo json_encode(['error' => 'Upload a Busy tax invoice PDF or CSV export.']);
+            echo json_encode(['error' => 'Invalid uploaded file']);
             return;
         }
 
@@ -104,13 +104,6 @@ class BusyIntegrationController
             return;
         }
 
-        $tmpName = (string)($file['tmp_name'] ?? '');
-        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid uploaded file']);
-            return;
-        }
-
         $content = file_get_contents($tmpName);
         if ($content === false) {
             http_response_code(400);
@@ -118,14 +111,31 @@ class BusyIntegrationController
             return;
         }
 
-        $parsed = $this->busyInvoiceImportService->parseUpload($content, $ext);
-        if (!empty($parsed['errors']) && empty($parsed['invoices'])) {
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (strncmp($content, '%PDF-', 5) === 0) {
+            $ext = 'pdf';
+        }
+        if (!in_array($ext, ['csv', 'pdf'], true)) {
             http_response_code(400);
-            echo json_encode([
-                'error' => 'Could not parse CSV',
-                'details' => $parsed['errors'],
+            echo json_encode(['error' => 'Upload a Busy tax invoice PDF or CSV export.']);
+            return;
+        }
+
+        $parsed = $this->busyInvoiceImportService->parseUpload($content, $ext, $tmpName);
+        if (!empty($parsed['errors']) && empty($parsed['invoices'])) {
+            $details = $parsed['errors'];
+            $summary = $details[0] ?? 'Unknown parse error';
+            $payload = [
+                'error' => 'Could not parse invoice file: ' . $summary,
+                'details' => $details,
                 'preview' => $parsed['preview'],
-            ]);
+            ];
+            if (filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                $payload['file_type'] = $ext;
+                $payload['is_pdf'] = strncmp($content, '%PDF-', 5) === 0;
+            }
+            http_response_code(400);
+            echo json_encode($payload);
             return;
         }
 

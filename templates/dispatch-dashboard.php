@@ -191,7 +191,7 @@
                     </div>
                     <div class="mb-3">
                         <label for="busyInvoiceFile" class="form-label">Invoice file (PDF or CSV) <span class="text-danger">*</span></label>
-                        <input type="file" class="form-control" id="busyInvoiceFile" name="file" accept=".pdf,.csv" required>
+                        <input type="file" class="form-control" id="busyInvoiceFile" name="file" accept=".pdf,.csv,application/pdf" required>
                     </div>
                     <div id="busyUploadResult" class="d-none"></div>
                 </div>
@@ -369,7 +369,7 @@ document.getElementById('busyUploadForm').addEventListener('submit', async funct
     const resultBox = document.getElementById('busyUploadResult');
 
     if (!fileInput.files || !fileInput.files[0]) {
-        showError('Please select a CSV file.');
+        showError('Please select a Busy invoice PDF or CSV file.');
         return;
     }
 
@@ -393,6 +393,14 @@ document.getElementById('busyUploadForm').addEventListener('submit', async funct
 
         const data = await response.json();
         if (!response.ok) {
+            const details = Array.isArray(data.details) ? data.details : [];
+            if (details.length > 0) {
+                resultBox.className = 'alert alert-danger';
+                resultBox.innerHTML = `<strong>${escapeHtml(data.error || 'Upload failed')}</strong><ul class="mb-0 mt-2">${details.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`;
+                resultBox.classList.remove('d-none');
+                showError('');
+                return;
+            }
             throw new Error(data.error || data.message || 'Upload failed');
         }
 

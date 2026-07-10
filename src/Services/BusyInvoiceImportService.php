@@ -34,11 +34,21 @@ class BusyInvoiceImportService
         try {
             $parser = new PdfParser();
             $pdf = $parser->parseFile($filePath);
-            $text = $pdf->getText();
+            $text = trim($pdf->getText());
         } catch (\Throwable $e) {
             return [
                 'invoices' => [],
                 'errors' => ['Could not read PDF: ' . $e->getMessage()],
+                'preview' => [],
+            ];
+        }
+
+        if ($text === '') {
+            return [
+                'invoices' => [],
+                'errors' => [
+                    'Could not extract text from this PDF. Re-export the invoice from Busy as PDF (not a photo, scan, or screenshot).',
+                ],
                 'preview' => [],
             ];
         }
@@ -55,7 +65,7 @@ class BusyInvoiceImportService
         $normalized = preg_replace("/\r\n|\r/", "\n", $text);
         $normalized = preg_replace('/[ \t]+/u', ' ', (string)$normalized);
 
-        if (!preg_match('/TAX\s+INVOICE/i', $normalized)) {
+        if (!preg_match('/TAX\s+INVOICE|Tax\s+Invoice/i', $normalized)) {
             return [
                 'invoices' => [],
                 'errors' => ['Not a recognized Busy tax invoice PDF (missing TAX INVOICE header).'],
@@ -64,7 +74,7 @@ class BusyInvoiceImportService
         }
 
         $invoiceNo = null;
-        if (preg_match('/Invoice\s+No\.?\s*:\s*(\S+)/i', $normalized, $m)) {
+        if (preg_match('/(?:Invoice|Inv\.?|Bill)\s+No\.?\s*:\s*(\S+)/i', $normalized, $m)) {
             $invoiceNo = trim($m[1]);
         }
         if ($invoiceNo === null || $invoiceNo === '') {
@@ -130,6 +140,12 @@ class BusyInvoiceImportService
 
         $lineItem = $this->extractGoodsLine($normalized);
         if ($lineItem === null) {
+            $lineItem = $this->extractGoodsLine($text);
+        }
+        if ($lineItem === null) {
+            $lineItem = $this->extractGoodsLineFromGrandTotal($normalized);
+        }
+        if ($lineItem === null) {
             return [
                 'invoices' => [],
                 'errors' => ['Could not find goods line (Qty in M.T. and Unit Price) in PDF.'],
@@ -167,24 +183,40 @@ class BusyInvoiceImportService
      */
     private function extractGoodsLine(string $text): ?array
     {
-        // Busy PDF: "1.BALL CLAY C GRADE 25084010 26.170M.T. 270.00 7,066.00" (qty+unit often merged)
-        if (preg_match(
-            '/\d+\.\s*(.+?)\s+(\d{4,8})\s+([\d,]+\.?\d*)\s*M\.?\s*T\.?\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
-            $text,
-            $m
-        )) {
-            $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
+        $patterns = [
+            // Busy PDF: "1.BALL CLAY C GRADE 25084010 26.170M.T. 270.00 7,066.00"
+            '/\d+\.?\s*(.+?)\s+(\d{4,8})\s+([\d,]+\.?\d*)\s*M\.?\s*T\.?\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
+            // Without HSN code
+            '/\d+\.?\s*(.+?)\s+([\d,]+\.?\d*)\s*M\.?\s*T\.?\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
+            // Qty and M.T. separated: "26.170 M.T."
+            '/\d+\.?\s*(.+?)\s+(\d{4,8})\s+([\d,]+\.?\d*)\s+M\.?\s*T\.?\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
+        ];
+
+        foreach ($patterns as $index => $pattern) {
+            if (!preg_match($pattern, $text, $m)) {
+                continue;
+            }
+
+            if ($index === 1) {
+                $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
+                $weight = $this->parseNumber($m[2]);
+                $rate = $this->parseNumber($m[3]);
+                $amount = $this->parseNumber($m[4]);
+            } else {
+                $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
+                $weight = $this->parseNumber($m[3]);
+                $rate = $this->parseNumber($m[4]);
+                $amount = $this->parseNumber($m[5]);
+            }
+
             $productName = preg_replace('/\s*\(LOOSE\)\s*/iu', '', $productName) ?? $productName;
-            $weight = $this->parseNumber($m[3]);
-            $rate = $this->parseNumber($m[4]);
-            $amount = $this->parseNumber($m[5]);
 
             if (($rate === null || $rate <= 0) && $amount !== null && $weight !== null && $weight > 0) {
                 $rate = round($amount / $weight, 2);
             }
 
             if ($productName === '' || $weight === null || $weight <= 0 || $rate === null || $rate <= 0) {
-                return null;
+                continue;
             }
 
             return [
@@ -197,6 +229,47 @@ class BusyInvoiceImportService
         return null;
     }
 
+    /**
+     * @return array{product_name: string, loading_weight_tons: float, product_rate: float}|null
+     */
+    private function extractGoodsLineFromGrandTotal(string $text): ?array
+    {
+        $weight = null;
+        if (preg_match('/Grand\s+Total\s+([\d,]+\.?\d*)\s*M\.?\s*T\.?/iu', $text, $m)) {
+            $weight = $this->parseNumber($m[1]);
+        }
+
+        $rate = null;
+        if (preg_match('/Description\s+of\s+Goods.*?(\d+\.?\s*.+?)\s+(\d{4,8})/iu', $text, $m)) {
+            $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
+            $productName = preg_replace('/^\d+\.?\s*/', '', $productName) ?? $productName;
+        } else {
+            $productName = null;
+        }
+
+        if (preg_match_all('/([\d,]+\.?\d*)\s+M\.?\s*T\.?\s+([\d,]+\.?\d*)/iu', $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $candidateWeight = $this->parseNumber($match[1]);
+                $candidateRate = $this->parseNumber($match[2]);
+                if ($candidateWeight !== null && $candidateWeight > 0 && $candidateRate !== null && $candidateRate > 0) {
+                    $weight = $weight ?? $candidateWeight;
+                    $rate = $rate ?? $candidateRate;
+                    break;
+                }
+            }
+        }
+
+        if ($productName === null || $productName === '' || $weight === null || $weight <= 0 || $rate === null || $rate <= 0) {
+            return null;
+        }
+
+        return [
+            'product_name' => $productName,
+            'loading_weight_tons' => $weight,
+            'product_rate' => $rate,
+        ];
+    }
+
     private function extractPartyName(string $text): ?string
     {
         $lines = preg_split('/\r\n|\r|\n/', $text) ?: [];
@@ -207,9 +280,9 @@ class BusyInvoiceImportService
                 continue;
             }
 
-            if (preg_match('/Billed\s+to\s*:/i', $trimmed)) {
+            if (preg_match('/(?:Billed\s+to|Bill\s+To|Buyer)\s*:/i', $trimmed)) {
                 $capture = true;
-                if (preg_match('/Billed\s+to\s*:\s*(.+?)(?:\s+Shipped\s+to|$)/i', $trimmed, $m)) {
+                if (preg_match('/(?:Billed\s+to|Bill\s+To|Buyer)\s*:\s*(.+?)(?:\s+Shipped\s+to|$)/i', $trimmed, $m)) {
                     $name = trim($m[1]);
                     if ($name !== '' && !preg_match('/^Shipped/i', $name)) {
                         return $this->cleanPartyName($name);
@@ -254,10 +327,26 @@ class BusyInvoiceImportService
     /**
      * @return array{invoices: array<int, array<string, mixed>>, errors: string[], preview: array}
      */
-    public function parseUpload(string $content, string $extension): array
+    public function parseUpload(string $content, string $extension, ?string $uploadedFilePath = null): array
     {
         $ext = strtolower(ltrim($extension, '.'));
-        if ($ext === 'pdf') {
+        $isPdf = strncmp($content, '%PDF-', 5) === 0;
+
+        if ($isPdf || $ext === 'pdf') {
+            if (!class_exists(PdfParser::class)) {
+                return [
+                    'invoices' => [],
+                    'errors' => [
+                        'PDF support is not installed on the server. Run composer install on the server and redeploy.',
+                    ],
+                    'preview' => [],
+                ];
+            }
+
+            if ($uploadedFilePath !== null && is_readable($uploadedFilePath)) {
+                return $this->parsePdfFile($uploadedFilePath);
+            }
+
             $tmp = tempnam(sys_get_temp_dir(), 'busy_inv_');
             if ($tmp === false) {
                 return ['invoices' => [], 'errors' => ['Could not create temp file for PDF.'], 'preview' => []];
