@@ -202,6 +202,16 @@ class OrderController
                 $errors[] = 'Delivery frequency must be a positive number for recurring orders';
             }
         }
+
+        $hasScheduledDispatch = filter_var($input['has_scheduled_dispatch'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        if ($hasScheduledDispatch) {
+            $scheduledDate = trim((string)($input['scheduled_dispatch_date'] ?? ''));
+            if ($scheduledDate === '' || !$this->isValidDate($scheduledDate)) {
+                $errors[] = 'Scheduled dispatch date is required (YYYY-MM-DD format)';
+            } elseif (!empty($input['order_date']) && $scheduledDate < (string)$input['order_date']) {
+                $errors[] = 'Scheduled dispatch date cannot be before the order date';
+            }
+        }
         
         if (!empty($errors)) {
             http_response_code(400);
@@ -229,6 +239,9 @@ class OrderController
                 'tons_per_truck' => isset($input['tons_per_truck']) ? (float)$input['tons_per_truck'] : 40,
                 'party_id' => (int)$input['party_id'],
                 'priority' => $priority,
+                'scheduled_dispatch_date' => $hasScheduledDispatch
+                    ? trim((string)($input['scheduled_dispatch_date'] ?? ''))
+                    : null,
                 'is_recurring' => $isRecurring,
                 'delivery_frequency_days' => isset($input['delivery_frequency_days']) ? (int)$input['delivery_frequency_days'] : null,
                 'trucks_per_delivery' => isset($input['trucks_per_delivery']) ? (int)$input['trucks_per_delivery'] : null,

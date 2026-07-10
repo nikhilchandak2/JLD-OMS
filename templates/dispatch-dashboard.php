@@ -80,6 +80,7 @@
                         <th>Ordered</th>
                         <th>Dispatched</th>
                         <th>Remaining</th>
+                        <th>Scheduled</th>
                         <th>Age</th>
                         <th>Party Outstanding</th>
                         <th class="text-end">Actions</th>
@@ -257,6 +258,9 @@ async function loadDispatchQueue() {
                 <td>${o.order_qty_trucks}</td>
                 <td>${o.total_dispatched}</td>
                 <td><span class="badge bg-primary">${o.remaining_trucks}</span></td>
+                <td>${o.scheduled_dispatch_date
+                    ? `<span class="text-primary fw-semibold">${escapeHtml(o.scheduled_dispatch_date)}</span>`
+                    : '<span class="text-muted">—</span>'}</td>
                 <td>${o.age_days} day${Number(o.age_days) === 1 ? '' : 's'}</td>
                 <td>
                     <span class="${overLimit ? 'text-danger fw-bold' : ''}">${formatMoney(o.party_outstanding)}</span>
@@ -287,7 +291,7 @@ function openDispatchModal(orderId) {
     const qtyInput = document.getElementById('dispatchQty');
     qtyInput.max = order.remaining_trucks;
     qtyInput.value = '';
-    document.getElementById('dispatchDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('dispatchDate').value = order.scheduled_dispatch_date || new Date().toISOString().split('T')[0];
     document.getElementById('dispatchProductRate').value = '';
     document.getElementById('dispatchRemarks').value = '';
 

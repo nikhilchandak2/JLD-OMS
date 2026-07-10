@@ -198,6 +198,29 @@
                 </div>
             </div>
 
+            <!-- Scheduled dispatch date -->
+            <div class="card new-order-section mb-4">
+                <div class="card-body p-0">
+                    <div class="recurring-toggle-card m-3" id="scheduleDispatchToggleCard">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="hasScheduledDispatch" name="has_scheduled_dispatch">
+                            <label class="form-check-label" for="hasScheduledDispatch">
+                                <strong>Schedule dispatch date</strong>
+                                <span class="text-muted d-block small mt-1">Set a planned date for the first dispatch (optional)</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="px-3 pb-3" id="scheduleDispatchOptions" style="display: none;">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="scheduledDispatchDate" class="form-label">Dispatch date</label>
+                                <input type="date" class="form-control" id="scheduledDispatchDate" name="scheduled_dispatch_date">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Recurring -->
             <div class="card new-order-section mb-4">
                 <div class="card-body p-0">
@@ -268,6 +291,10 @@
                     <div class="summary-row">
                         <span class="summary-label">Recurring</span>
                         <span class="summary-value" id="summaryRecurring">No</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="summary-label">Scheduled dispatch</span>
+                        <span class="summary-value" id="summaryScheduledDispatch">No</span>
                     </div>
 
                     <div class="d-grid gap-2 mt-4">
@@ -410,6 +437,8 @@ function clearNewOrderForm() {
     document.getElementById('creditStatusPanel').innerHTML = '';
     document.getElementById('recurringOptions').style.display = 'none';
     document.getElementById('recurringToggleCard')?.classList.remove('active');
+    document.getElementById('scheduleDispatchOptions').style.display = 'none';
+    document.getElementById('scheduleDispatchToggleCard')?.classList.remove('active');
     document.getElementById('deliveryPreview').style.display = 'none';
     document.getElementById('submitBtn').disabled = false;
     if (typeof $.fn.select2 !== 'undefined') {
@@ -456,6 +485,17 @@ function updateOrderSummary() {
 
     const isRecurring = document.getElementById('isRecurring').checked;
     document.getElementById('summaryRecurring').textContent = isRecurring ? 'Yes' : 'No';
+
+    const hasScheduled = document.getElementById('hasScheduledDispatch').checked;
+    const schedDate = document.getElementById('scheduledDispatchDate').value;
+    if (hasScheduled && schedDate) {
+        const sd = new Date(schedDate + 'T12:00:00');
+        document.getElementById('summaryScheduledDispatch').textContent = sd.toLocaleDateString('en-IN', {
+            day: 'numeric', month: 'short', year: 'numeric'
+        });
+    } else {
+        document.getElementById('summaryScheduledDispatch').textContent = hasScheduled ? '—' : 'No';
+    }
 }
 
 function formatMoney(value) {
@@ -759,6 +799,8 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
             tons_per_truck: parseFloat(formData.get('tons_per_truck')) || 40,
             party_id: parseInt(formData.get('party_id')),
             priority: formData.get('priority'),
+            has_scheduled_dispatch: formData.has('has_scheduled_dispatch'),
+            scheduled_dispatch_date: formData.get('scheduled_dispatch_date') || null,
             is_recurring: formData.has('is_recurring'),
             trucks_per_delivery: formData.get('trucks_per_delivery') ? parseInt(formData.get('trucks_per_delivery')) : null,
             delivery_frequency_days: formData.get('delivery_frequency_days') ? parseInt(formData.get('delivery_frequency_days')) : null,
@@ -799,6 +841,47 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
     }
 });
 
+// Handle scheduled dispatch toggle
+document.getElementById('hasScheduledDispatch').addEventListener('change', function() {
+    const options = document.getElementById('scheduleDispatchOptions');
+    const card = document.getElementById('scheduleDispatchToggleCard');
+    const dateInput = document.getElementById('scheduledDispatchDate');
+    const orderDate = document.getElementById('orderDate').value;
+
+    if (this.checked) {
+        options.style.display = 'block';
+        card?.classList.add('active');
+        dateInput.required = true;
+        if (!dateInput.value && orderDate) {
+            dateInput.value = orderDate;
+            dateInput.min = orderDate;
+        }
+        // Mutually exclusive with recurring delivery
+        const recurring = document.getElementById('isRecurring');
+        if (recurring.checked) {
+            recurring.checked = false;
+            recurring.dispatchEvent(new Event('change'));
+        }
+    } else {
+        options.style.display = 'none';
+        card?.classList.remove('active');
+        dateInput.required = false;
+        dateInput.value = '';
+    }
+    updateOrderSummary();
+});
+
+document.getElementById('scheduledDispatchDate').addEventListener('change', updateOrderSummary);
+
+document.getElementById('orderDate').addEventListener('change', function() {
+    const sched = document.getElementById('scheduledDispatchDate');
+    sched.min = this.value;
+    if (sched.value && sched.value < this.value) {
+        sched.value = this.value;
+    }
+    updateOrderSummary();
+});
+
 // Handle recurring delivery checkbox
 document.getElementById('isRecurring').addEventListener('change', function() {
     const recurringOptions = document.getElementById('recurringOptions');
@@ -813,6 +896,12 @@ document.getElementById('isRecurring').addEventListener('change', function() {
         trucksPerDelivery.required = true;
         deliveryFrequency.required = true;
         totalDeliveries.required = true;
+        // Mutually exclusive with scheduled dispatch
+        const schedToggle = document.getElementById('hasScheduledDispatch');
+        if (schedToggle.checked) {
+            schedToggle.checked = false;
+            schedToggle.dispatchEvent(new Event('change'));
+        }
     } else {
         recurringOptions.style.display = 'none';
         recurringCard?.classList.remove('active');

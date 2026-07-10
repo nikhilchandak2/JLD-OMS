@@ -164,6 +164,9 @@ class OrderService
 
         $order->partyId = $data['party_id'];
         $order->priority = $data['priority'] ?? 'normal';
+        $order->scheduledDispatchDate = !empty($data['scheduled_dispatch_date'])
+            ? (string)$data['scheduled_dispatch_date']
+            : null;
         $order->isRecurring = (bool)($data['is_recurring'] ?? false);
         $order->deliveryFrequencyDays = isset($data['delivery_frequency_days']) ? (int)$data['delivery_frequency_days'] : null;
         $order->trucksPerDelivery = isset($data['trucks_per_delivery']) ? (int)$data['trucks_per_delivery'] : null;

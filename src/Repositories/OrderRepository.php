@@ -101,6 +101,7 @@ class OrderRepository
             SELECT o.id,
                    o.order_no,
                    o.order_date,
+                   o.scheduled_dispatch_date,
                    o.status,
                    o.priority,
                    o.order_qty_trucks,
@@ -199,14 +200,15 @@ class OrderRepository
     public function create(Order $order): int
     {
         $sql = "
-            INSERT INTO orders (company_id, order_no, order_date, product_id, order_qty_trucks, order_qty_mode, order_weight_tons, tons_per_truck, party_id, priority, is_recurring, delivery_frequency_days, trucks_per_delivery, total_deliveries, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO orders (company_id, order_no, order_date, scheduled_dispatch_date, product_id, order_qty_trucks, order_qty_mode, order_weight_tons, tons_per_truck, party_id, priority, is_recurring, delivery_frequency_days, trucks_per_delivery, total_deliveries, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ";
         
         $this->database->execute($sql, [
             $order->companyId,
             $order->orderNo,
             $order->orderDate,
+            $order->scheduledDispatchDate,
             $order->productId,
             $order->orderQtyTrucks,
             $order->orderQtyMode,

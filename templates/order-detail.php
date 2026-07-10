@@ -155,6 +155,10 @@
                             <label>Order Date</label>
                             <div class="value" id="orderDate">—</div>
                         </div>
+                        <div class="order-info-item" id="scheduledDispatchItem" style="display: none;">
+                            <label>Scheduled Dispatch</label>
+                            <div class="value text-primary fw-semibold" id="scheduledDispatchDate">—</div>
+                        </div>
                         <div class="order-info-item">
                             <label>Party</label>
                             <div class="value" id="partyName">—</div>
@@ -408,6 +412,19 @@ function updateOrderDisplay(order) {
 
     document.getElementById('orderNo').textContent = order.order_no;
     document.getElementById('orderDate').textContent = formatDate(order.order_date);
+    const schedItem = document.getElementById('scheduledDispatchItem');
+    const schedVal = document.getElementById('scheduledDispatchDate');
+    if (order.scheduled_dispatch_date) {
+        schedItem.style.display = '';
+        schedVal.textContent = formatDate(order.scheduled_dispatch_date);
+        const dispatchDateInput = document.getElementById('dispatchDate');
+        if (dispatchDateInput) {
+            dispatchDateInput.value = order.scheduled_dispatch_date;
+        }
+    } else {
+        schedItem.style.display = 'none';
+        schedVal.textContent = '—';
+    }
     document.getElementById('partyName').textContent = order.party_name;
     document.getElementById('productName').textContent = order.product_name;
     document.getElementById('infoCompanyBadge').textContent = order.company_name || '—';
