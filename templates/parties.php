@@ -69,18 +69,24 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="mb-3">
+                        <label for="gstNumber" class="form-label">GST No. *</label>
+                        <input type="text" class="form-control text-uppercase" id="gstNumber" name="gst_number" required maxlength="15" pattern="[0-9A-Za-z]{15}" placeholder="15-character GSTIN">
+                        <div class="form-text">Must be unique — duplicate GST will be rejected.</div>
+                    </div>
                     
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="phone" class="form-label">Phone</label>
-                                <input type="tel" class="form-control" id="phone" name="phone">
+                                <label for="phone" class="form-label">Phone *</label>
+                                <input type="tel" class="form-control" id="phone" name="phone" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="email" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="email" name="email">
+                                <label for="email" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
                             </div>
                         </div>
                     </div>
@@ -180,6 +186,7 @@ function openPartyModal(partyId = null) {
             document.getElementById('partyId').value = party.id;
             document.getElementById('partyName').value = party.name;
             document.getElementById('contactPerson').value = party.contact_person || '';
+            document.getElementById('gstNumber').value = party.gst_number || '';
             document.getElementById('phone').value = party.phone || '';
             document.getElementById('email').value = party.email || '';
             document.getElementById('address').value = party.address || '';
@@ -235,6 +242,7 @@ document.getElementById('partyForm').addEventListener('submit', async function(e
     const data = {
         name: formData.get('name'),
         contact_person: formData.get('contact_person'),
+        gst_number: String(formData.get('gst_number') || '').trim().toUpperCase(),
         phone: formData.get('phone'),
         email: formData.get('email'),
         address: formData.get('address'),

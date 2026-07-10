@@ -19,7 +19,7 @@
 <div id="error-container" class="error-message"></div>
 
 <div class="alert alert-light border mb-3 py-2 small">
-    <strong>One trip</strong> = starts when vehicle <strong>enters Pit</strong>, then completes after it <strong>exits Pit and enters Stockpile</strong>.
+    <strong>One trip</strong> = starts when the vehicle is <strong>inside a Pit</strong> (no other trip in progress), continues after <strong>leaving the Pit</strong>, and completes when it <strong>enters any other geofence</strong> (stockpile, parking, etc.). The next trip starts only after the previous one has ended and the vehicle is inside a Pit again.
 </div>
 
 <!-- Statistics -->

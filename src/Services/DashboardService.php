@@ -13,17 +13,49 @@ class DashboardService
         $this->database = new Database();
     }
     
-    public function getDashboardData(string $startDate, string $endDate): array
+    public function getDashboardData(string $startDate, string $endDate, ?int $companyId = null): array
     {
         return [
-            'company_totals' => $this->getCompanyTotals($startDate, $endDate),
-            'product_totals' => $this->getProductTypeTotals($startDate, $endDate),
-            'trend_data' => $this->getTrendData($endDate),
-            'summary' => $this->getPeriodSummary($startDate, $endDate)
+            'company_totals' => $this->getPartyOrderTotals($startDate, $endDate, $companyId),
+            'product_totals' => $this->getProductTypeTotals($startDate, $endDate, $companyId),
+            'trend_data' => $this->getTrendData($endDate, $companyId),
+            'summary' => $this->getPeriodSummary($startDate, $endDate, $companyId)
         ];
     }
+
+    /**
+     * Per-client (party) order summary for the selected legal company and date range.
+     * Used by the analytics "company-wise" table — shows client names and their orders.
+     */
+    public function getPartyOrderTotals(string $startDate, string $endDate, ?int $companyId = null): array
+    {
+        $sql = "
+            SELECT pt.id AS party_id,
+                   pt.name AS party_name,
+                   COUNT(o.id) AS total_orders,
+                   SUM(o.order_qty_trucks) AS total_ordered,
+                   COALESCE(SUM(d.total_dispatched), 0) AS total_dispatched,
+                   GROUP_CONCAT(o.order_no ORDER BY o.order_date DESC, o.id DESC SEPARATOR ', ') AS order_numbers
+            FROM orders o
+            JOIN parties pt ON o.party_id = pt.id
+            LEFT JOIN (
+                SELECT order_id, SUM(dispatch_qty_trucks) AS total_dispatched
+                FROM dispatches
+                GROUP BY order_id
+            ) d ON o.id = d.order_id
+            WHERE o.order_date BETWEEN ? AND ?
+        ";
+        $params = [$startDate, $endDate];
+        if ($companyId !== null && $companyId > 0) {
+            $sql .= " AND o.company_id = ?";
+            $params[] = $companyId;
+        }
+        $sql .= " GROUP BY pt.id, pt.name ORDER BY pt.name ASC";
+
+        return $this->database->fetchAll($sql, $params);
+    }
     
-    public function getCompanyTotals(string $startDate, string $endDate): array
+    public function getCompanyTotals(string $startDate, string $endDate, ?int $companyId = null): array
     {
         $sql = "
             SELECT c.id,
@@ -40,14 +72,18 @@ class DashboardService
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             WHERE c.status = 'active'
-            GROUP BY c.id, c.name, c.code
-            ORDER BY c.name
         ";
+        $params = [$startDate, $endDate];
+        if ($companyId !== null && $companyId > 0) {
+            $sql .= " AND c.id = ?";
+            $params[] = $companyId;
+        }
+        $sql .= " GROUP BY c.id, c.name, c.code ORDER BY c.name";
         
-        return $this->database->fetchAll($sql, [$startDate, $endDate]);
+        return $this->database->fetchAll($sql, $params);
     }
     
-    public function getProductTypeTotals(string $startDate, string $endDate): array
+    public function getProductTypeTotals(string $startDate, string $endDate, ?int $companyId = null): array
     {
         $sql = "
             SELECT p.name AS product_name,
@@ -62,65 +98,90 @@ class DashboardService
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             WHERE o.order_date BETWEEN ? AND ?
-            GROUP BY p.id, p.name
-            ORDER BY p.name
         ";
+        $params = [$startDate, $endDate];
+        if ($companyId !== null && $companyId > 0) {
+            $sql .= " AND o.company_id = ?";
+            $params[] = $companyId;
+        }
+        $sql .= " GROUP BY p.id, p.name ORDER BY p.name";
         
-        return $this->database->fetchAll($sql, [$startDate, $endDate]);
+        return $this->database->fetchAll($sql, $params);
     }
     
-    public function getTrendData(string $endDate): array
+    public function getTrendData(string $endDate, ?int $companyId = null): array
     {
         $sql = "
             SELECT DATE_FORMAT(o.order_date, '%Y-%m') AS month,
                    SUM(o.order_qty_trucks) AS trucks_ordered
             FROM orders o
             WHERE o.order_date >= DATE_SUB(?, INTERVAL 6 MONTH)
-            GROUP BY month
-            ORDER BY month
         ";
+        $params = [$endDate];
+        if ($companyId !== null && $companyId > 0) {
+            $sql .= " AND o.company_id = ?";
+            $params[] = $companyId;
+        }
+        $sql .= " GROUP BY month ORDER BY month";
         
-        return $this->database->fetchAll($sql, [$endDate]);
+        return $this->database->fetchAll($sql, $params);
     }
     
-    public function getPeriodSummary(string $startDate, string $endDate): array
+    public function getPeriodSummary(string $startDate, string $endDate, ?int $companyId = null): array
     {
-        // Total orders and trucks in period
+        $orderWhere = "order_date BETWEEN ? AND ?";
+        $orderParams = [$startDate, $endDate];
+        if ($companyId !== null && $companyId > 0) {
+            $orderWhere .= " AND company_id = ?";
+            $orderParams[] = $companyId;
+        }
+
         $orderSummary = $this->database->fetch("
             SELECT COUNT(*) as total_orders,
                    SUM(order_qty_trucks) as total_trucks_ordered
             FROM orders
-            WHERE order_date BETWEEN ? AND ?
-        ", [$startDate, $endDate]);
+            WHERE {$orderWhere}
+        ", $orderParams);
+
+        if ($companyId !== null && $companyId > 0) {
+            $dispatchSummary = $this->database->fetch("
+                SELECT COUNT(*) as total_dispatches,
+                       SUM(d.dispatch_qty_trucks) as total_trucks_dispatched
+                FROM dispatches d
+                JOIN orders o ON d.order_id = o.id
+                WHERE d.dispatch_date BETWEEN ? AND ? AND o.company_id = ?
+            ", [$startDate, $endDate, $companyId]);
+        } else {
+            $dispatchSummary = $this->database->fetch("
+                SELECT COUNT(*) as total_dispatches,
+                       SUM(dispatch_qty_trucks) as total_trucks_dispatched
+                FROM dispatches
+                WHERE dispatch_date BETWEEN ? AND ?
+            ", [$startDate, $endDate]);
+        }
         
-        // Total dispatches in period
-        $dispatchSummary = $this->database->fetch("
-            SELECT COUNT(*) as total_dispatches,
-                   SUM(dispatch_qty_trucks) as total_trucks_dispatched
-            FROM dispatches
-            WHERE dispatch_date BETWEEN ? AND ?
-        ", [$startDate, $endDate]);
-        
-        // Order status breakdown
         $statusBreakdown = $this->database->fetchAll("
             SELECT status, COUNT(*) as count
             FROM orders
-            WHERE order_date BETWEEN ? AND ?
+            WHERE {$orderWhere}
             GROUP BY status
-        ", [$startDate, $endDate]);
+        ", $orderParams);
         
-        // Top parties by order volume
-        $topParties = $this->database->fetchAll("
+        $partySql = "
             SELECT pt.name as party_name,
                    COUNT(o.id) as order_count,
                    SUM(o.order_qty_trucks) as total_trucks
             FROM orders o
             JOIN parties pt ON o.party_id = pt.id
             WHERE o.order_date BETWEEN ? AND ?
-            GROUP BY pt.id, pt.name
-            ORDER BY total_trucks DESC
-            LIMIT 5
-        ", [$startDate, $endDate]);
+        ";
+        $partyParams = [$startDate, $endDate];
+        if ($companyId !== null && $companyId > 0) {
+            $partySql .= " AND o.company_id = ?";
+            $partyParams[] = $companyId;
+        }
+        $partySql .= " GROUP BY pt.id, pt.name ORDER BY total_trucks DESC LIMIT 5";
+        $topParties = $this->database->fetchAll($partySql, $partyParams);
         
         return [
             'orders' => [
@@ -137,35 +198,49 @@ class DashboardService
         ];
     }
     
-    public function getSummaryStats(): array
+    public function getSummaryStats(?int $companyId = null): array
     {
-        // Overall system statistics
-        $totalOrders = $this->database->fetch("SELECT COUNT(*) as count FROM orders")['count'];
-        $totalDispatches = $this->database->fetch("SELECT COUNT(*) as count FROM dispatches")['count'];
+        $orderFilter = $companyId !== null && $companyId > 0 ? " WHERE company_id = {$companyId}" : '';
+        $orderAnd = $companyId !== null && $companyId > 0 ? " AND company_id = {$companyId}" : '';
+
+        $totalOrders = $this->database->fetch("SELECT COUNT(*) as count FROM orders{$orderFilter}")['count'];
+        if ($companyId !== null && $companyId > 0) {
+            $totalDispatches = $this->database->fetch("
+                SELECT COUNT(*) as count FROM dispatches d JOIN orders o ON d.order_id = o.id WHERE o.company_id = ?
+            ", [$companyId])['count'];
+        } else {
+            $totalDispatches = $this->database->fetch("SELECT COUNT(*) as count FROM dispatches")['count'];
+        }
         $totalParties = $this->database->fetch("SELECT COUNT(*) as count FROM parties WHERE is_active = 1")['count'];
         $totalProducts = $this->database->fetch("SELECT COUNT(*) as count FROM products WHERE is_active = 1")['count'];
         
-        // Recent activity (last 7 days)
         $recentOrders = $this->database->fetch("
             SELECT COUNT(*) as count 
             FROM orders 
-            WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY){$orderAnd}
         ")['count'];
         
-        $recentDispatches = $this->database->fetch("
-            SELECT COUNT(*) as count 
-            FROM dispatches 
-            WHERE dispatch_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-        ")['count'];
+        if ($companyId !== null && $companyId > 0) {
+            $recentDispatches = $this->database->fetch("
+                SELECT COUNT(*) as count 
+                FROM dispatches d
+                JOIN orders o ON d.order_id = o.id
+                WHERE d.dispatch_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND o.company_id = ?
+            ", [$companyId])['count'];
+        } else {
+            $recentDispatches = $this->database->fetch("
+                SELECT COUNT(*) as count 
+                FROM dispatches 
+                WHERE dispatch_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            ")['count'];
+        }
         
-        // Pending orders
         $pendingOrders = $this->database->fetch("
             SELECT COUNT(*) as count 
             FROM orders 
-            WHERE status IN ('pending', 'partial')
+            WHERE status IN ('pending', 'partial'){$orderAnd}
         ")['count'];
         
-        // Vehicle tracking stats
         $totalVehicles = $this->database->fetch("SELECT COUNT(*) as count FROM vehicles")['count'] ?? 0;
         $activeVehicles = $this->database->fetch("SELECT COUNT(*) as count FROM vehicles WHERE status = 'active'")['count'] ?? 0;
         $totalTrips = $this->database->fetch("SELECT COUNT(*) as count FROM vehicle_trips")['count'] ?? 0;
@@ -201,4 +276,3 @@ class DashboardService
         ];
     }
 }
-

@@ -185,6 +185,33 @@ curl "http://your-domain.com/api/dispatches?order_id=1"
 curl "http://your-domain.com/api/dashboard?start_date=2024-01-01&end_date=2024-12-31"
 ```
 
+### Tracking (WheelsEye)
+
+#### GET /api/tracking/sync
+```bash
+# Pull latest current-location data from WheelsEye
+curl "https://your-domain.com/api/tracking/sync?key=YOUR_TRACKING_SYNC_KEY"
+```
+
+#### GET /api/tracking/sync-yesterday-trips
+```bash
+# Backfill yesterday trips for one vehicle by number
+curl "https://your-domain.com/api/tracking/sync-yesterday-trips?vehicle_number=RJ07GD4606&key=YOUR_TRACKING_SYNC_KEY"
+
+# Or by OMS vehicle id
+curl "https://your-domain.com/api/tracking/sync-yesterday-trips?vehicle_id=12&key=YOUR_TRACKING_SYNC_KEY"
+```
+
+Required `.env` variables for historical trip sync:
+```dotenv
+WHEELSEYE_API_BASE_URL=https://api.wheelseye.com
+WHEELSEYE_ACCESS_TOKEN=your-access-token
+WHEELSEYE_ITINERARY_PATH=/getItinerary
+WHEELSEYE_PATH_DETAIL_PATH=/getPathDetail
+# Optional (default 5)
+WHEELSEYE_POLYLINE_PRECISION=5
+```
+
 ### Reports
 
 #### GET /api/reports/partywise

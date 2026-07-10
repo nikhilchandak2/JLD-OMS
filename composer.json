@@ -11,7 +11,8 @@
         "phpoffice/phpspreadsheet": "^1.29",
         "phpoffice/phpword": "^1.2",
         "tecnickcom/tcpdf": "^6.6",
-        "phpunit/phpunit": "^10.0"
+        "phpunit/phpunit": "^10.0",
+        "smalot/pdfparser": "^2.0"
     },
     "autoload": {
         "psr-4": {
@@ -28,5 +29,3 @@
         "optimize-autoloader": true
     }
 }
-
-

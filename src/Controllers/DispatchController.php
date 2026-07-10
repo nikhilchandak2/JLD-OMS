@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Services\DispatchService;
+use App\Support\CompanyContext;
 
 class DispatchController
 {
@@ -29,13 +30,13 @@ class DispatchController
         $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
         $limit = max(1, min($limit, 200));
         $offset = max(0, $offset);
-        $filters = [
+        $filters = CompanyContext::mergeFilter([
             'order_id' => isset($_GET['order_id']) ? max(0, (int)$_GET['order_id']) : null,
             'start_date' => $_GET['start_date'] ?? null,
             'end_date' => $_GET['end_date'] ?? null,
             'limit' => $limit,
             'offset' => $offset
-        ];
+        ]);
         
         try {
             $dispatches = $this->dispatchService->getDispatches($filters);
@@ -57,6 +58,34 @@ class DispatchController
         }
     }
     
+    /** GET /api/dispatch/pending – dispatch dashboard queue + summary. */
+    public function pending(): void
+    {
+        header('Content-Type: application/json');
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Authentication required']);
+            return;
+        }
+
+        if (!$this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing'])) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Dispatch access required']);
+            return;
+        }
+
+        try {
+            $data = $this->dispatchService->getDispatchQueue();
+            echo json_encode(['success' => true, 'data' => $data]);
+        } catch (\Exception $e) {
+            error_log('Failed to fetch dispatch queue: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to fetch dispatch queue']);
+        }
+    }
+
     public function create(int $orderId): void
     {
         header('Content-Type: application/json');
@@ -69,7 +98,7 @@ class DispatchController
         
         // Check permissions
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing', 'dispatch'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Insufficient permissions']);
             return;
@@ -79,10 +108,16 @@ class DispatchController
         $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         
         // Validate required fields
-        $requiredFields = ['dispatch_date', 'dispatch_qty_trucks'];
+        $requiredFields = ['dispatch_date', 'dispatch_qty_trucks', 'product_rate'];
         $errors = [];
         
         foreach ($requiredFields as $field) {
+            if ($field === 'product_rate') {
+                if (!isset($input[$field]) || $input[$field] === '' || !is_numeric($input[$field]) || (float)$input[$field] <= 0) {
+                    $errors[] = 'Product rate per ton is required';
+                }
+                continue;
+            }
             if (empty($input[$field])) {
                 $errors[] = ucfirst(str_replace('_', ' ', $field)) . ' is required';
             }
@@ -91,6 +126,10 @@ class DispatchController
         // Validate data types and values
         if (!empty($input['dispatch_qty_trucks']) && (!is_numeric($input['dispatch_qty_trucks']) || $input['dispatch_qty_trucks'] <= 0)) {
             $errors[] = 'Dispatch quantity must be a positive number';
+        }
+
+        if (!empty($input['product_rate']) && (!is_numeric($input['product_rate']) || (float)$input['product_rate'] <= 0)) {
+            $errors[] = 'Product rate per ton must be a positive number';
         }
         
         if (!empty($input['dispatch_date']) && !$this->isValidDate($input['dispatch_date'])) {
@@ -108,7 +147,7 @@ class DispatchController
                 'order_id' => $orderId,
                 'dispatch_date' => $input['dispatch_date'],
                 'dispatch_qty_trucks' => (int)$input['dispatch_qty_trucks'],
-                'vehicle_no' => $input['vehicle_no'] ?? null,
+                'product_rate' => (float)$input['product_rate'],
                 'remarks' => $input['remarks'] ?? null,
                 'dispatched_by' => $user['id']
             ];
@@ -166,7 +205,7 @@ class DispatchController
         
         // Check permissions
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing', 'dispatch'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Insufficient permissions']);
             return;
@@ -192,9 +231,21 @@ class DispatchController
             if (isset($input['dispatch_qty_trucks']) && is_numeric($input['dispatch_qty_trucks']) && $input['dispatch_qty_trucks'] > 0) {
                 $updateData['dispatch_qty_trucks'] = (int)$input['dispatch_qty_trucks'];
             }
-            
-            if (isset($input['vehicle_no'])) {
-                $updateData['vehicle_no'] = $input['vehicle_no'];
+
+            if (isset($input['product_rate']) && is_numeric($input['product_rate']) && (float)$input['product_rate'] > 0) {
+                $updateData['product_rate'] = (float)$input['product_rate'];
+            }
+
+            if (array_key_exists('loading_weight_tons', $input)) {
+                if ($input['loading_weight_tons'] === null || $input['loading_weight_tons'] === '') {
+                    $updateData['loading_weight_tons'] = null;
+                } elseif (is_numeric($input['loading_weight_tons']) && (float)$input['loading_weight_tons'] > 0) {
+                    $updateData['loading_weight_tons'] = (float)$input['loading_weight_tons'];
+                } else {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Loading weight must be a positive number (metric tons)']);
+                    return;
+                }
             }
             
             if (isset($input['remarks'])) {
@@ -271,7 +322,7 @@ class DispatchController
             return false;
         }
 
-        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view', 'sales', 'dispatch'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Dispatch access required']);
             return false;

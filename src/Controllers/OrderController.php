@@ -4,7 +4,10 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Services\OrderService;
+use App\Services\CreditLimitExceededException;
 use App\Models\Order;
+use App\Support\CompanyContext;
+use App\Repositories\CompanyRepository;
 
 class OrderController
 {
@@ -40,7 +43,7 @@ class OrderController
         $limit = max(1, min($limit, 200));
         $offset = max(0, $offset);
 
-        $filters = [
+        $filters = CompanyContext::mergeFilter([
             'start_date' => $_GET['start_date'] ?? null,
             'end_date' => $_GET['end_date'] ?? null,
             'party_id' => isset($_GET['party_id']) ? max(0, (int)$_GET['party_id']) : null,
@@ -48,7 +51,7 @@ class OrderController
             'status' => $status,
             'limit' => $limit,
             'offset' => $offset
-        ];
+        ]);
         
         try {
             $orders = $this->orderService->getOrders($filters);
@@ -86,6 +89,13 @@ class OrderController
                 return;
             }
 
+            $activeCompanyId = CompanyContext::getActiveCompanyId();
+            if ($activeCompanyId !== null && (int)$order->companyId !== $activeCompanyId) {
+                http_response_code(404);
+                echo json_encode(['error' => 'Order not found']);
+                return;
+            }
+
             $creditApproval = $this->orderService->getCreditApprovalForOrder($id);
             
             echo json_encode([
@@ -111,7 +121,9 @@ class OrderController
         
         // Check permissions
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing'])) {
+        // Check permissions
+        $user = $this->authService->getCurrentUser();
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing', 'sales'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Insufficient permissions']);
             return;
@@ -121,7 +133,17 @@ class OrderController
         $input = $this->getJsonOrPostInput();
         
         // Validate required fields
-        $requiredFields = ['company_id', 'order_date', 'product_id', 'order_qty_trucks', 'party_id'];
+        $qtyMode = strtolower(trim((string)($input['order_qty_mode'] ?? 'trucks')));
+        if (!in_array($qtyMode, ['trucks', 'weight'], true)) {
+            $qtyMode = 'trucks';
+        }
+
+        $requiredFields = ['order_date', 'product_id', 'party_id', 'company_id'];
+        if ($qtyMode === 'weight') {
+            $requiredFields[] = 'order_weight_tons';
+        } else {
+            $requiredFields[] = 'order_qty_trucks';
+        }
         $errors = [];
         
         foreach ($requiredFields as $field) {
@@ -132,7 +154,15 @@ class OrderController
         
         // Validate data types and values
         if (!empty($input['order_qty_trucks']) && (!is_numeric($input['order_qty_trucks']) || $input['order_qty_trucks'] <= 0)) {
-            $errors[] = 'Order quantity must be a positive number';
+            $errors[] = 'Order quantity (trucks) must be a positive number';
+        }
+
+        if (!empty($input['order_weight_tons']) && (!is_numeric($input['order_weight_tons']) || (float)$input['order_weight_tons'] <= 0)) {
+            $errors[] = 'Order weight (MT) must be a positive number';
+        }
+
+        if (!empty($input['tons_per_truck']) && (!is_numeric($input['tons_per_truck']) || (float)$input['tons_per_truck'] <= 0)) {
+            $errors[] = 'Tons per truck must be a positive number';
         }
         
         if (!empty($input['company_id']) && (!is_numeric($input['company_id']) || $input['company_id'] <= 0)) {
@@ -157,7 +187,7 @@ class OrderController
         }
 
         $qty = isset($input['order_qty_trucks']) ? (int)$input['order_qty_trucks'] : 0;
-        if ($qty > self::MAX_ORDER_QTY_TRUCKS) {
+        if ($qtyMode === 'trucks' && $qty > self::MAX_ORDER_QTY_TRUCKS) {
             $errors[] = 'Order quantity exceeds allowed maximum';
         }
 
@@ -180,11 +210,23 @@ class OrderController
         }
         
         try {
+            $companyId = (int)($input['company_id'] ?? 0);
+            $companyRepo = new CompanyRepository();
+            $company = $companyRepo->findById($companyId);
+            if (!$company || ($company->status ?? '') !== 'active') {
+                http_response_code(400);
+                echo json_encode(['error' => 'Valid active company is required']);
+                return;
+            }
+
             $orderData = [
-                'company_id' => (int)$input['company_id'],
+                'company_id' => $companyId,
                 'order_date' => $input['order_date'],
                 'product_id' => (int)$input['product_id'],
-                'order_qty_trucks' => (int)$input['order_qty_trucks'],
+                'order_qty_mode' => $qtyMode,
+                'order_qty_trucks' => isset($input['order_qty_trucks']) ? (int)$input['order_qty_trucks'] : null,
+                'order_weight_tons' => isset($input['order_weight_tons']) ? (float)$input['order_weight_tons'] : null,
+                'tons_per_truck' => isset($input['tons_per_truck']) ? (float)$input['tons_per_truck'] : 40,
                 'party_id' => (int)$input['party_id'],
                 'priority' => $priority,
                 'is_recurring' => $isRecurring,
@@ -196,18 +238,24 @@ class OrderController
             ];
             
             $order = $this->orderService->createOrder($orderData);
-
-            $creditApproval = $this->orderService->getCreditApprovalForOrder($order->id);
-            $approvalRequired = $creditApproval && ($creditApproval['status'] ?? '') === 'pending';
             
             http_response_code(201);
             echo json_encode([
                 'success' => true,
-                'message' => $approvalRequired ? 'Order created successfully. Waiting for admin approval.' : 'Order created successfully',
-                'data' => array_merge($order->toArray(), [
-                    'credit_approval' => $creditApproval
-                ])
+                'message' => 'Order created successfully',
+                'data' => $order->toArray()
             ]);
+        } catch (CreditLimitExceededException $e) {
+            // Hard credit gate: order was NOT created.
+            http_response_code(409);
+            echo json_encode([
+                'error' => $e->getMessage(),
+                'credit_blocked' => true,
+                'credit_status' => $e->getCreditStatus()
+            ]);
+        } catch (\RuntimeException $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
         } catch (\Exception $e) {
             $this->respondServerError('Failed to create order', $e);
         }
@@ -322,7 +370,7 @@ class OrderController
         
         // Check permissions
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing', 'sales'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Insufficient permissions']);
             return;
@@ -353,15 +401,53 @@ class OrderController
                 return;
             }
             
-            // Validate new quantity if provided
-            if (isset($input['order_qty_trucks'])) {
+            // Validate quantity changes (trucks or weight mode)
+            $qtyMode = strtolower(trim((string)($input['order_qty_mode'] ?? $order->orderQtyMode ?? 'trucks')));
+            if (!in_array($qtyMode, ['trucks', 'weight'], true)) {
+                $qtyMode = 'trucks';
+            }
+
+            if ($qtyMode === 'trucks' && array_key_exists('order_qty_trucks', $input) && $input['order_qty_trucks'] !== null) {
                 $newQuantity = (int)$input['order_qty_trucks'];
+                if ($newQuantity <= 0) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Order quantity must be a positive number']);
+                    return;
+                }
+                if ($newQuantity > self::MAX_ORDER_QTY_TRUCKS) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Order quantity exceeds allowed maximum']);
+                    return;
+                }
                 if (!$order->canReduceQuantity($newQuantity)) {
                     http_response_code(400);
                     echo json_encode([
                         'error' => 'Cannot reduce order quantity below dispatched quantity',
                         'dispatched' => $order->totalDispatched,
                         'requested' => $newQuantity
+                    ]);
+                    return;
+                }
+            }
+
+            if ($qtyMode === 'weight' && array_key_exists('order_weight_tons', $input) && $input['order_weight_tons'] !== null) {
+                $weight = (float)$input['order_weight_tons'];
+                if ($weight <= 0) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Order weight (MT) must be a positive number']);
+                    return;
+                }
+                $tonsPerTruck = isset($input['tons_per_truck']) ? (float)$input['tons_per_truck'] : (float)($order->tonsPerTruck ?? 40);
+                if ($tonsPerTruck <= 0) {
+                    $tonsPerTruck = 40.0;
+                }
+                $derivedTrucks = max(1, (int)ceil($weight / $tonsPerTruck));
+                if (!$order->canReduceQuantity($derivedTrucks)) {
+                    http_response_code(400);
+                    echo json_encode([
+                        'error' => 'Cannot reduce order quantity below dispatched quantity',
+                        'dispatched' => $order->totalDispatched,
+                        'requested' => $derivedTrucks
                     ]);
                     return;
                 }
@@ -388,17 +474,7 @@ class OrderController
                 $updateData['product_id'] = (int)$input['product_id'];
             }
             
-            if (array_key_exists('order_qty_trucks', $input)) {
-                if (!is_numeric($input['order_qty_trucks']) || (int)$input['order_qty_trucks'] <= 0) {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Order quantity must be a positive number']);
-                    return;
-                }
-                if ((int)$input['order_qty_trucks'] > self::MAX_ORDER_QTY_TRUCKS) {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Order quantity exceeds allowed maximum']);
-                    return;
-                }
+            if (array_key_exists('order_qty_trucks', $input) && $input['order_qty_trucks'] !== null) {
                 $updateData['order_qty_trucks'] = (int)$input['order_qty_trucks'];
             }
             
@@ -409,6 +485,26 @@ class OrderController
                     return;
                 }
                 $updateData['party_id'] = (int)$input['party_id'];
+            }
+
+            if (array_key_exists('priority', $input)) {
+                $priority = strtolower(trim((string)$input['priority']));
+                if (!in_array($priority, self::ALLOWED_PRIORITIES, true)) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Priority must be normal or urgent']);
+                    return;
+                }
+                $updateData['priority'] = $priority;
+            }
+
+            if (array_key_exists('order_qty_mode', $input)) {
+                $updateData['order_qty_mode'] = strtolower(trim((string)$input['order_qty_mode']));
+            }
+            if (array_key_exists('order_weight_tons', $input) && $input['order_weight_tons'] !== null) {
+                $updateData['order_weight_tons'] = (float)$input['order_weight_tons'];
+            }
+            if (array_key_exists('tons_per_truck', $input)) {
+                $updateData['tons_per_truck'] = (float)$input['tons_per_truck'];
             }
             
             if (empty($updateData)) {
@@ -439,11 +535,19 @@ class OrderController
             return;
         }
         
-        // Check permissions - only admin users can delete orders
+        // Admin and order processing can delete any order; sales can delete own pending orders without dispatches
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasRole('admin')) {
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Authentication required']);
+            return;
+        }
+
+        $isAdminOrOps = $this->authService->hasAnyRole(['admin', 'order_processing']);
+        $isSales = $this->authService->hasRole('sales');
+        if (!$isAdminOrOps && !$isSales) {
             http_response_code(403);
-            echo json_encode(['error' => 'Admin access required to delete orders']);
+            echo json_encode(['error' => 'Insufficient permissions to delete orders']);
             return;
         }
         
@@ -455,12 +559,18 @@ class OrderController
                 echo json_encode(['error' => 'Order not found']);
                 return;
             }
-            
-            // Check if order has dispatches
-            if ($order->totalDispatched > 0) {
-                http_response_code(400);
-                echo json_encode(['error' => 'Cannot delete order with existing dispatches. Please delete dispatches first.']);
-                return;
+
+            if (!$isAdminOrOps) {
+                if ($order->totalDispatched > 0) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Cannot delete an order that already has dispatches. Contact admin or order processing.']);
+                    return;
+                }
+                if ($order->status === 'completed') {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Completed orders cannot be deleted']);
+                    return;
+                }
             }
             
             $success = $this->orderService->deleteOrder($id, $user['id']);
@@ -468,7 +578,7 @@ class OrderController
             if ($success) {
                 echo json_encode([
                     'success' => true,
-                    'message' => 'Order deleted successfully'
+                    'message' => 'Order deleted successfully' . ($order->totalDispatched > 0 ? ' (including linked dispatches)' : '')
                 ]);
             } else {
                 http_response_code(500);
@@ -538,7 +648,7 @@ class OrderController
             return false;
         }
 
-        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view'])) {
+        if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view', 'sales', 'dispatch'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Orders access required']);
             return false;

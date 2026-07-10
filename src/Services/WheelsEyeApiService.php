@@ -124,12 +124,14 @@ class WheelsEyeApiService
                     'raw_data' => $point['raw_data'],
                 ]);
 
-                if (!$this->isDuplicateTrackingPoint($vehicle->id, $tracking)) {
-                    $this->gpsTrackingRepository->create($tracking);
-                    $this->tripDetectionService->processTrackingData($vehicle->id, $tracking);
-                    $synced++;
-                    $savedForVehicle++;
-                }
+                // Cron pulls every 30s: always save and run trip logic even when WheelsEye
+                // returns the same device timestamp/coordinates (stale currentLoc snapshot).
+                $tracking = $this->prepareTrackingPointForPoll($vehicle->id, $tracking);
+
+                $this->gpsTrackingRepository->create($tracking);
+                $this->tripDetectionService->processTrackingData($vehicle->id, $tracking);
+                $synced++;
+                $savedForVehicle++;
             }
 
             if ($savedForVehicle > 0) {
@@ -600,6 +602,25 @@ class WheelsEyeApiService
     private function isValidCoordinate(float $lat, float $lng): bool
     {
         return $lat >= -90 && $lat <= 90 && $lng >= -180 && $lng <= 180;
+    }
+
+    /**
+     * Ensure each cron poll creates a distinct GPS row and trip evaluation.
+     * When vendor re-sends the same device time + coordinates, stamp with poll time instead of skipping.
+     */
+    private function prepareTrackingPointForPoll(int $vehicleId, GPSTrackingData $tracking): GPSTrackingData
+    {
+        if (!$this->isDuplicateTrackingPoint($vehicleId, $tracking)) {
+            return $tracking;
+        }
+
+        $raw = is_array($tracking->rawData) ? $tracking->rawData : [];
+        $raw['device_timestamp'] = $tracking->timestamp;
+        $raw['poll_recorded_at'] = date('Y-m-d H:i:s');
+        $tracking->rawData = $raw;
+        $tracking->timestamp = date('Y-m-d H:i:s');
+
+        return $tracking;
     }
 
     private function isDuplicateTrackingPoint(int $vehicleId, GPSTrackingData $tracking): bool

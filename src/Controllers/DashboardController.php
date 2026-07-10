@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Services\DashboardService;
+use App\Support\CompanyContext;
 
 class DashboardController
 {
@@ -46,7 +47,8 @@ class DashboardController
         }
         
         try {
-            $data = $this->dashboardService->getDashboardData($startDate, $endDate);
+            $companyId = CompanyContext::getActiveCompanyId();
+            $data = $this->dashboardService->getDashboardData($startDate, $endDate, $companyId);
             
             echo json_encode([
                 'success' => true,
@@ -75,7 +77,8 @@ class DashboardController
         }
         
         try {
-            $summary = $this->dashboardService->getSummaryStats();
+            $companyId = CompanyContext::getActiveCompanyId();
+            $summary = $this->dashboardService->getSummaryStats($companyId);
             
             echo json_encode([
                 'success' => true,

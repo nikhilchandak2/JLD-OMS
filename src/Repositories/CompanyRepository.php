@@ -31,14 +31,14 @@ class CompanyRepository
     public function findById(int $id): ?Company
     {
         $sql = "SELECT * FROM companies WHERE id = ?";
-        $result = $this->database->fetchOne($sql, [$id]);
+        $result = $this->database->fetch($sql, [$id]);
         return $result ? new Company($result) : null;
     }
 
     public function findByCode(string $code): ?Company
     {
         $sql = "SELECT * FROM companies WHERE code = ?";
-        $result = $this->database->fetchOne($sql, [$code]);
+        $result = $this->database->fetch($sql, [$code]);
         return $result ? new Company($result) : null;
     }
 

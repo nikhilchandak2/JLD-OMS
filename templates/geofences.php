@@ -51,7 +51,7 @@
 
 <!-- Add/Edit Geofence Modal -->
 <div class="modal fade" id="geofenceModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable geofence-modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="geofenceModalTitle">Add Geofence</h5>
@@ -60,7 +60,7 @@
             <div class="modal-body">
                 <form id="geofenceForm">
                     <input type="hidden" id="geofenceId">
-                    <div class="row g-3">
+                    <div class="row g-3 geofence-modal-row">
                         <div class="col-lg-4" id="geofenceFormColumn">
                             <div class="mb-3">
                                 <label class="form-label">Name *</label>
@@ -120,44 +120,40 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="col-lg-8" id="geofenceMapColumn">
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                <label class="form-label mb-0">Draw Boundary on Map</label>
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="clearDrawnShape()">
+                        <div class="col-lg-8 d-flex flex-column geofence-map-column" id="geofenceMapColumn">
+                            <div id="geofenceMapToolbar" class="geofence-map-toolbar mb-2">
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <button class="btn btn-sm btn-outline-primary geofence-tool-btn" type="button" onclick="startDrawForCurrentShapeType()">
+                                        <i class="bi bi-pencil-square me-1"></i>Draw
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning geofence-tool-btn" type="button" id="undoPolygonVertexBtn" style="display: none;" onclick="undoLastPolygonVertex()">
+                                        <i class="bi bi-arrow-return-left me-1"></i>Undo point
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary geofence-tool-btn" type="button" onclick="clearDrawnShape()">
                                         <i class="bi bi-eraser me-1"></i>Clear Shape
                                     </button>
-                                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="toggleGeofenceMapFullscreen()">
+                                    <button class="btn btn-sm btn-outline-secondary geofence-tool-btn" type="button" id="geofenceFullscreenBtn" onclick="toggleGeofenceMapFullscreen()">
                                         <i class="bi bi-arrows-fullscreen me-1"></i>Fullscreen
                                     </button>
-                                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="rotateGeofenceMap(-15)">
+                                    <button class="btn btn-sm btn-outline-secondary geofence-tool-btn" type="button" onclick="rotateGeofenceMap(-15)">
                                         <i class="bi bi-arrow-counterclockwise me-1"></i>Left
                                     </button>
-                                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="rotateGeofenceMap(15)">
+                                    <button class="btn btn-sm btn-outline-secondary geofence-tool-btn" type="button" onclick="rotateGeofenceMap(15)">
                                         <i class="bi bi-arrow-clockwise me-1"></i>Right
                                     </button>
-                                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="resetGeofenceMapRotation()">
+                                    <button class="btn btn-sm btn-outline-secondary geofence-tool-btn" type="button" onclick="resetGeofenceMapRotation()">
                                         Reset
                                     </button>
                                 </div>
-                            </div>
-                            <div class="d-flex flex-wrap gap-2 mb-2">
-                                <input
-                                    type="text"
-                                    id="geofenceCoordInput"
-                                    class="form-control form-control-sm"
-                                    style="max-width: 320px;"
-                                    placeholder="Search coordinates: 23.0225, 72.5714"
-                                >
-                                <button class="btn btn-sm btn-outline-primary" type="button" onclick="searchGeofenceCoordinates()">
-                                    <i class="bi bi-search me-1"></i>Go To Coordinates
+                                <div class="d-flex flex-wrap gap-2 mt-2 geofence-coord-row">
+                                <input type="text" id="geofenceCoordInput" class="form-control form-control-sm flex-grow-1" style="min-width: 140px;" placeholder="Lat, Lng e.g. 23.0225, 72.5714">
+                                <button class="btn btn-sm btn-outline-primary geofence-tool-btn" type="button" onclick="searchGeofenceCoordinates()">
+                                    <i class="bi bi-search me-1"></i>Go
                                 </button>
-                                <span class="small text-muted align-self-center">Enter latitude, longitude to jump and pin location.</span>
                             </div>
-                            <div id="geofence-map-help" class="small text-muted mb-2">
-                                Use draw tools on the map: circle for simple area, polygon for irregular pit boundaries.
+                            <div id="geofence-map-help" class="small text-muted mt-2 mb-0"></div>
                             </div>
-                            <div id="geofenceMapContainer">
+                            <div id="geofenceMapContainer" class="geofence-map-container flex-grow-1">
                                 <div id="geofenceMap"></div>
                             </div>
                         </div>
@@ -172,11 +168,11 @@
     </div>
 </div>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
-<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" crossorigin="anonymous" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css" crossorigin="anonymous" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin="anonymous"></script>
 <style>
     #geofenceMap {
         width: 100%;
@@ -208,28 +204,127 @@
         width: 100vw;
         max-width: 100vw;
         height: 100vh;
+        height: 100dvh;
         margin: 0;
     }
     #geofenceModal.map-modal-fullscreen .modal-content {
         height: 100vh;
+        height: 100dvh;
         border-radius: 0;
+        display: flex;
+        flex-direction: column;
     }
-    #geofenceModal.map-modal-fullscreen .modal-body {
+    #geofenceModal.map-modal-fullscreen .modal-header,
+    #geofenceModal.map-modal-fullscreen .modal-footer {
+        display: none !important;
+    }
+    #geofenceModal.map-modal-fullscreen .geofence-coord-row,
+    #geofenceModal.map-modal-fullscreen #geofence-map-help {
+        display: none !important;
+    }
+    .geofence-modal-dialog {
+        margin: 0.5rem auto;
+    }
+    .geofence-map-toolbar {
+        flex-shrink: 0;
+        overflow: visible;
+        position: relative;
+        z-index: 20;
+    }
+    .geofence-map-column {
+        min-height: 0;
+    }
+    .geofence-map-container {
+        min-height: 280px;
+        position: relative;
         overflow: hidden;
     }
+    .geofence-tool-btn {
+        min-height: 2.5rem;
+        touch-action: manipulation;
+    }
+    #geofenceModal .modal-body {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+    #geofenceModal.map-modal-fullscreen .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding: 0 !important;
+        padding-bottom: env(safe-area-inset-bottom, 0) !important;
+    }
+    #geofenceModal.map-modal-fullscreen #geofenceForm {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    #geofenceModal.map-modal-fullscreen .geofence-modal-row {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100%;
+        margin: 0 !important;
+        --bs-gutter-y: 0;
+    }
     #geofenceModal.map-modal-fullscreen #geofenceFormColumn {
-        display: none;
+        display: none !important;
     }
     #geofenceModal.map-modal-fullscreen #geofenceMapColumn {
-        width: 100%;
-        max-width: 100%;
-        flex: 0 0 100%;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 100% !important;
+        min-height: 0;
+        height: auto;
+        display: flex;
+        flex-direction: column;
     }
-    #geofenceModal.map-modal-fullscreen #geofenceMapContainer {
-        height: calc(100vh - 150px);
+    #geofenceModal.map-modal-fullscreen #geofenceMapToolbar {
+        display: block !important;
+        flex-shrink: 0;
+        background: #fff;
+        border-bottom: 1px solid var(--jld-border, #dee2e6);
+        padding: 0.35rem 0.5rem;
+        margin-bottom: 0 !important;
+    }
+    #geofenceModal.map-modal-fullscreen .geofence-map-container {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto !important;
+        display: flex;
+        flex-direction: column;
     }
     #geofenceModal.map-modal-fullscreen #geofenceMap {
-        height: 100%;
+        flex: 1 1 auto;
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 0 !important;
+    }
+    #geofenceModal .leaflet-draw-toolbar,
+    #geofenceModal .leaflet-top.leaflet-left,
+    #geofenceModal .leaflet-draw-actions {
+        z-index: 1200 !important;
+    }
+    #geofenceModal .leaflet-draw-actions a {
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+        touch-action: manipulation;
+    }
+    /* Tablet/phone normal modal only — do not cap height in map fullscreen */
+    @media (max-width: 991.98px) {
+        #geofenceModal:not(.map-modal-fullscreen) #geofenceMap {
+            height: min(50vh, 420px);
+        }
+    }
+    #polygonPointsPreview {
+        height: 4.5rem;
+        resize: none;
+        overflow-y: auto;
+    }
+    #geofenceModal.map-modal-fullscreen #geofenceMap {
+        border-radius: 0;
     }
 </style>
 
@@ -240,18 +335,151 @@ let drawnItems;
 let drawControl;
 let currentShapeLayer = null;
 let geofenceSearchMarker = null;
+let geofenceSearchMarkerTimeout = null;
+const geofenceSearchMarkerAutoHideMs = 8000;
 let geofenceModalPseudoFullscreen = false;
 let referenceGeofenceLayers = [];
+let activeDrawHandler = null;
+let geofenceDrawViewLock = null;
 
 const defaultMapCenter = [23.0225, 72.5714];
 const defaultMapZoom = 14;
 
+function mapPluginSupportsRotation() {
+    return typeof L !== 'undefined' && typeof L.Map.prototype.setBearing === 'function';
+}
+
+function getDrawShapeOptions() {
+    return {
+        color: '#0d6efd',
+        fillColor: '#0d6efd',
+        fillOpacity: 0.2,
+        weight: 2
+    };
+}
+
+function buildDrawControlOptions(shapeType) {
+    const shapeOptions = getDrawShapeOptions();
+    const isPolygon = shapeType === 'polygon';
+    return {
+        position: 'topleft',
+        draw: {
+            polyline: false,
+            rectangle: false,
+            marker: false,
+            circlemarker: false,
+            polygon: isPolygon ? { allowIntersection: false, showArea: true, shapeOptions } : false,
+            circle: isPolygon ? false : { shapeOptions }
+        },
+        edit: {
+            featureGroup: drawnItems,
+            remove: false
+        }
+    };
+}
+
+function cancelActiveDraw() {
+    if (activeDrawHandler) {
+        try {
+            activeDrawHandler.disable();
+        } catch (e) {
+            /* ignore */
+        }
+        activeDrawHandler = null;
+    }
+    unlockGeofenceMapViewForDrawing();
+    if (geofenceMap && geofenceMap.doubleClickZoom) {
+        geofenceMap.doubleClickZoom.enable();
+    }
+}
+
+function refreshDrawControl() {
+    if (!geofenceMap || !drawnItems) {
+        return;
+    }
+    if (typeof L === 'undefined' || !L.Control || typeof L.Control.Draw !== 'function') {
+        showError('Leaflet.Draw failed to load. Upload the latest geofences.php and hard-refresh (Ctrl+Shift+R).');
+        return;
+    }
+    cancelActiveDraw();
+    const shapeType = document.getElementById('shapeType').value;
+    if (drawControl) {
+        geofenceMap.removeControl(drawControl);
+    }
+    drawControl = new L.Control.Draw(buildDrawControlOptions(shapeType));
+    geofenceMap.addControl(drawControl);
+    updateGeofenceDrawHelp();
+}
+
+function updateGeofenceDrawHelp() {
+    const el = document.getElementById('geofence-map-help');
+    if (!el) {
+        return;
+    }
+    const isPolygon = document.getElementById('shapeType').value === 'polygon';
+    el.innerHTML = isPolygon
+        ? 'Click <strong>Draw on Map</strong>, then click each corner of the pit/stockpile. <strong>Double-click</strong> or click the <strong>first point</strong> to close the polygon. You can also use the pentagon tool (top-left of map).'
+        : 'Click <strong>Draw on Map</strong>, then click the center and drag to set radius. You can also use the circle tool (top-left of map).';
+}
+
+function startDrawForCurrentShapeType() {
+    if (!geofenceMap) {
+        showError('Open the map first (Add/Edit geofence).');
+        return;
+    }
+    if (typeof L.Draw === 'undefined') {
+        showError('Draw tools failed to load. Refresh the page or check browser console.');
+        return;
+    }
+    cancelActiveDraw();
+    const shapeType = document.getElementById('shapeType').value;
+    const opts = buildDrawControlOptions(shapeType).draw;
+    if (shapeType === 'polygon') {
+        activeDrawHandler = new L.Draw.Polygon(geofenceMap, opts.polygon);
+    } else {
+        activeDrawHandler = new L.Draw.Circle(geofenceMap, opts.circle);
+    }
+    activeDrawHandler.enable();
+    if (shapeType === 'polygon') {
+        lockGeofenceMapViewForDrawing();
+    }
+    updatePolygonDrawUi();
+    showSuccess(shapeType === 'polygon'
+        ? 'Polygon mode: click corners on the map, then double-click to finish.'
+        : 'Circle mode: click center on the map and drag to set radius.');
+}
+
+function extractPolygonRing(layer) {
+    if (!layer || typeof layer.getLatLngs !== 'function') {
+        return [];
+    }
+    let ring = layer.getLatLngs();
+    if (!ring || !ring.length) {
+        return [];
+    }
+    if (Array.isArray(ring[0]) && (ring[0].lat === undefined)) {
+        ring = ring[0];
+    }
+    return ring;
+}
+
 function initGeofenceMap() {
     if (geofenceMap) {
+        refreshDrawControl();
         return;
     }
 
-    geofenceMap = L.map('geofenceMap', { rotate: true, touchRotate: true, bearing: 0, maxZoom: 22 }).setView(defaultMapCenter, defaultMapZoom);
+    if (typeof L === 'undefined') {
+        showError('Map library failed to load. Check browser console or contact admin (CDN/CSP).');
+        return;
+    }
+    const mapOpts = { maxZoom: 22 };
+    if (mapPluginSupportsRotation()) {
+        mapOpts.rotate = true;
+        mapOpts.touchRotate = false;
+        mapOpts.bearing = 0;
+    }
+    geofenceMap = L.map('geofenceMap', mapOpts).setView(defaultMapCenter, defaultMapZoom);
     const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxNativeZoom: 19,
@@ -303,33 +531,44 @@ function initGeofenceMap() {
         {
             'Place Labels': esriLabels
         },
-        { position: 'topright' }
+        { position: 'bottomright' }
     ).addTo(geofenceMap);
 
     drawnItems = new L.FeatureGroup();
     geofenceMap.addLayer(drawnItems);
 
-    drawControl = new L.Control.Draw({
-        position: 'topright',
-        draw: {
-            polyline: false,
-            rectangle: false,
-            marker: false,
-            circlemarker: false,
-            polygon: {
-                allowIntersection: false,
-                showArea: true
-            },
-            circle: true
-        },
-        edit: {
-            featureGroup: drawnItems,
-            remove: false
+    refreshDrawControl();
+
+    geofenceMap.on(L.Draw.Event.DRAWSTART, function (e) {
+        if (e.layerType === 'polygon') {
+            syncActivePolygonDrawHandler();
+            updatePolygonDrawUi();
+            lockGeofenceMapViewForDrawing();
+        }
+        if (geofenceMap.doubleClickZoom) {
+            geofenceMap.doubleClickZoom.disable();
         }
     });
-    geofenceMap.addControl(drawControl);
+
+    geofenceMap.on(L.Draw.Event.DRAWVERTEX, function () {
+        syncActivePolygonDrawHandler();
+        updatePolygonPointCountFromHandler();
+        restoreGeofenceMapViewIfDrawing();
+    });
+
+    geofenceMap.on(L.Draw.Event.DRAWSTOP, function () {
+        unlockGeofenceMapViewForDrawing();
+        if (geofenceMap.doubleClickZoom) {
+            geofenceMap.doubleClickZoom.enable();
+        }
+    });
 
     geofenceMap.on(L.Draw.Event.CREATED, function (event) {
+        unlockGeofenceMapViewForDrawing();
+        if (geofenceMap.doubleClickZoom) {
+            geofenceMap.doubleClickZoom.enable();
+        }
+        cancelActiveDraw();
         applyDrawnLayer(event.layer);
     });
 
@@ -348,6 +587,8 @@ document.getElementById('geofenceType').addEventListener('change', function() {
 
 document.getElementById('shapeType').addEventListener('change', function() {
     updateShapeFieldVisibility(this.value);
+    refreshDrawControl();
+    updatePolygonDrawUi();
 });
 
 ['latitude', 'longitude', 'radiusMeters'].forEach(id => {
@@ -544,6 +785,9 @@ function showModalAndPrepareMap(onReady) {
         initGeofenceMap();
         setTimeout(() => {
             geofenceMap.invalidateSize();
+            refreshDrawControl();
+            updateGeofenceDrawHelp();
+            updatePolygonDrawUi();
             if (onReady) onReady();
         }, 80);
     });
@@ -563,6 +807,24 @@ function parseCoordinates(input) {
     return { lat, lng };
 }
 
+function clearGeofenceSearchMarker() {
+    if (geofenceSearchMarkerTimeout) {
+        clearTimeout(geofenceSearchMarkerTimeout);
+        geofenceSearchMarkerTimeout = null;
+    }
+    if (geofenceSearchMarker && geofenceMap && geofenceMap.hasLayer(geofenceSearchMarker)) {
+        geofenceMap.removeLayer(geofenceSearchMarker);
+    }
+    geofenceSearchMarker = null;
+}
+
+function scheduleGeofenceSearchMarkerRemoval() {
+    if (geofenceSearchMarkerTimeout) {
+        clearTimeout(geofenceSearchMarkerTimeout);
+    }
+    geofenceSearchMarkerTimeout = setTimeout(clearGeofenceSearchMarker, geofenceSearchMarkerAutoHideMs);
+}
+
 function searchGeofenceCoordinates() {
     if (!geofenceMap) {
         return;
@@ -574,14 +836,13 @@ function searchGeofenceCoordinates() {
         return;
     }
 
-    if (geofenceSearchMarker && geofenceMap.hasLayer(geofenceSearchMarker)) {
-        geofenceMap.removeLayer(geofenceSearchMarker);
-    }
+    clearGeofenceSearchMarker();
     geofenceSearchMarker = L.marker([parsed.lat, parsed.lng]).addTo(geofenceMap);
     geofenceSearchMarker.bindPopup(
         `<strong>Searched Coordinates</strong><br>Lat: ${parsed.lat.toFixed(8)}<br>Lng: ${parsed.lng.toFixed(8)}`
     ).openPopup();
     geofenceMap.setView([parsed.lat, parsed.lng], Math.max(geofenceMap.getZoom(), 16));
+    scheduleGeofenceSearchMarkerRemoval();
 
     if (document.getElementById('shapeType').value === 'circle') {
         document.getElementById('latitude').value = parsed.lat.toFixed(8);
@@ -592,7 +853,23 @@ function searchGeofenceCoordinates() {
 
 function toggleGeofenceMapFullscreen() {
     setGeofenceModalPseudoFullscreen(!geofenceModalPseudoFullscreen);
-    setTimeout(() => geofenceMap?.invalidateSize(), 120);
+    const btn = document.getElementById('geofenceFullscreenBtn');
+    if (btn) {
+        const icon = btn.querySelector('i');
+        if (icon) {
+            icon.className = geofenceModalPseudoFullscreen
+                ? 'bi bi-fullscreen-exit me-1'
+                : 'bi bi-arrows-fullscreen me-1';
+        }
+        btn.querySelectorAll('span').forEach(s => {
+            s.textContent = geofenceModalPseudoFullscreen ? 'Exit' : 'Fullscreen';
+        });
+    }
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            geofenceMap?.invalidateSize(true);
+        });
+    });
 }
 
 function setGeofenceModalPseudoFullscreen(enabled) {
@@ -608,7 +885,7 @@ function geofenceMapSupportsRotation() {
 
 function rotateGeofenceMap(deltaDegrees) {
     if (!geofenceMapSupportsRotation()) {
-        showError('Map rotation is not supported in this browser.');
+        showError('Map rotation plugin did not load. Re-upload templates/geofences.php and hard-refresh (Ctrl+Shift+R).');
         return;
     }
     const current = Number(geofenceMap.getBearing()) || 0;
@@ -618,19 +895,98 @@ function rotateGeofenceMap(deltaDegrees) {
 
 function resetGeofenceMapRotation() {
     if (!geofenceMapSupportsRotation()) {
-        showError('Map rotation is not supported in this browser.');
+        showError('Map rotation plugin did not load. Re-upload templates/geofences.php and hard-refresh (Ctrl+Shift+R).');
         return;
     }
     geofenceMap.setBearing(0);
+}
+
+
+function syncActivePolygonDrawHandler() {
+    if (!geofenceMap || !geofenceMap._toolbars || !geofenceMap._toolbars.draw) {
+        return;
+    }
+    const mode = geofenceMap._toolbars.draw._modes.polygon;
+    if (mode && mode.handler && mode.handler.enabled && mode.handler.enabled()) {
+        activeDrawHandler = mode.handler;
+    }
+}
+
+function updatePolygonDrawUi() {
+    const undoBtn = document.getElementById('undoPolygonVertexBtn');
+    if (!undoBtn) {
+        return;
+    }
+    const isPolygon = document.getElementById('shapeType').value === 'polygon';
+    undoBtn.style.display = isPolygon ? '' : 'none';
+}
+
+function lockGeofenceMapViewForDrawing() {
+    if (!geofenceMap) {
+        return;
+    }
+    geofenceDrawViewLock = {
+        center: geofenceMap.getCenter(),
+        zoom: geofenceMap.getZoom(),
+        bearing: geofenceMapSupportsRotation() ? (Number(geofenceMap.getBearing()) || 0) : 0
+    };
+}
+
+function unlockGeofenceMapViewForDrawing() {
+    geofenceDrawViewLock = null;
+}
+
+function restoreGeofenceMapViewIfDrawing() {
+    if (!geofenceMap || !geofenceDrawViewLock || !activeDrawHandler) {
+        return;
+    }
+    geofenceMap.setView(geofenceDrawViewLock.center, geofenceDrawViewLock.zoom, { animate: false });
+    if (geofenceMapSupportsRotation()) {
+        geofenceMap.setBearing(geofenceDrawViewLock.bearing);
+    }
+}
+
+function updatePolygonPointCountFromHandler() {
+    const countEl = document.getElementById('polygonPointsCount');
+    if (!countEl) {
+        return;
+    }
+    let count = 0;
+    if (activeDrawHandler && activeDrawHandler._poly) {
+        count = extractPolygonRing(activeDrawHandler._poly).length;
+    } else if (currentShapeLayer instanceof L.Polygon && !(currentShapeLayer instanceof L.Circle)) {
+        count = getPolygonPointsFromLayer().length;
+    }
+    countEl.textContent = count
+        ? `${count} point${count === 1 ? '' : 's'} selected`
+        : '0 points selected';
+}
+
+function undoLastPolygonVertex() {
+    syncActivePolygonDrawHandler();
+    if (activeDrawHandler && typeof activeDrawHandler.deleteLastVertex === 'function') {
+        activeDrawHandler.deleteLastVertex();
+        updatePolygonPointCountFromHandler();
+        restoreGeofenceMapViewIfDrawing();
+        return;
+    }
+    showError('Start polygon drawing first (Draw button), then use Undo point.');
+}
+
+function previewPolygonFromActiveDraw() {
+    updatePolygonPointCountFromHandler();
 }
 
 function updateShapeFieldVisibility(shapeType) {
     const isPolygon = shapeType === 'polygon';
     document.getElementById('circleFields').style.display = isPolygon ? 'none' : 'block';
     document.getElementById('polygonFields').style.display = isPolygon ? 'block' : 'none';
+    updatePolygonDrawUi();
 }
 
 function clearDrawnShape() {
+    unlockGeofenceMapViewForDrawing();
+    cancelActiveDraw();
     if (drawnItems) {
         drawnItems.clearLayers();
     }
@@ -714,10 +1070,15 @@ function syncFormFromLayer(layer) {
         return;
     }
 
-    if (layer instanceof L.Polygon) {
+    if (layer instanceof L.Polygon && !(layer instanceof L.Circle)) {
         document.getElementById('shapeType').value = 'polygon';
         updateShapeFieldVisibility('polygon');
-        updatePolygonPreview(getPolygonPointsFromLayer());
+        refreshDrawControl();
+        const ring = extractPolygonRing(layer);
+        updatePolygonPreview(ring.map(point => ({
+            lat: Number(point.lat.toFixed(8)),
+            lng: Number(point.lng.toFixed(8))
+        })));
     }
 }
 
@@ -751,10 +1112,14 @@ function loadShapeOnMap(geofence) {
 }
 
 function getPolygonPointsFromLayer() {
-    if (!(currentShapeLayer instanceof L.Polygon) || (currentShapeLayer instanceof L.Circle)) {
+    if (!currentShapeLayer || currentShapeLayer instanceof L.Circle) {
         return [];
     }
-    return currentShapeLayer.getLatLngs()[0].map(point => ({
+    if (!(currentShapeLayer instanceof L.Polygon)) {
+        return [];
+    }
+    const ring = extractPolygonRing(currentShapeLayer);
+    return ring.map(point => ({
         lat: Number(point.lat.toFixed(8)),
         lng: Number(point.lng.toFixed(8))
     }));
@@ -800,6 +1165,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('fullscreenchange', onFullscreenChanged);
     document.addEventListener('webkitfullscreenchange', onFullscreenChanged);
     document.getElementById('geofenceModal').addEventListener('hidden.bs.modal', () => {
+        cancelActiveDraw();
+        clearGeofenceSearchMarker();
         if (geofenceModalPseudoFullscreen) {
             setGeofenceModalPseudoFullscreen(false);
         }

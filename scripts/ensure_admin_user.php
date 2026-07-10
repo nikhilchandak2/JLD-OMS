@@ -24,10 +24,19 @@ try {
     $pdo = $db->getConnection();
     $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 
-    // Ensure roles exist
-    $pdo->exec("INSERT IGNORE INTO roles (id, name) VALUES (1, 'entry'), (2, 'view'), (3, 'admin')");
+    // Ensure core roles exist (do not use fixed IDs — migration 017 may have used 1–4 for other roles)
+    foreach (['entry', 'view', 'admin'] as $roleName) {
+        $pdo->prepare('INSERT IGNORE INTO roles (name) VALUES (?)')->execute([$roleName]);
+    }
 
-    $roleId = 3; // admin
+    $roleStmt = $pdo->prepare('SELECT id FROM roles WHERE name = ? LIMIT 1');
+    $roleStmt->execute(['admin']);
+    $roleId = $roleStmt->fetchColumn();
+    if ($roleId === false) {
+        throw new \RuntimeException("Role 'admin' not found after insert.");
+    }
+    $roleId = (int) $roleId;
+
     $hash = password_hash($password, PASSWORD_DEFAULT);
 
     $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");

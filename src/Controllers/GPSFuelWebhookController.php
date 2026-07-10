@@ -58,8 +58,11 @@ class GPSFuelWebhookController
 
         $rawBody = file_get_contents('php://input') ?: '';
         $input = json_decode($rawBody, true) ?? $_POST;
-        
+
+        $this->logWebhookDebug('received', $rawBody);
+
         if (!$this->validateWebhookRequest($rawBody)) {
+            $this->logWebhookDebug('rejected: 401 unauthorized (api key/hmac mismatch)', $rawBody);
             http_response_code(401);
             echo json_encode(['error' => 'Unauthorized']);
             return;
@@ -70,6 +73,7 @@ class GPSFuelWebhookController
             $deviceId = $input['device_id'] ?? $input['imei'] ?? null;
             
             if (!$deviceId) {
+                $this->logWebhookDebug('rejected: 400 missing device_id/imei', $rawBody);
                 http_response_code(400);
                 echo json_encode(['error' => 'device_id or imei is required']);
                 return;
@@ -104,6 +108,7 @@ class GPSFuelWebhookController
             }
             
             if (!$vehicle) {
+                $this->logWebhookDebug("rejected: 404 no vehicle linked to device {$deviceId} (data NOT saved)", $rawBody);
                 http_response_code(404);
                 echo json_encode(['error' => 'Vehicle not found for device', 'device_id' => $deviceId]);
                 return;
@@ -152,6 +157,21 @@ class GPSFuelWebhookController
         }
     }
     
+    /**
+     * Health/validation response for GET and HEAD probes on webhook URLs.
+     * Providers like Ashok Leyland iAlert verify the endpoint before forwarding data.
+     */
+    public function webhookHealth(): void
+    {
+        $this->logWebhookDebug('probe: GET/HEAD endpoint validation', '');
+        header('Content-Type: application/json');
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Webhook endpoint is active. Send GPS data via POST.'
+        ]);
+    }
+
     /**
      * Receive fuel sensor data
      * POST /api/fuel/webhook
@@ -368,6 +388,47 @@ class GPSFuelWebhookController
         return (float)$clean;
     }
     
+    /**
+     * TEMPORARY debug logger to capture raw webhook payloads (e.g. from Ashok Leyland iAlert).
+     * Writes to storage/gps_webhook_debug.log. Disable by setting GPS_WEBHOOK_DEBUG=0 in .env.
+     */
+    private function logWebhookDebug(string $stage, string $rawBody): void
+    {
+        $enabled = $_ENV['GPS_WEBHOOK_DEBUG'] ?? '1';
+        if ($enabled === '0' || $enabled === 'false') {
+            return;
+        }
+
+        try {
+            $logFile = dirname(__DIR__, 2) . '/storage/gps_webhook_debug.log';
+
+            // Cap file at ~5MB: keep the most recent half when exceeded.
+            if (is_file($logFile) && filesize($logFile) > 5 * 1024 * 1024) {
+                $contents = file_get_contents($logFile) ?: '';
+                file_put_contents($logFile, substr($contents, (int)(strlen($contents) / 2)), LOCK_EX);
+            }
+
+            $headers = [];
+            foreach ($_SERVER as $key => $value) {
+                if (strpos($key, 'HTTP_') === 0 || in_array($key, ['CONTENT_TYPE', 'CONTENT_LENGTH', 'REMOTE_ADDR', 'REQUEST_METHOD'], true)) {
+                    $headers[$key] = is_string($value) ? $value : json_encode($value);
+                }
+            }
+
+            $entry = json_encode([
+                'time' => date('Y-m-d H:i:s'),
+                'stage' => $stage,
+                'headers' => $headers,
+                'query' => $_GET,
+                'body' => $rawBody !== '' ? $rawBody : $_POST,
+            ], JSON_UNESCAPED_SLASHES);
+
+            file_put_contents($logFile, $entry . PHP_EOL, FILE_APPEND | LOCK_EX);
+        } catch (\Throwable $e) {
+            // Debug logging must never break the webhook.
+        }
+    }
+
     private function validateWebhookRequest(string $rawBody): bool
     {
         $apiKeyConfigured = isset($_ENV['GPS_FUEL_API_KEY']) && (string)$_ENV['GPS_FUEL_API_KEY'] !== '';

@@ -29,7 +29,9 @@ class OrderRepository
             JOIN parties pt ON o.party_id = pt.id
             LEFT JOIN users u ON o.created_by = u.id
             LEFT JOIN (
-                SELECT order_id, SUM(dispatch_qty_trucks) as total_dispatched
+                SELECT order_id,
+                       SUM(dispatch_qty_trucks) as total_dispatched,
+                       SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
                 GROUP BY order_id
             ) d ON o.id = d.order_id
@@ -63,6 +65,11 @@ class OrderRepository
             $sql .= " AND o.status = ?";
             $params[] = $filters['status'];
         }
+
+        if (!empty($filters['company_id'])) {
+            $sql .= " AND o.company_id = ?";
+            $params[] = (int)$filters['company_id'];
+        }
         
         $sql .= " ORDER BY o.order_date DESC, o.id DESC";
         
@@ -84,6 +91,57 @@ class OrderRepository
         }, $results);
     }
     
+    /**
+     * Dispatch queue: pending/partial orders with remaining trucks and party outstanding.
+     * Urgent orders first, then oldest orders first.
+     */
+    public function findDispatchQueue(?int $companyId = null): array
+    {
+        $sql = "
+            SELECT o.id,
+                   o.order_no,
+                   o.order_date,
+                   o.status,
+                   o.priority,
+                   o.order_qty_trucks,
+                   c.name AS company_name,
+                   p.name AS product_name,
+                   pt.id AS party_id,
+                   pt.name AS party_name,
+                   COALESCE(d.total_dispatched, 0) AS total_dispatched,
+                   (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) AS remaining_trucks,
+                   DATEDIFF(CURDATE(), o.order_date) AS age_days,
+                   COALESCE(recv.outstanding, 0) AS party_outstanding,
+                   pt.credit_limit AS party_credit_limit
+            FROM orders o
+            JOIN companies c ON o.company_id = c.id
+            JOIN products p ON o.product_id = p.id
+            JOIN parties pt ON o.party_id = pt.id
+            LEFT JOIN (
+                SELECT order_id, SUM(dispatch_qty_trucks) AS total_dispatched
+                FROM dispatches
+                GROUP BY order_id
+            ) d ON o.id = d.order_id
+            LEFT JOIN (
+                SELECT party_id,
+                       SUM(CASE WHEN entry_type = 'payment' THEN -amount ELSE amount END) AS outstanding
+                FROM crm_receivable_entries
+                GROUP BY party_id
+            ) recv ON recv.party_id = o.party_id
+            WHERE o.status IN ('pending', 'partial')
+        ";
+
+        $params = [];
+        if ($companyId !== null && $companyId > 0) {
+            $sql .= " AND o.company_id = ?";
+            $params[] = $companyId;
+        }
+
+        $sql .= " ORDER BY FIELD(o.priority, 'urgent', 'normal'), o.order_date ASC, o.id ASC";
+
+        return $this->database->fetchAll($sql, $params);
+    }
+
     public function findById(int $id): ?Order
     {
         $sql = "
@@ -97,7 +155,9 @@ class OrderRepository
             JOIN parties pt ON o.party_id = pt.id
             LEFT JOIN users u ON o.created_by = u.id
             LEFT JOIN (
-                SELECT order_id, SUM(dispatch_qty_trucks) as total_dispatched
+                SELECT order_id,
+                       SUM(dispatch_qty_trucks) as total_dispatched,
+                       SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
                 GROUP BY order_id
             ) d ON o.id = d.order_id
@@ -122,7 +182,9 @@ class OrderRepository
             JOIN parties pt ON o.party_id = pt.id
             LEFT JOIN users u ON o.created_by = u.id
             LEFT JOIN (
-                SELECT order_id, SUM(dispatch_qty_trucks) as total_dispatched
+                SELECT order_id,
+                       SUM(dispatch_qty_trucks) as total_dispatched,
+                       SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
                 GROUP BY order_id
             ) d ON o.id = d.order_id
@@ -137,8 +199,8 @@ class OrderRepository
     public function create(Order $order): int
     {
         $sql = "
-            INSERT INTO orders (company_id, order_no, order_date, product_id, order_qty_trucks, party_id, priority, is_recurring, delivery_frequency_days, trucks_per_delivery, total_deliveries, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO orders (company_id, order_no, order_date, product_id, order_qty_trucks, order_qty_mode, order_weight_tons, tons_per_truck, party_id, priority, is_recurring, delivery_frequency_days, trucks_per_delivery, total_deliveries, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ";
         
         $this->database->execute($sql, [
@@ -147,6 +209,9 @@ class OrderRepository
             $order->orderDate,
             $order->productId,
             $order->orderQtyTrucks,
+            $order->orderQtyMode,
+            $order->orderWeightTons,
+            $order->tonsPerTruck,
             $order->partyId,
             $order->priority,
             $order->isRecurring ? 1 : 0,
@@ -163,7 +228,7 @@ class OrderRepository
     {
         $sql = "
             UPDATE orders 
-            SET order_date = ?, product_id = ?, order_qty_trucks = ?, party_id = ?
+            SET order_date = ?, product_id = ?, order_qty_trucks = ?, order_qty_mode = ?, order_weight_tons = ?, tons_per_truck = ?, party_id = ?, priority = ?
             WHERE id = ?
         ";
         
@@ -171,7 +236,11 @@ class OrderRepository
             $order->orderDate,
             $order->productId,
             $order->orderQtyTrucks,
+            $order->orderQtyMode,
+            $order->orderWeightTons,
+            $order->tonsPerTruck,
             $order->partyId,
+            $order->priority,
             $order->id
         ]);
     }
@@ -236,6 +305,11 @@ class OrderRepository
         if (!empty($filters['status'])) {
             $sql .= " AND o.status = ?";
             $params[] = $filters['status'];
+        }
+
+        if (!empty($filters['company_id'])) {
+            $sql .= " AND o.company_id = ?";
+            $params[] = (int)$filters['company_id'];
         }
         
         $result = $this->database->fetch($sql, $params);

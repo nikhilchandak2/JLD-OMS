@@ -1,13 +1,94 @@
+<style>
+.new-order-section {
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(43, 35, 94, 0.08);
+    overflow: hidden;
+}
+.new-order-section .card-header {
+    background: linear-gradient(135deg, rgba(43, 35, 94, 0.06), rgba(43, 35, 94, 0.02));
+    border-bottom: 1px solid var(--jld-border);
+    font-weight: 600;
+    color: var(--jld-primary);
+}
+.new-order-summary {
+    border: 1px solid var(--jld-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 16px rgba(43, 35, 94, 0.08);
+}
+.new-order-summary .summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--jld-border);
+}
+.new-order-summary .summary-row:last-child {
+    border-bottom: none;
+}
+.new-order-summary .summary-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--jld-gray);
+}
+.new-order-summary .summary-value {
+    font-weight: 600;
+    color: var(--jld-primary);
+    text-align: right;
+}
+.qty-preview-box {
+    background: rgba(43, 35, 94, 0.04);
+    border: 1px dashed var(--jld-border);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+}
+.qty-preview-box .preview-main {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--jld-primary);
+}
+.recurring-toggle-card {
+    border: 1px solid var(--jld-border);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    background: #fafbfc;
+    transition: border-color 0.2s, background 0.2s;
+}
+.recurring-toggle-card.active {
+    border-color: var(--jld-primary);
+    background: rgba(43, 35, 94, 0.03);
+}
+.field-with-action .btn-add {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+</style>
+
 <!-- Page Header -->
 <div class="page-header">
-    <div class="d-flex justify-content-between align-items-start">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div>
-            <h1 class="page-title">
+            <h1 class="page-title mb-1">
                 <i class="bi bi-plus-circle me-2"></i>Create New Order
             </h1>
-            <p class="page-subtitle">Add a new customer order to the system</p>
+            <p class="page-subtitle mb-0">
+                <?php if (!empty($active_company['name'])): ?>
+                Placing order for <span class="badge bg-primary"><?= htmlspecialchars($active_company['name']) ?></span>
+                <span class="text-muted ms-1">· switch company from header</span>
+                <?php else: ?>
+                Select a company from the header before creating an order
+                <?php endif; ?>
+            </p>
         </div>
-        <a href="/orders" class="btn btn-outline-primary">
+        <a href="/orders" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Back to Orders
         </a>
     </div>
@@ -16,138 +97,193 @@
 <div id="error-container" class="error-message"></div>
 <div id="success-container" class="error-message"></div>
 
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-clipboard-plus me-2"></i>Order Details
+<form id="newOrderForm">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
+    <input type="hidden" id="companyId" name="company_id" value="<?= (int)($active_company['id'] ?? 0) ?>">
+
+    <div class="row g-4">
+        <!-- Main form -->
+        <div class="col-lg-8">
+            <!-- Customer & Product -->
+            <div class="card new-order-section mb-4">
+                <div class="card-header py-3">
+                    <i class="bi bi-people me-2"></i>Customer &amp; Product
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="partyId" class="form-label">Party <span class="text-danger">*</span></label>
+                            <div class="d-flex gap-2 field-with-action">
+                                <select class="form-select searchable-select" id="partyId" name="party_id" required>
+                                    <option value="">Select party…</option>
+                                </select>
+                                <button type="button" class="btn btn-outline-primary btn-add" onclick="openQuickAddModal('party')" title="Add party">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
+                            <div id="creditStatusPanel" class="mt-2" style="display: none;"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="productId" class="form-label">Product <span class="text-danger">*</span></label>
+                            <div class="d-flex gap-2 field-with-action">
+                                <select class="form-select searchable-select" id="productId" name="product_id" required>
+                                    <option value="">Select product…</option>
+                                </select>
+                                <button type="button" class="btn btn-outline-primary btn-add" onclick="openQuickAddModal('product')" title="Add product">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <form id="newOrderForm">
-                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
-                    
-                    <!-- Company Selection -->
-                    <div class="row">
+
+            <!-- Quantity -->
+            <div class="card new-order-section mb-4">
+                <div class="card-header py-3">
+                    <i class="bi bi-box-seam me-2"></i>Order Quantity
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label d-block">Quantity mode <span class="text-danger">*</span></label>
+                        <div class="btn-group" role="group">
+                            <input type="radio" class="btn-check" name="order_qty_mode" id="qtyModeTrucks" value="trucks" checked>
+                            <label class="btn btn-outline-primary" for="qtyModeTrucks"><i class="bi bi-truck me-1"></i> Trucks</label>
+                            <input type="radio" class="btn-check" name="order_qty_mode" id="qtyModeWeight" value="weight">
+                            <label class="btn btn-outline-primary" for="qtyModeWeight"><i class="bi bi-speedometer2 me-1"></i> Weight (MT)</label>
+                        </div>
+                    </div>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4" id="trucksQtyGroup">
+                            <label for="orderQty" class="form-label">Number of Trucks <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control form-control-lg" id="orderQty" name="order_qty_trucks" min="1" placeholder="e.g. 2">
+                        </div>
+                        <div class="col-md-4" id="weightQtyGroup" style="display: none;">
+                            <label for="orderWeight" class="form-label">Total Weight (MT) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control form-control-lg" id="orderWeight" name="order_weight_tons" step="0.001" min="0.001" placeholder="e.g. 80">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="tonsPerTruck" class="form-label">MT per Truck</label>
+                            <input type="number" class="form-control" id="tonsPerTruck" name="tons_per_truck" value="40" step="0.01" min="1">
+                        </div>
                         <div class="col-12">
-                            <div class="mb-3">
-                                <label for="companyId" class="form-label">Company <span class="text-danger">*</span></label>
-                                <select class="form-select searchable-select" id="companyId" name="company_id" required>
-                                    <option value="">Select company...</option>
-                                </select>
-                                <div class="form-text">Select which JLD Minerals company is receiving this order</div>
+                            <div class="qty-preview-box">
+                                <div class="text-muted small mb-1">Preview</div>
+                                <div class="preview-main" id="qtyPreview">Enter quantity to see preview</div>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="orderDate" class="form-label">Order Date <span class="text-danger">*</span></label>
-                                <input type="date" class="form-control" id="orderDate" name="order_date" required value="<?= date('Y-m-d') ?>">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="orderQty" class="form-label">Quantity (Trucks) <span class="text-danger">*</span></label>
-                                <input type="number" class="form-control" id="orderQty" name="order_qty_trucks" required min="1" placeholder="Enter number of trucks">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="priority" class="form-label">Priority <span class="text-danger">*</span></label>
-                                <select class="form-select" id="priority" name="priority" required>
-                                    <option value="normal" selected>Normal</option>
-                                    <option value="urgent">Urgent</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Recurring Delivery Options -->
-                    <div class="card mb-3">
-                        <div class="card-header">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="isRecurring" name="is_recurring">
-                                <label class="form-check-label" for="isRecurring">
-                                    <strong>Recurring Delivery</strong> - Schedule multiple deliveries over time
-                                </label>
-                            </div>
-                        </div>
-                        <div class="card-body" id="recurringOptions" style="display: none;">
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label for="trucksPerDelivery" class="form-label">Trucks per Delivery <span class="text-danger">*</span></label>
-                                        <input type="number" class="form-control" id="trucksPerDelivery" name="trucks_per_delivery" min="1" placeholder="e.g., 2">
-                                        <div class="form-text">Number of trucks to deliver each time</div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label for="deliveryFrequency" class="form-label">Delivery Frequency (Days) <span class="text-danger">*</span></label>
-                                        <input type="number" class="form-control" id="deliveryFrequency" name="delivery_frequency_days" min="1" placeholder="e.g., 7">
-                                        <div class="form-text">Gap between deliveries in days</div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label for="totalDeliveries" class="form-label">Total Deliveries</label>
-                                        <input type="number" class="form-control" id="totalDeliveries" name="total_deliveries" readonly style="background-color: #f8f9fa;">
-                                        <div class="form-text">Auto-calculated based on order quantity and trucks per delivery</div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="alert alert-info" id="deliveryPreview" style="display: none;">
-                                <strong>Delivery Schedule Preview:</strong>
-                                <div id="schedulePreview"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row">
+                </div>
+            </div>
+
+            <!-- Schedule & priority -->
+            <div class="card new-order-section mb-4">
+                <div class="card-header py-3">
+                    <i class="bi bi-calendar3 me-2"></i>Schedule &amp; Priority
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="partyId" class="form-label">Party <span class="text-danger">*</span></label>
-                                <div class="d-flex">
-                                    <select class="form-select searchable-select" id="partyId" name="party_id" required style="flex: 1;">
-                                        <option value="">Select or type to search party...</option>
-                                    </select>
-                                    <button type="button" class="btn btn-outline-primary ms-2" onclick="openQuickAddModal('party')" title="Add New Party">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-                                </div>
-                            </div>
+                            <label for="orderDate" class="form-label">Order Date <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="orderDate" name="order_date" required value="<?= date('Y-m-d') ?>">
                         </div>
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="productId" class="form-label">Product <span class="text-danger">*</span></label>
-                                <div class="d-flex">
-                                    <select class="form-select searchable-select" id="productId" name="product_id" required style="flex: 1;">
-                                        <option value="">Select or type to search product...</option>
-                                    </select>
-                                    <button type="button" class="btn btn-outline-primary ms-2" onclick="openQuickAddModal('product')" title="Add New Product">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-                                </div>
-                            </div>
+                            <label for="priority" class="form-label">Priority <span class="text-danger">*</span></label>
+                            <select class="form-select" id="priority" name="priority" required>
+                                <option value="normal" selected>Normal</option>
+                                <option value="urgent">Urgent</option>
+                            </select>
                         </div>
                     </div>
-                    
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <button type="button" class="btn btn-secondary" onclick="window.location.href='/orders'">
-                            <i class="bi bi-x-circle"></i> Cancel
-                        </button>
-                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                </div>
+            </div>
+
+            <!-- Recurring -->
+            <div class="card new-order-section mb-4">
+                <div class="card-body p-0">
+                    <div class="recurring-toggle-card m-3" id="recurringToggleCard">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="isRecurring" name="is_recurring">
+                            <label class="form-check-label" for="isRecurring">
+                                <strong>Recurring delivery</strong>
+                                <span class="text-muted d-block small mt-1">Split this order into scheduled deliveries over time</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="px-3 pb-3" id="recurringOptions" style="display: none;">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="trucksPerDelivery" class="form-label">Trucks per delivery</label>
+                                <input type="number" class="form-control" id="trucksPerDelivery" name="trucks_per_delivery" min="1" placeholder="e.g. 2">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="deliveryFrequency" class="form-label">Frequency (days)</label>
+                                <input type="number" class="form-control" id="deliveryFrequency" name="delivery_frequency_days" min="1" placeholder="e.g. 7">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="totalDeliveries" class="form-label">Total deliveries</label>
+                                <input type="number" class="form-control bg-light" id="totalDeliveries" name="total_deliveries" readonly>
+                            </div>
+                        </div>
+                        <div class="alert alert-info mt-3 mb-0" id="deliveryPreview" style="display: none;">
+                            <strong class="d-block mb-2"><i class="bi bi-calendar-week me-1"></i> Schedule preview</strong>
+                            <div id="schedulePreview"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary sidebar -->
+        <div class="col-lg-4">
+            <div class="card new-order-summary sticky-lg-top" style="top: 1rem;">
+                <div class="card-header py-3">
+                    <h6 class="mb-0"><i class="bi bi-receipt me-2"></i>Order Summary</h6>
+                </div>
+                <div class="card-body">
+                    <div class="summary-row">
+                        <span class="summary-label">Company</span>
+                        <span class="summary-value" id="summaryCompany"><?= htmlspecialchars($active_company['name'] ?? '—') ?></span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="summary-label">Party</span>
+                        <span class="summary-value" id="summaryParty">—</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="summary-label">Product</span>
+                        <span class="summary-value" id="summaryProduct">—</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="summary-label">Quantity</span>
+                        <span class="summary-value" id="summaryQty">—</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="summary-label">Order Date</span>
+                        <span class="summary-value" id="summaryDate"><?= date('d M Y') ?></span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="summary-label">Priority</span>
+                        <span class="summary-value" id="summaryPriority">Normal</span>
+                    </div>
+                    <div class="summary-row">
+                        <span class="summary-label">Recurring</span>
+                        <span class="summary-value" id="summaryRecurring">No</span>
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
                             <span class="spinner-border spinner-border-sm d-none" id="submitSpinner"></span>
-                            <i class="bi bi-check-circle"></i> Create Order
+                            <i class="bi bi-check-circle me-1"></i> Create Order
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='/orders'">
+                            Cancel
                         </button>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>
-</div>
+</form>
 
 <!-- Quick Add Modals -->
 <!-- Party Quick Add Modal -->
@@ -168,17 +304,21 @@
                         <label for="quickContactPerson" class="form-label">Contact Person *</label>
                         <input type="text" class="form-control" id="quickContactPerson" name="contact_person" required>
                     </div>
+                    <div class="mb-3">
+                        <label for="quickGstNumber" class="form-label">GST No. *</label>
+                        <input type="text" class="form-control text-uppercase" id="quickGstNumber" name="gst_number" required maxlength="15" placeholder="15-character GSTIN">
+                    </div>
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="quickPhone" class="form-label">Phone</label>
-                                <input type="tel" class="form-control" id="quickPhone" name="phone">
+                                <label for="quickPhone" class="form-label">Phone *</label>
+                                <input type="tel" class="form-control" id="quickPhone" name="phone" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="quickEmail" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="quickEmail" name="email">
+                                <label for="quickEmail" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="quickEmail" name="email" required>
                             </div>
                         </div>
                     </div>
@@ -225,26 +365,227 @@
 </div>
 
 
+<!-- Raise Credit Request Modal -->
+<div class="modal fade" id="creditRequestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Raise Credit Request</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="creditRequestForm">
+                <div class="modal-body">
+                    <div class="alert alert-warning" id="creditRequestInfo"></div>
+                    <div class="mb-3">
+                        <label for="requestedIncrease" class="form-label">Requested Credit Limit Increase</label>
+                        <input type="number" class="form-control" id="requestedIncrease" name="requested_limit_increase" min="1" step="0.01" placeholder="e.g., 100000">
+                        <div class="form-text">Suggested increase for the admin (admin decides the final amount)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="creditRequestReason" class="form-label">Reason</label>
+                        <textarea class="form-control" id="creditRequestReason" name="reason" rows="2" maxlength="500" placeholder="Why should the credit limit be increased?"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-shield-exclamation"></i> Submit Request
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+const currentUserRole = <?= json_encode((string)($user['role'] ?? ''), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+let partyCreditStatus = null;
+
+function clearNewOrderForm() {
+    const form = document.getElementById('newOrderForm');
+    form.reset();
+    document.getElementById('orderDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('tonsPerTruck').value = '40';
+    document.getElementById('creditStatusPanel').style.display = 'none';
+    document.getElementById('creditStatusPanel').innerHTML = '';
+    document.getElementById('recurringOptions').style.display = 'none';
+    document.getElementById('recurringToggleCard')?.classList.remove('active');
+    document.getElementById('deliveryPreview').style.display = 'none';
+    document.getElementById('submitBtn').disabled = false;
+    if (typeof $.fn.select2 !== 'undefined') {
+        $('#partyId').val('').trigger('change');
+        $('#productId').val('').trigger('change');
+    }
+    toggleQtyMode();
+    updateQtyPreview();
+    updateOrderSummary();
+}
+
+function updateOrderSummary() {
+    const partySelect = document.getElementById('partyId');
+    const productSelect = document.getElementById('productId');
+    const partyText = partySelect.selectedOptions[0]?.textContent?.trim() || '—';
+    const productText = productSelect.selectedOptions[0]?.textContent?.trim() || '—';
+    const partyVal = partySelect.value;
+    const productVal = productSelect.value;
+
+    document.getElementById('summaryParty').textContent =
+        partyVal && partyText !== 'Select party…' ? partyText : '—';
+    document.getElementById('summaryProduct').textContent =
+        productVal && productText !== 'Select product…' ? productText : '—';
+
+    const previewEl = document.getElementById('qtyPreview');
+    document.getElementById('summaryQty').textContent =
+        previewEl && previewEl.textContent !== 'Enter quantity to see preview'
+            ? previewEl.textContent
+            : '—';
+
+    const dateInput = document.getElementById('orderDate').value;
+    if (dateInput) {
+        const d = new Date(dateInput + 'T12:00:00');
+        document.getElementById('summaryDate').textContent = d.toLocaleDateString('en-IN', {
+            day: 'numeric', month: 'short', year: 'numeric'
+        });
+    }
+
+    const priority = document.getElementById('priority').value;
+    document.getElementById('summaryPriority').innerHTML =
+        priority === 'urgent'
+            ? '<span class="badge bg-danger">Urgent</span>'
+            : '<span class="badge bg-secondary">Normal</span>';
+
+    const isRecurring = document.getElementById('isRecurring').checked;
+    document.getElementById('summaryRecurring').textContent = isRecurring ? 'Yes' : 'No';
+}
+
+function formatMoney(value) {
+    return Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function checkPartyCredit(partyId) {
+    const panel = document.getElementById('creditStatusPanel');
+    const submitBtn = document.getElementById('submitBtn');
+    partyCreditStatus = null;
+
+    if (!partyId) {
+        panel.style.display = 'none';
+        panel.innerHTML = '';
+        submitBtn.disabled = false;
+        return;
+    }
+
+    try {
+        const response = await apiCall(`/api/parties/${partyId}/credit-status`);
+        const status = response.data;
+        partyCreditStatus = status;
+
+        if (!status.has_credit_limit) {
+            panel.innerHTML = `
+                <div class="alert alert-secondary py-2 mb-0">
+                    <small>Outstanding: <strong>${formatMoney(status.outstanding)}</strong> &middot; No credit limit set for this party.</small>
+                </div>`;
+            panel.style.display = 'block';
+            submitBtn.disabled = false;
+            return;
+        }
+
+        if (status.over_limit) {
+            const isAdmin = currentUserRole === 'admin';
+            let actionHtml = '';
+            if (isAdmin) {
+                actionHtml = '<div class="mt-1"><small>You are admin: order creation is still allowed (override).</small></div>';
+            } else if (status.has_pending_request) {
+                actionHtml = '<div class="mt-1"><small><i class="bi bi-hourglass-split"></i> A credit request is already pending admin decision.</small></div>';
+            } else if (status.requests_remaining_this_month > 0) {
+                actionHtml = `
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-warning" onclick="openCreditRequestModal()">
+                            <i class="bi bi-shield-exclamation"></i> Raise Credit Request
+                        </button>
+                        <small class="ms-2">${status.requests_used_this_month} of ${status.max_requests_per_month} requests used this month</small>
+                    </div>`;
+            } else {
+                actionHtml = `<div class="mt-1"><small><i class="bi bi-x-octagon"></i> Credit request limit reached (${status.max_requests_per_month}/month). No more requests can be made until next month.</small></div>`;
+            }
+
+            panel.innerHTML = `
+                <div class="alert alert-danger py-2 mb-0">
+                    <small>
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <strong>Order blocked:</strong> outstanding <strong>${formatMoney(status.outstanding)}</strong>
+                        exceeds credit limit <strong>${formatMoney(status.credit_limit)}</strong>.
+                    </small>
+                    ${actionHtml}
+                </div>`;
+            panel.style.display = 'block';
+            submitBtn.disabled = !isAdmin;
+        } else {
+            panel.innerHTML = `
+                <div class="alert alert-success py-2 mb-0">
+                    <small>
+                        <i class="bi bi-check-circle"></i>
+                        Outstanding: <strong>${formatMoney(status.outstanding)}</strong>
+                        / Credit limit: <strong>${formatMoney(status.credit_limit)}</strong>
+                        (within limit)
+                    </small>
+                </div>`;
+            panel.style.display = 'block';
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        panel.style.display = 'none';
+        panel.innerHTML = '';
+        document.getElementById('submitBtn').disabled = false;
+    }
+}
+
+function openCreditRequestModal() {
+    if (!partyCreditStatus) return;
+    document.getElementById('creditRequestInfo').innerHTML = `
+        <strong>${escapeHtml(partyCreditStatus.party_name)}</strong><br>
+        Outstanding: <strong>${formatMoney(partyCreditStatus.outstanding)}</strong> /
+        Credit limit: <strong>${formatMoney(partyCreditStatus.credit_limit)}</strong><br>
+        <small>${partyCreditStatus.requests_used_this_month} of ${partyCreditStatus.max_requests_per_month} requests used this month</small>`;
+    new bootstrap.Modal(document.getElementById('creditRequestModal')).show();
+}
+
+document.getElementById('creditRequestForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    if (!partyCreditStatus) return;
+
+    const increaseRaw = document.getElementById('requestedIncrease').value;
+    const body = {
+        requested_limit_increase: increaseRaw ? Number(increaseRaw) : null,
+        reason: document.getElementById('creditRequestReason').value || null
+    };
+
+    try {
+        const response = await apiCall(`/api/parties/${partyCreditStatus.party_id}/credit-requests`, {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+        bootstrap.Modal.getInstance(document.getElementById('creditRequestModal')).hide();
+        this.reset();
+        showSuccess(response.message || 'Credit request submitted for admin approval.');
+        await checkPartyCredit(partyCreditStatus.party_id);
+    } catch (error) {
+        showError(error.message);
+    }
+});
+
 async function loadFormData() {
     try {
-        // Load companies
-        const companiesResponse = await apiCall('/api/companies');
-        const companySelect = document.getElementById('companyId');
-        
-        companySelect.innerHTML = '<option value="">Select company...</option>';
-        companiesResponse.data.forEach((company) => {
-            const option = document.createElement('option');
-            option.value = String(company.id ?? '');
-            option.textContent = `${company.name ?? ''} (${company.code ?? ''})`;
-            companySelect.appendChild(option);
-        });
-        
+        const defaultCompanyId = <?= (int)($active_company['id'] ?? 0) ?>;
+        if (defaultCompanyId <= 0) {
+            showError('Please select a company using the header switcher before creating an order.');
+            document.getElementById('submitBtn').disabled = true;
+        }
+
         // Load parties
         const partiesResponse = await apiCall('/api/reports/parties');
         const partySelect = document.getElementById('partyId');
         
-        partySelect.innerHTML = '<option value="">Select or type to search party...</option>';
+        partySelect.innerHTML = '<option value="">Select party…</option>';
         partiesResponse.data.forEach((party) => {
             const option = document.createElement('option');
             option.value = String(party.id ?? '');
@@ -256,7 +597,7 @@ async function loadFormData() {
         const productsResponse = await apiCall('/api/reports/products');
         const productSelect = document.getElementById('productId');
         
-        productSelect.innerHTML = '<option value="">Select or type to search product...</option>';
+        productSelect.innerHTML = '<option value="">Select product…</option>';
         productsResponse.data.forEach((product) => {
             const option = document.createElement('option');
             option.value = String(product.id ?? '');
@@ -303,8 +644,9 @@ document.getElementById('quickAddPartyForm').addEventListener('submit', async fu
     const data = {
         name: formData.get('name'),
         contact_person: formData.get('contact_person'),
-        phone: formData.get('phone') || '',
-        email: formData.get('email') || '',
+        gst_number: String(formData.get('gst_number') || '').trim().toUpperCase(),
+        phone: formData.get('phone'),
+        email: formData.get('email'),
         address: formData.get('address') || '',
         is_active: true
     };
@@ -337,8 +679,9 @@ document.getElementById('quickAddPartyForm').addEventListener('submit', async fu
             this.reset();
             
             showSuccess('Party added successfully!');
+            updateOrderSummary();
         } else {
-            showError('Error adding party: ' + result.error);
+            showError(result.error || 'Error adding party');
         }
     } catch (error) {
         showError('Error adding party: ' + error.message);
@@ -384,6 +727,7 @@ document.getElementById('quickAddProductForm').addEventListener('submit', async 
             this.reset();
             
             showSuccess('Product added successfully!');
+            updateOrderSummary();
         } else {
             showError('Error adding product: ' + result.error);
         }
@@ -404,11 +748,15 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
     submitSpinner.classList.remove('d-none');
     
     try {
+        const qtyMode = formData.get('order_qty_mode') || 'trucks';
         const orderData = {
             company_id: parseInt(formData.get('company_id')),
             order_date: formData.get('order_date'),
             product_id: parseInt(formData.get('product_id')),
-            order_qty_trucks: parseInt(formData.get('order_qty_trucks')),
+            order_qty_mode: qtyMode,
+            order_qty_trucks: qtyMode === 'trucks' ? parseInt(formData.get('order_qty_trucks')) : null,
+            order_weight_tons: qtyMode === 'weight' ? parseFloat(formData.get('order_weight_tons')) : null,
+            tons_per_truck: parseFloat(formData.get('tons_per_truck')) || 40,
             party_id: parseInt(formData.get('party_id')),
             priority: formData.get('priority'),
             is_recurring: formData.has('is_recurring'),
@@ -417,7 +765,7 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
             total_deliveries: formData.get('total_deliveries') ? parseInt(formData.get('total_deliveries')) : null
         };
         
-        const response = await apiCall('/api/orders', {
+        const response = await fetch('/api/orders', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -425,14 +773,20 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
             },
             body: JSON.stringify(orderData)
         });
+        const result = await response.json();
+
+        if (!response.ok) {
+            if (result.credit_blocked && result.credit_status) {
+                partyCreditStatus = result.credit_status;
+                await checkPartyCredit(partyCreditStatus.party_id);
+            }
+            throw new Error(result.error || 'Failed to create order');
+        }
         
-        showSuccess((response.message || 'Order created successfully') + '! Order No: ' + response.data.order_no);
+        showSuccess((result.message || 'Order created successfully') + '! Order No: ' + result.data.order_no);
         
-        // Reset form
-        this.reset();
-        document.getElementById('orderDate').value = new Date().toISOString().split('T')[0];
+        clearNewOrderForm();
         
-        // Redirect to orders page after 2 seconds
         setTimeout(() => {
             window.location.href = '/orders';
         }, 2000);
@@ -448,22 +802,26 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
 // Handle recurring delivery checkbox
 document.getElementById('isRecurring').addEventListener('change', function() {
     const recurringOptions = document.getElementById('recurringOptions');
+    const recurringCard = document.getElementById('recurringToggleCard');
     const trucksPerDelivery = document.getElementById('trucksPerDelivery');
     const deliveryFrequency = document.getElementById('deliveryFrequency');
     const totalDeliveries = document.getElementById('totalDeliveries');
     
     if (this.checked) {
         recurringOptions.style.display = 'block';
+        recurringCard?.classList.add('active');
         trucksPerDelivery.required = true;
         deliveryFrequency.required = true;
         totalDeliveries.required = true;
     } else {
         recurringOptions.style.display = 'none';
+        recurringCard?.classList.remove('active');
         trucksPerDelivery.required = false;
         deliveryFrequency.required = false;
         totalDeliveries.required = false;
         document.getElementById('deliveryPreview').style.display = 'none';
     }
+    updateOrderSummary();
 });
 
 // Handle recurring delivery preview
@@ -521,12 +879,74 @@ function updateDeliveryPreview() {
 }
 
 // Add event listeners for preview updates
-['trucksPerDelivery', 'deliveryFrequency', 'orderQty', 'orderDate'].forEach(id => {
-    document.getElementById(id).addEventListener('input', updateDeliveryPreview);
+['trucksPerDelivery', 'deliveryFrequency', 'orderQty', 'orderWeight', 'tonsPerTruck', 'orderDate'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => { updateQtyPreview(); updateDeliveryPreview(); updateOrderSummary(); });
 });
+
+document.getElementById('orderDate').addEventListener('change', updateOrderSummary);
+document.getElementById('priority').addEventListener('change', updateOrderSummary);
+
+document.querySelectorAll('input[name="order_qty_mode"]').forEach(radio => {
+    radio.addEventListener('change', toggleQtyMode);
+});
+
+function toggleQtyMode() {
+    const mode = document.querySelector('input[name="order_qty_mode"]:checked')?.value || 'trucks';
+    const trucksGroup = document.getElementById('trucksQtyGroup');
+    const weightGroup = document.getElementById('weightQtyGroup');
+    const orderQty = document.getElementById('orderQty');
+    const orderWeight = document.getElementById('orderWeight');
+
+    if (mode === 'weight') {
+        trucksGroup.style.display = 'none';
+        weightGroup.style.display = 'block';
+        orderQty.removeAttribute('required');
+        orderWeight.setAttribute('required', 'required');
+    } else {
+        trucksGroup.style.display = 'block';
+        weightGroup.style.display = 'none';
+        orderWeight.removeAttribute('required');
+        orderQty.setAttribute('required', 'required');
+    }
+    updateQtyPreview();
+    updateOrderSummary();
+}
+
+function updateQtyPreview() {
+    const mode = document.querySelector('input[name="order_qty_mode"]:checked')?.value || 'trucks';
+    const tonsPerTruck = parseFloat(document.getElementById('tonsPerTruck').value) || 40;
+    const preview = document.getElementById('qtyPreview');
+    if (!preview) return;
+
+    if (mode === 'weight') {
+        const weight = parseFloat(document.getElementById('orderWeight').value) || 0;
+        const trucks = weight > 0 ? Math.max(1, Math.ceil(weight / tonsPerTruck)) : 0;
+        preview.textContent = weight > 0
+            ? `${weight.toLocaleString('en-IN')} MT ≈ ${trucks} truck(s) @ ${tonsPerTruck} MT/truck`
+            : 'Enter weight in metric tons';
+    } else {
+        const trucks = parseInt(document.getElementById('orderQty').value) || 0;
+        const weight = trucks > 0 ? (trucks * tonsPerTruck).toLocaleString('en-IN') : '0';
+        preview.textContent = trucks > 0
+            ? `${trucks} truck(s) ≈ ${weight} MT @ ${tonsPerTruck} MT/truck`
+            : 'Enter number of trucks';
+    }
+    updateOrderSummary();
+}
 
 // Load form data on page load
 document.addEventListener('DOMContentLoaded', function() {
+    toggleQtyMode();
+    updateQtyPreview();
     loadFormData();
+
+    // Credit gate check on party selection (jQuery event covers Select2 too)
+    $('#partyId').on('change', function() {
+        checkPartyCredit(this.value);
+        updateOrderSummary();
+    });
+    $('#productId').on('change', updateOrderSummary);
+    updateOrderSummary();
 });
 </script>

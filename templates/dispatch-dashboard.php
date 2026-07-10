@@ -1,0 +1,421 @@
+<!-- Page Header -->
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <h1 class="page-title">
+                <i class="bi bi-truck-flatbed me-2"></i>Dispatch Dashboard
+            </h1>
+            <p class="page-subtitle">Orders pending dispatch — urgent orders first, oldest first</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#busyUploadModal">
+                <i class="bi bi-upload me-1"></i> Upload Busy Invoice
+            </button>
+            <button class="btn btn-primary" onclick="loadDispatchQueue()">
+                <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="error-container" class="error-message"></div>
+<div id="success-container" class="error-message"></div>
+
+<!-- Summary Cards -->
+<div class="row mb-4" id="summaryCards">
+    <div class="col-md-3 col-6 mb-2">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <div class="fs-3 fw-bold text-warning" id="cardPending">-</div>
+                <div class="text-muted small">Orders Pending</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6 mb-2">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <div class="fs-3 fw-bold text-info" id="cardPartial">-</div>
+                <div class="text-muted small">Partially Dispatched</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6 mb-2">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <div class="fs-3 fw-bold text-primary" id="cardTrucksRemaining">-</div>
+                <div class="text-muted small">Trucks Remaining</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6 mb-2">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <div class="fs-3 fw-bold text-success" id="cardDispatchedToday">-</div>
+                <div class="text-muted small">Trucks Dispatched Today</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loading" class="loading">
+    <div class="spinner-border" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p>Loading dispatch queue...</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-list-check me-2"></i>Orders Awaiting Dispatch
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped align-middle" id="queueTable">
+                <thead>
+                    <tr>
+                        <th>Order</th>
+                        <th>Party</th>
+                        <th>Product</th>
+                        <th>Priority</th>
+                        <th>Ordered</th>
+                        <th>Dispatched</th>
+                        <th>Remaining</th>
+                        <th>Age</th>
+                        <th>Party Outstanding</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div id="emptyState" class="text-muted text-center" style="display: none; padding: 1rem 0;">
+            No orders pending dispatch. All caught up!
+        </div>
+    </div>
+</div>
+
+<!-- Dispatch Modal -->
+<div class="modal fade" id="dispatchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Record Dispatch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="dispatchForm">
+                <div class="modal-body">
+                    <div class="alert alert-info py-2" id="dispatchOrderInfo"></div>
+                    <input type="hidden" id="dispatchOrderId">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="dispatchDate" class="form-label">Dispatch Date <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control" id="dispatchDate" required value="<?= date('Y-m-d') ?>">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="dispatchQty" class="form-label">Trucks <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="dispatchQty" required min="1">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="dispatchProductRate" class="form-label">Product Rate (₹/MT) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="dispatchProductRate" step="0.01" min="0.01" required placeholder="Rate per metric ton">
+                                <div class="form-text">Loading weight from kanta parchi can be entered later on the order page.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="dispatchRemarks" class="form-label">Remarks</label>
+                        <textarea class="form-control" id="dispatchRemarks" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="dispatchSubmitBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="dispatchSpinner"></span>
+                        <i class="bi bi-truck"></i> Dispatch
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Recent dispatches (incl. Busy invoice imports) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-receipt me-2"></i>Recent Dispatches</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadRecentDispatches()"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped mb-0" id="recentDispatchesTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Order</th>
+                        <th>Party</th>
+                        <th>Trucks</th>
+                        <th>Rate (₹/MT)</th>
+                        <th>Weight (MT)</th>
+                        <th>Busy Inv.</th>
+                    </tr>
+                </thead>
+                <tbody><tr><td colspan="7" class="text-center text-muted p-3">Loading…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Busy Invoice Upload -->
+<div class="modal fade" id="busyUploadModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Upload Busy Sales Invoice</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="busyUploadForm">
+                <div class="modal-body">
+                    <p class="text-muted">
+                        Upload the tax invoice PDF generated in Busy (or a CSV export).
+                        OMS reads party, product, rate per MT, loading weight, and vehicle details, then creates or updates the dispatch.
+                    </p>
+                    <div class="alert alert-info py-2 small">
+                        <strong>PDF (recommended):</strong> Busy tax invoice like invoice 2418 — party, 26.170 M.T., rate ₹/MT, vehicle no.<br>
+                        <strong>CSV:</strong> Invoice No, Party, Product, Rate, Weight (MT), optional Order No.
+                    </div>
+                    <div class="mb-3">
+                        <label for="busyInvoiceFile" class="form-label">Invoice file (PDF or CSV) <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" id="busyInvoiceFile" name="file" accept=".pdf,.csv" required>
+                    </div>
+                    <div id="busyUploadResult" class="d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary" id="busyUploadBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="busyUploadSpinner"></span>
+                        Import &amp; Update Dispatches
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let queueOrders = [];
+
+function formatMoney(value) {
+    return Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function loadDispatchQueue() {
+    const loading = document.getElementById('loading');
+    const tbody = document.querySelector('#queueTable tbody');
+    const emptyState = document.getElementById('emptyState');
+
+    loading.style.display = 'block';
+    tbody.innerHTML = '';
+    emptyState.style.display = 'none';
+
+    try {
+        const response = await apiCall('/api/dispatch/pending');
+        const summary = response.data.summary || {};
+        queueOrders = response.data.orders || [];
+
+        document.getElementById('cardPending').textContent = summary.pending_orders ?? 0;
+        document.getElementById('cardPartial').textContent = summary.partial_orders ?? 0;
+        document.getElementById('cardTrucksRemaining').textContent = summary.trucks_remaining ?? 0;
+        document.getElementById('cardDispatchedToday').textContent = summary.dispatched_today_trucks ?? 0;
+
+        if (queueOrders.length === 0) {
+            emptyState.style.display = 'block';
+            return;
+        }
+
+        tbody.innerHTML = queueOrders.map(o => {
+            const overLimit = o.party_credit_limit !== null
+                && Number(o.party_credit_limit) > 0
+                && Number(o.party_outstanding) > Number(o.party_credit_limit);
+            return `
+            <tr>
+                <td>
+                    <a href="/orders/${o.id}" class="fw-bold">${escapeHtml(o.order_no)}</a>
+                    <div><small class="text-muted">${escapeHtml(o.company_name || '')}</small></div>
+                </td>
+                <td>${escapeHtml(o.party_name)}</td>
+                <td>${escapeHtml(o.product_name)}</td>
+                <td>
+                    ${o.priority === 'urgent'
+                        ? '<span class="badge bg-danger">Urgent</span>'
+                        : '<span class="badge bg-secondary">Normal</span>'}
+                </td>
+                <td>${o.order_qty_trucks}</td>
+                <td>${o.total_dispatched}</td>
+                <td><span class="badge bg-primary">${o.remaining_trucks}</span></td>
+                <td>${o.age_days} day${Number(o.age_days) === 1 ? '' : 's'}</td>
+                <td>
+                    <span class="${overLimit ? 'text-danger fw-bold' : ''}">${formatMoney(o.party_outstanding)}</span>
+                    ${overLimit ? '<div><small class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> Over credit limit</small></div>' : ''}
+                </td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-primary" onclick="openDispatchModal(${o.id})">
+                        <i class="bi bi-truck"></i> Dispatch
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function openDispatchModal(orderId) {
+    const order = queueOrders.find(o => Number(o.id) === Number(orderId));
+    if (!order) return;
+
+    document.getElementById('dispatchOrderId').value = order.id;
+    document.getElementById('dispatchOrderInfo').innerHTML = `
+        <strong>${escapeHtml(order.order_no)}</strong> — ${escapeHtml(order.party_name)} · ${escapeHtml(order.product_name)}<br>
+        <small>Remaining: <strong>${order.remaining_trucks}</strong> of ${order.order_qty_trucks} trucks</small>`;
+    const qtyInput = document.getElementById('dispatchQty');
+    qtyInput.max = order.remaining_trucks;
+    qtyInput.value = '';
+    document.getElementById('dispatchDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('dispatchProductRate').value = '';
+    document.getElementById('dispatchRemarks').value = '';
+
+    new bootstrap.Modal(document.getElementById('dispatchModal')).show();
+}
+
+document.getElementById('dispatchForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const orderId = document.getElementById('dispatchOrderId').value;
+    const submitBtn = document.getElementById('dispatchSubmitBtn');
+    const spinner = document.getElementById('dispatchSpinner');
+
+    submitBtn.disabled = true;
+    spinner.classList.remove('d-none');
+
+    try {
+        await apiCall(`/api/orders/${orderId}/dispatches`, {
+            method: 'POST',
+            body: JSON.stringify({
+                dispatch_date: document.getElementById('dispatchDate').value,
+                dispatch_qty_trucks: parseInt(document.getElementById('dispatchQty').value),
+                product_rate: parseFloat(document.getElementById('dispatchProductRate').value),
+                remarks: document.getElementById('dispatchRemarks').value || null
+            })
+        });
+
+        bootstrap.Modal.getInstance(document.getElementById('dispatchModal')).hide();
+        showSuccess('Dispatch recorded successfully.');
+        await loadDispatchQueue();
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        submitBtn.disabled = false;
+        spinner.classList.add('d-none');
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadDispatchQueue();
+    loadRecentDispatches();
+});
+
+async function loadRecentDispatches() {
+    const tbody = document.querySelector('#recentDispatchesTable tbody');
+    try {
+        const response = await apiCall('/api/dispatches?limit=10');
+        const rows = response.data || [];
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-3">No dispatches yet</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(d => `
+            <tr>
+                <td>${formatDate(d.dispatch_date)}</td>
+                <td><a href="/orders/${d.order_id}"><strong>${escapeHtml(d.order_no || '')}</strong></a></td>
+                <td>${escapeHtml(d.party_name || '—')}</td>
+                <td>${d.dispatch_qty_trucks}</td>
+                <td>${d.product_rate != null ? Number(d.product_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
+                <td>${d.loading_weight_tons != null ? Number(d.loading_weight_tons).toLocaleString('en-IN', { minimumFractionDigits: 3 }) : '—'}</td>
+                <td>${d.busy_invoice_no ? escapeHtml(d.busy_invoice_no) : '—'}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger p-3">${escapeHtml(error.message)}</td></tr>`;
+    }
+}
+
+document.getElementById('busyUploadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const fileInput = document.getElementById('busyInvoiceFile');
+    const submitBtn = document.getElementById('busyUploadBtn');
+    const spinner = document.getElementById('busyUploadSpinner');
+    const resultBox = document.getElementById('busyUploadResult');
+
+    if (!fileInput.files || !fileInput.files[0]) {
+        showError('Please select a CSV file.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('csrf_token', <?= json_encode($csrf_token ?? '') ?>);
+
+    submitBtn.disabled = true;
+    spinner.classList.remove('d-none');
+    resultBox.classList.add('d-none');
+
+    try {
+        const response = await fetch('/api/busy/invoices/upload', {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRF-Token': <?= json_encode($csrf_token ?? '') ?>
+            }
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Upload failed');
+        }
+
+        const details = (data.data?.details || []).map(row => {
+            if (row.status === 'success') {
+                const orderLink = row.order_id
+                    ? `<a href="/orders/${row.order_id}" class="ms-1">View order</a>`
+                    : '';
+                return `<li class="text-success">${escapeHtml(row.invoice_no)} → Order ${escapeHtml(row.order_no)} (${row.action})${orderLink}</li>`;
+            }
+            return `<li class="text-danger">${escapeHtml(row.invoice_no)}: ${escapeHtml(row.error || 'Failed')}</li>`;
+        }).join('');
+
+        resultBox.className = 'alert ' + (data.data?.failed ? 'alert-warning' : 'alert-success');
+        resultBox.innerHTML = `<strong>${escapeHtml(data.message || 'Done')}</strong><ul class="mb-0 mt-2">${details}</ul>`;
+        resultBox.classList.remove('d-none');
+
+        if (data.data?.successful > 0) {
+            showSuccess(data.message || 'Invoices imported.');
+            await loadDispatchQueue();
+            await loadRecentDispatches();
+        }
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        submitBtn.disabled = false;
+        spinner.classList.add('d-none');
+    }
+});
+</script>

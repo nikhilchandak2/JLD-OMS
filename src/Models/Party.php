@@ -7,6 +7,7 @@ class Party
     public int $id = 0;
     public string $name = '';
     public string $contactPerson = '';
+    public string $gstNumber = '';
     public string $phone = '';
     public string $email = '';
     public string $address = '';
@@ -58,6 +59,7 @@ class Party
         $this->id = (int)($data['id'] ?? 0);
         $this->name = $data['name'] ?? '';
         $this->contactPerson = $data['contact_person'] ?? '';
+        $this->gstNumber = self::normalizeGstNumber($data['gst_number'] ?? '');
         $this->phone = $data['phone'] ?? '';
         $this->email = $data['email'] ?? '';
         $this->address = $data['address'] ?? '';
@@ -114,6 +116,7 @@ class Party
             'id' => $this->id,
             'name' => $this->name,
             'contact_person' => $this->contactPerson,
+            'gst_number' => $this->gstNumber,
             'phone' => $this->phone,
             'email' => $this->email,
             'address' => $this->address,
@@ -156,6 +159,19 @@ class Party
         ];
     }
 
+    public static function normalizeGstNumber(?string $gst): string
+    {
+        return strtoupper(preg_replace('/\s+/', '', trim((string)$gst)));
+    }
+
+    public static function isValidGstFormat(string $gst): bool
+    {
+        if ($gst === '') {
+            return false;
+        }
+        return (bool)preg_match('/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/', $gst);
+    }
+
     public function validate(): array
     {
         $errors = [];
@@ -168,7 +184,19 @@ class Party
             $errors[] = 'Contact person is required';
         }
 
-        if (!empty($this->email) && !filter_var($this->email, FILTER_VALIDATE_EMAIL)) {
+        if (empty($this->gstNumber)) {
+            $errors[] = 'GST number is required';
+        } elseif (!self::isValidGstFormat($this->gstNumber)) {
+            $errors[] = 'Invalid GST number format';
+        }
+
+        if (empty($this->phone)) {
+            $errors[] = 'Phone is required';
+        }
+
+        if (empty($this->email)) {
+            $errors[] = 'Email is required';
+        } elseif (!filter_var($this->email, FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Invalid email format';
         }
 

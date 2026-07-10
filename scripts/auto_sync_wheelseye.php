@@ -1,17 +1,17 @@
 <?php
 /**
- * Cron-friendly WheelsEye auto sync runner.
+ * CLI WheelsEye pull sync (currentLoc + trip detection).
  *
- * Recommended schedule:
- *   run every 1 minute from 7:00 AM to 6:59 PM:
- *   * 7-18 * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php >> /var/log/wheelseye-sync.log 2>&1
- *   run once at 7:00 PM:
- *   0 19 * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php >> /var/log/wheelseye-sync.log 2>&1
+ * Recommended: run via systemd loop (does not use PHP-FPM):
+ *   WHEELSEYE_SYNC_INTERVAL_SECONDS=120 sudo bash scripts/install-wheelseye-systemd.sh
+ *
+ * Do NOT schedule via HTTP curl to /api/tracking/sync — that blocks website workers.
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use App\Services\WheelsEyeApiService;
+use App\Support\WheelsEyeSyncLock;
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->safeLoad();
@@ -45,6 +45,21 @@ $appendSyncLog = static function (string $level, array $payload) use ($syncLogFi
         FILE_APPEND | LOCK_EX
     );
 };
+
+$lock = WheelsEyeSyncLock::tryAcquire();
+if ($lock === null) {
+    $skipped = [
+        'success' => true,
+        'message' => 'Skipped: another WheelsEye sync is already running',
+        'synced' => 0,
+        'skipped' => 0,
+        'last_run' => $timestamp,
+        'runner' => 'scripts/auto_sync_wheelseye.php',
+        'duration_ms' => (int)round((microtime(true) - $startedAt) * 1000),
+    ];
+    echo json_encode($skipped, JSON_UNESCAPED_SLASHES) . PHP_EOL;
+    exit(0);
+}
 
 try {
     $service = new WheelsEyeApiService();
@@ -89,4 +104,6 @@ try {
 
     fwrite(STDERR, json_encode($error, JSON_UNESCAPED_SLASHES) . PHP_EOL);
     exit(1);
+} finally {
+    WheelsEyeSyncLock::release($lock);
 }

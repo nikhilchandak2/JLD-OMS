@@ -8,6 +8,7 @@ use App\Services\WheelsEyeHistoricalTripsService;
 use App\Services\TripDetectionService;
 use App\Repositories\VehicleRepository;
 use App\Repositories\GPSTrackingRepository;
+use App\Support\WheelsEyeSyncLock;
 
 class TrackingController
 {
@@ -39,7 +40,9 @@ class TrackingController
         
         try {
             $syncResult = null;
-            if (isset($_GET['sync_now']) && (int)$_GET['sync_now'] === 1) {
+            // Live map reads DB only; pull sync runs via CLI/systemd or manual Sync button.
+            $allowLivePageSync = ($_ENV['WHEELSEYE_ALLOW_LIVE_PAGE_SYNC'] ?? '0') === '1';
+            if ($allowLivePageSync && isset($_GET['sync_now']) && (int)$_GET['sync_now'] === 1) {
                 try {
                     $service = new WheelsEyeApiService();
                     $syncResult = $service->syncCurrentLocations();
@@ -174,6 +177,33 @@ class TrackingController
             return;
         }
 
+        // Block URL/cron sync via HTTP in production — use CLI systemd loop instead.
+        $allowHttpSync = ($_ENV['WHEELSEYE_ALLOW_HTTP_SYNC'] ?? '0') === '1';
+        if ($allowedByKey && !$allowHttpSync) {
+            http_response_code(403);
+            echo json_encode([
+                'success' => false,
+                'message' => 'HTTP pull sync is disabled. Use scripts/auto_sync_wheelseye.php via systemd, or set WHEELSEYE_ALLOW_HTTP_SYNC=1 only for debugging.',
+                'synced' => 0,
+                'skipped' => 0,
+                'errors' => [],
+            ]);
+            return;
+        }
+
+        $lock = WheelsEyeSyncLock::tryAcquire();
+        if ($lock === null) {
+            http_response_code(409);
+            echo json_encode([
+                'success' => false,
+                'message' => 'WheelsEye sync already running (CLI loop or another request). Try again shortly.',
+                'synced' => 0,
+                'skipped' => 0,
+                'errors' => [],
+            ]);
+            return;
+        }
+
         try {
             $service = new WheelsEyeApiService();
             $result = $service->syncCurrentLocations();
@@ -196,6 +226,8 @@ class TrackingController
                 'skipped' => 0,
                 'errors' => [],
             ]);
+        } finally {
+            WheelsEyeSyncLock::release($lock);
         }
     }
 

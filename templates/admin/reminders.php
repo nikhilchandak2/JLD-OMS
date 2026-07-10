@@ -9,7 +9,7 @@
     </div>
 </div>
 
-<div id="error-container" class="alert alert-danger" style="display:none;"></div>
+<div id="error-container" class="alert alert-danger" style="display:none; white-space: pre-wrap;"></div>
 <div id="success-container" class="alert alert-success" style="display:none;"></div>
 
 <?php
@@ -77,6 +77,8 @@ $defaultCompany = $reminderCompanies[0]['id'] ?? '';
     const csvInput = document.getElementById('csvFile');
     const btnRunWithCsv = document.getElementById('btnRunWithCsv');
     const btnRunReminders = document.getElementById('btnRunReminders');
+    let currentJobId = null;
+    let pollTimer = null;
 
     csvInput.addEventListener('change', function() {
         btnRunWithCsv.disabled = !this.files || this.files.length === 0;
@@ -93,18 +95,59 @@ $defaultCompany = $reminderCompanies[0]['id'] ?? '';
             outputStatus.textContent = 'Failed';
             outputStatus.className = 'badge bg-danger';
             if (data.error) {
-                errEl.textContent = data.error;
+                let msg = data.error;
+                if (data.paths_tried && data.paths_tried.length) {
+                    msg += '\n\nPaths checked:\n' + data.paths_tried.join('\n');
+                } else if (data.path_checked) {
+                    msg += '\n\nPath checked: ' + data.path_checked;
+                }
+                errEl.textContent = msg;
                 errEl.style.display = 'block';
             }
         }
         outputText.textContent = data.output || '(no output)';
     }
 
+    function showJob(job) {
+        outputCard.style.display = 'block';
+        const st = job.status || 'pending';
+        if (st === 'pending') {
+            outputStatus.textContent = 'Queued';
+            outputStatus.className = 'badge bg-secondary';
+            outputText.textContent = 'Job queued. Waiting for offline runner PC to pick it up...';
+        } else if (st === 'running') {
+            outputStatus.textContent = 'Running';
+            outputStatus.className = 'badge bg-primary';
+            let runMsg = 'Runner started the job. BusyPayBot may still be sending on the PC — keep the runner window open.';
+            if (job.started_at) {
+                runMsg += '\nStarted: ' + job.started_at;
+            }
+            runMsg += '\n\nIf this stays running more than ~30 minutes, refresh the page (stale jobs auto-fail) or upload CSV again.';
+            outputText.textContent = runMsg;
+        } else if (st === 'completed') {
+            outputStatus.textContent = 'Completed';
+            outputStatus.className = 'badge bg-success';
+            successEl.textContent = 'Reminders job completed.';
+            successEl.style.display = 'block';
+            outputText.textContent = job.output || '(no output)';
+        } else if (st === 'failed') {
+            outputStatus.textContent = 'Failed';
+            outputStatus.className = 'badge bg-danger';
+            errEl.textContent = 'Reminders job failed.';
+            errEl.style.display = 'block';
+            outputText.textContent = job.output || '(no output)';
+        } else {
+            outputStatus.textContent = st;
+            outputStatus.className = 'badge bg-secondary';
+            outputText.textContent = job.output || '(no output)';
+        }
+    }
+
     function setRunning(btn) {
         errEl.style.display = 'none';
         successEl.style.display = 'none';
         outputCard.style.display = 'block';
-        outputText.textContent = 'Running script…';
+        outputText.textContent = 'Submitting…';
         outputStatus.textContent = 'Running…';
         outputStatus.className = 'badge bg-secondary';
         btn.disabled = true;
@@ -128,14 +171,35 @@ $defaultCompany = $reminderCompanies[0]['id'] ?? '';
             form.append('csv', csvInput.files[0]);
             const company = getSelectedCompany();
             if (company) form.append('company', company);
-            const r = await fetch('/api/reminders/run', {
+            const r = await fetch('/api/reminders/jobs', {
                 method: 'POST',
                 headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' },
                 body: form
             });
             const data = await r.json().catch(function() { return { success: false, error: 'Invalid response' }; });
-            showOutput(data);
-            if (data.success) csvInput.value = '';
+            if (!data.success || !data.job) {
+                showOutput(data);
+                setDone(btn);
+                return;
+            }
+            currentJobId = data.job.id;
+            csvInput.value = '';
+            showJob(data.job);
+
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(async function() {
+                if (!currentJobId) return;
+                const rr = await fetch('/api/reminders/jobs/' + encodeURIComponent(currentJobId), {
+                    headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' },
+                });
+                const st = await rr.json().catch(function() { return null; });
+                if (!st || !st.success || !st.job) return;
+                showJob(st.job);
+                if (st.job.status === 'completed' || st.job.status === 'failed') {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+            }, 2000);
         } catch (e) {
             outputStatus.textContent = 'Error';
             outputStatus.className = 'badge bg-danger';
@@ -150,26 +214,14 @@ $defaultCompany = $reminderCompanies[0]['id'] ?? '';
         const btn = this;
         setRunning(btn);
         try {
-            const company = getSelectedCompany();
-            const body = company ? JSON.stringify({ company: company }) : '{}';
-            const r = await fetch('/api/reminders/run', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : ''
-                },
-                body: body
-            });
-            const data = await r.json().catch(function() { return { success: false, error: 'Invalid response' }; });
-            showOutput(data);
-        } catch (e) {
-            outputStatus.textContent = 'Error';
-            outputStatus.className = 'badge bg-danger';
-            outputText.textContent = e.message || 'Request failed';
-            errEl.textContent = e.message || 'Failed to run reminders';
+            errEl.textContent = 'Upload a CSV to create a reminders job. The "Run without file" option is disabled in offline-runner mode.';
             errEl.style.display = 'block';
+            outputStatus.textContent = 'Info';
+            outputStatus.className = 'badge bg-secondary';
+            outputText.textContent = 'This setup uses the offline runner PC. Please upload a CSV to proceed.';
+        } finally {
+            setDone(btn);
         }
-        setDone(btn);
     });
 })();
 </script>

@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Repositories\CompanyRepository;
+use App\Support\CompanyContext;
 
 class CompanyController
 {
@@ -70,6 +71,68 @@ class CompanyController
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
+    }
+
+    /** GET /api/companies/active — current session company */
+    public function active(): void
+    {
+        header('Content-Type: application/json');
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Authentication required']);
+            return;
+        }
+
+        echo json_encode([
+            'success' => true,
+            'data' => CompanyContext::getActiveCompany(),
+        ]);
+    }
+
+    /** POST /api/companies/active — switch session company */
+    public function setActive(): void
+    {
+        header('Content-Type: application/json');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Authentication required']);
+            return;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $companyId = isset($input['company_id']) ? (int)$input['company_id'] : 0;
+        if ($companyId <= 0) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Valid company_id is required']);
+            return;
+        }
+
+        $company = $this->companyRepository->findById($companyId);
+        if (!$company || ($company->status ?? '') !== 'active') {
+            http_response_code(404);
+            echo json_encode(['error' => 'Company not found or inactive']);
+            return;
+        }
+
+        CompanyContext::setActiveCompanyId($companyId);
+        $_SESSION['active_company_name'] = $company->name;
+        $_SESSION['active_company_code'] = $company->code;
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Company switched successfully',
+            'data' => CompanyContext::getActiveCompany(),
+        ]);
     }
 }
 

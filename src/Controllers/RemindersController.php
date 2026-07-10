@@ -62,68 +62,37 @@ class RemindersController
         }
 
         $projectRoot = dirname(__DIR__, 2);
-        $scriptPath = null;
-        // Default Windows BusyPayBot locations (used if env vars not set)
-        $defaults = [
-            'jld_minerals' => 'C:/BusyPayBot/JLD Minerals Private Limited/main.py',
-            'jaichand' => 'C:/BusyPayBot/Jaichand Lal Daga/main.py',
-        ];
-        if ($company === 'jld_minerals') {
-            if (!empty($_ENV['REMINDERS_SCRIPT_JLD_MINERALS'])) {
-                $scriptPath = $_ENV['REMINDERS_SCRIPT_JLD_MINERALS'];
-            } else {
-                $scriptPath = $defaults['jld_minerals'];
-            }
-        } elseif ($company === 'jaichand') {
-            if (!empty($_ENV['REMINDERS_SCRIPT_JAICHAND'])) {
-                $scriptPath = $_ENV['REMINDERS_SCRIPT_JAICHAND'];
-            } else {
-                $scriptPath = $defaults['jaichand'];
-            }
-        }
-        if ($scriptPath === null || $scriptPath === '') {
-            // Fallback: single default script (e.g. send_reminders.py or one BusyPayBot instance)
-            $scriptPath = $_ENV['REMINDERS_SCRIPT'] ?? ($projectRoot . '/scripts/send_reminders.py');
-        }
-        if ($scriptPath !== '' && $scriptPath[0] !== '/' && !preg_match('#^[A-Za-z]:#', $scriptPath)) {
-            $scriptPath = $projectRoot . '/' . $scriptPath;
-        }
-        $pythonBin = $_ENV['PYTHON_PATH'] ?? 'python';
+        $candidates = $this->buildScriptCandidates($projectRoot, $company);
+        $scriptPath = $this->resolveExistingScript($candidates);
+        $pythonBin = $this->envValue('PYTHON_PATH') ?? 'python';
 
-        if (!is_file($scriptPath)) {
+        if ($scriptPath === null) {
             if ($csvPath && is_file($csvPath)) {
                 @unlink($csvPath);
             }
+            $tried = implode('; ', $candidates);
             echo json_encode([
                 'success' => false,
-                'error' => 'Reminders script not found. Set REMINDERS_SCRIPT in .env to your script path (e.g. scripts/send_reminders.py).',
-                'path_checked' => $scriptPath,
+                'error' => 'Reminders script not found. Set REMINDERS_SCRIPT_JLD_MINERALS / REMINDERS_SCRIPT_JAICHAND '
+                    . '(or REMINDERS_SCRIPT) in .env to a path that exists on this server. Tried: ' . $tried,
+                'paths_tried' => $candidates,
             ]);
             return;
         }
-
-        $scriptPath = realpath($scriptPath);
         $baseDir = dirname($scriptPath);
-        $args = $csvPath ? ' ' . escapeshellarg($csvPath) : '';
-        $cmd = sprintf(
-            '%s %s%s 2>&1',
-            escapeshellcmd($pythonBin),
-            escapeshellarg($scriptPath),
-            $args
-        );
+        // Use argument-array form to avoid shell quoting issues (especially on Linux servers).
+        // Also run python unbuffered (-u) so output is visible in the UI.
+        $cmd = [$pythonBin, '-u', $scriptPath];
+        if ($csvPath) {
+            $cmd[] = $csvPath;
+        }
 
         $descriptorSpec = [
             0 => ['pipe', 'r'],
             1 => ['pipe', 'w'],
             2 => ['pipe', 'w'],
         ];
-        $proc = proc_open(
-            $cmd,
-            $descriptorSpec,
-            $pipes,
-            $baseDir ?: null,
-            null
-        );
+        $proc = proc_open($cmd, $descriptorSpec, $pipes, $baseDir ?: null, null);
 
         if (!is_resource($proc)) {
             if ($csvPath && is_file($csvPath)) {
@@ -144,16 +113,106 @@ class RemindersController
             @unlink($csvPath);
         }
 
-        $output = trim($stdout);
-        if ($stderr) {
-            $output .= "\n" . trim($stderr);
+        $stdout = (string) $stdout;
+        $stderr = (string) $stderr;
+        $combined = trim($stdout);
+        if (trim($stderr) !== '') {
+            $combined .= ($combined !== '' ? "\n\n" : '') . trim($stderr);
         }
 
         echo json_encode([
             'success' => ($exitCode === 0),
             'exit_code' => $exitCode,
-            'output' => $output ?: '(no output)',
+            'output' => $combined !== '' ? $combined : '(no output)',
+            'stdout_len' => strlen($stdout),
+            'stderr_len' => strlen($stderr),
             'used_csv' => $csvPath !== null,
         ]);
+    }
+
+    /** @return list<string> */
+    private function buildScriptCandidates(string $projectRoot, string $company): array
+    {
+        $bundled = $projectRoot . DIRECTORY_SEPARATOR . 'scripts' . DIRECTORY_SEPARATOR . 'send_reminders.py';
+        $defaults = [
+            'jld_minerals' => [
+                $projectRoot . '/busypaybot/jld-minerals/main.py',
+                '/var/www/busypaybot/jld-minerals/main.py',
+            ],
+            'jaichand' => [
+                $projectRoot . '/busypaybot/jaichand/main.py',
+                '/var/www/busypaybot/jaichand/main.py',
+            ],
+        ];
+        if (PHP_OS_FAMILY === 'Windows') {
+            array_unshift(
+                $defaults['jld_minerals'],
+                'C:/BusyPayBot/JLD Minerals Private Limited/main.py'
+            );
+            array_unshift(
+                $defaults['jaichand'],
+                'C:/BusyPayBot/Jaichand Lal Daga/main.py'
+            );
+        }
+
+        $candidates = [];
+        if ($company === 'jld_minerals') {
+            $env = $this->envValue('REMINDERS_SCRIPT_JLD_MINERALS');
+            if ($env !== null) {
+                $candidates[] = $env;
+            }
+            $candidates = array_merge($candidates, $defaults['jld_minerals']);
+        } elseif ($company === 'jaichand') {
+            $env = $this->envValue('REMINDERS_SCRIPT_JAICHAND');
+            if ($env !== null) {
+                $candidates[] = $env;
+            }
+            $candidates = array_merge($candidates, $defaults['jaichand']);
+        }
+
+        $fallback = $this->envValue('REMINDERS_SCRIPT');
+        if ($fallback !== null) {
+            $candidates[] = $fallback;
+        }
+        $candidates[] = $bundled;
+
+        $resolved = [];
+        foreach ($candidates as $path) {
+            $path = trim($path);
+            if ($path === '') {
+                continue;
+            }
+            if ($path[0] !== '/' && !preg_match('#^[A-Za-z]:[/\\\\]#', $path)) {
+                $path = $projectRoot . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
+            }
+            $resolved[] = $path;
+        }
+
+        return array_values(array_unique($resolved));
+    }
+
+    /** @param list<string> $candidates */
+    private function resolveExistingScript(array $candidates): ?string
+    {
+        foreach ($candidates as $path) {
+            $normalized = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
+            if (!is_file($normalized)) {
+                continue;
+            }
+            $real = realpath($normalized);
+            return $real !== false ? $real : $normalized;
+        }
+
+        return null;
+    }
+
+    private function envValue(string $key): ?string
+    {
+        $value = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
+        if ($value === false || $value === null) {
+            return null;
+        }
+        $value = trim((string) $value);
+        return $value === '' ? null : $value;
     }
 }

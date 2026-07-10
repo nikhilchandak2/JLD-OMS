@@ -26,7 +26,7 @@ class PartyController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm', 'sales', 'marketing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;
@@ -51,7 +51,7 @@ class PartyController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm', 'sales', 'marketing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;
@@ -88,7 +88,7 @@ class PartyController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm', 'sales', 'marketing', 'order_processing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;
@@ -102,6 +102,7 @@ class PartyController
             $party = new Party();
             $party->name = trim($input['name'] ?? '');
             $party->contactPerson = trim($input['contact_person'] ?? '');
+            $party->gstNumber = Party::normalizeGstNumber($input['gst_number'] ?? $input['gst_no'] ?? '');
             $party->phone = trim($input['phone'] ?? '');
             $party->email = trim($input['email'] ?? '');
             $party->address = trim($input['address'] ?? '');
@@ -111,7 +112,7 @@ class PartyController
             $errors = $party->validate();
             if (!empty($errors)) {
                 http_response_code(400);
-                echo json_encode(['error' => 'Validation failed', 'details' => $errors]);
+                echo json_encode(['error' => $errors[0], 'details' => $errors]);
                 return;
             }
             
@@ -120,6 +121,13 @@ class PartyController
             if ($existing) {
                 http_response_code(400);
                 echo json_encode(['error' => 'Party with this name already exists']);
+                return;
+            }
+
+            $existingGst = $this->partyRepository->findByGstNumber($party->gstNumber);
+            if ($existingGst) {
+                http_response_code(400);
+                echo json_encode(['error' => 'GST already exists']);
                 return;
             }
             
@@ -165,6 +173,14 @@ class PartyController
                 'message' => 'Party created successfully',
                 'data' => $newParty->toArray()
             ]);
+        } catch (\PDOException $e) {
+            if ((int)($e->errorInfo[1] ?? 0) === 1062) {
+                http_response_code(400);
+                echo json_encode(['error' => 'GST already exists']);
+                return;
+            }
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
         } catch (\Exception $e) {
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
@@ -183,7 +199,7 @@ class PartyController
         
         // Check permissions - allow both entry and admin users
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm', 'sales', 'marketing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;
@@ -225,19 +241,17 @@ class PartyController
             if (isset($input['contact_person'])) {
                 $updateData['contact_person'] = trim($input['contact_person']);
             }
+
+            if (isset($input['gst_number']) || isset($input['gst_no'])) {
+                $updateData['gst_number'] = Party::normalizeGstNumber($input['gst_number'] ?? $input['gst_no'] ?? '');
+            }
             
             if (isset($input['phone'])) {
                 $updateData['phone'] = trim($input['phone']);
             }
             
             if (isset($input['email'])) {
-                $email = trim($input['email']);
-                if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Invalid email format']);
-                    return;
-                }
-                $updateData['email'] = $email;
+                $updateData['email'] = trim($input['email']);
             }
             
             if (isset($input['address'])) {
@@ -350,6 +364,26 @@ class PartyController
                 echo json_encode(['error' => 'No valid fields to update']);
                 return;
             }
+
+            $coreFields = ['name', 'contact_person', 'gst_number', 'phone', 'email'];
+            $touchesCore = !empty(array_intersect(array_keys($updateData), $coreFields));
+            if ($touchesCore) {
+                $candidate = new Party(array_merge($existingParty->toArray(), $updateData));
+                $errors = $candidate->validate();
+                if (!empty($errors)) {
+                    http_response_code(400);
+                    echo json_encode(['error' => $errors[0], 'details' => $errors]);
+                    return;
+                }
+                if (!empty($candidate->gstNumber)) {
+                    $existingGst = $this->partyRepository->findByGstNumber($candidate->gstNumber, $id);
+                    if ($existingGst) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'GST already exists']);
+                        return;
+                    }
+                }
+            }
             
             $updatedParty = $this->partyRepository->update($id, $updateData);
             
@@ -413,7 +447,7 @@ class PartyController
         }
 
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'accounts', 'crm', 'sales', 'marketing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return;

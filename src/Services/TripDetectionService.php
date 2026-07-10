@@ -29,7 +29,13 @@ class TripDetectionService
     }
     
     /**
-     * Process new GPS tracking data and detect trips
+     * Process new GPS tracking data and detect trips.
+     *
+     * Trip lifecycle:
+     * - Start when a point is inside a pit and no trip is in_progress.
+     * - Continue while the vehicle travels (including after pit exit).
+     * - End when a point enters any non-pit geofence while a trip is in_progress.
+     * - The next trip starts only after the previous one has ended and a point is again inside a pit.
      */
     public function processTrackingData(int $vehicleId, $trackingData): void
     {
@@ -64,15 +70,15 @@ class TripDetectionService
         $destinationGeofenceId = $this->findDestinationGeofenceId($containingGeofences);
         $isInPit = $pitGeofenceId !== null;
 
-        // If vehicle is currently in a pit and no active trip exists, start one.
-        if (!$activeTrip && $isInPit) {
-            $this->startTrip($vehicleId, $pitGeofenceId, $trackingData);
+        // Complete first when haul is open and GPS is inside a destination (even if pit polygon overlaps).
+        if ($activeTrip && $destinationGeofenceId !== null) {
+            $this->completeTrip($activeTrip, $destinationGeofenceId, $trackingData);
             return;
         }
 
-        // Complete only when vehicle is inside any non-pit geofence (stockpile/other area).
-        if ($activeTrip && $destinationGeofenceId !== null) {
-            $this->completeTrip($activeTrip, $destinationGeofenceId, $trackingData);
+        // Start when inside a pit and no trip is in progress.
+        if (!$activeTrip && $isInPit) {
+            $this->startTrip($vehicleId, $pitGeofenceId, $trackingData);
         }
     }
 
@@ -215,6 +221,10 @@ class TripDetectionService
                 }
             }
 
+            // Same as live sync: if GPS is inside pit/destination without a fresh boundary cross
+            // (common with dense points or already inside at range start), still evaluate trip state.
+            $this->inferTripStateFromCurrentPosition($vehicleId, $point);
+
             $previousInside = $currentInside;
             $processed++;
         }
@@ -301,14 +311,15 @@ class TripDetectionService
         }
         
         if ($eventType === 'entry' && $this->isPitGeofence($geofence)) {
-            // Daily rule: trip starts on pit entry only when no trip is currently active.
-            if (!$this->hasActiveTripForDate($vehicleId, (string)$trackingData->timestamp)) {
+            if (!$this->getActiveTrip($vehicleId)) {
                 $this->startTrip($vehicleId, $geofenceId, $trackingData);
             }
             return;
         }
 
-        // Trip ends only when vehicle enters any non-pit geofence and a trip is active.
+        // Pit exit and other exits do not end the trip; it continues until destination entry.
+
+        // Trip ends when vehicle enters any non-pit geofence and a trip is active.
         if ($eventType !== 'entry' || !$this->isStockpileGeofence($geofence)) {
             return;
         }
@@ -321,18 +332,14 @@ class TripDetectionService
     }
     
     /**
-     * Start a new trip (vehicle entered pit)
+     * Start a new trip when the vehicle is inside a pit and no trip is in progress.
      */
     private function startTrip(int $vehicleId, int $pitGeofenceId, $trackingData): void
     {
-        // Check if there's an in-progress trip
-        $activeTrip = $this->getActiveTrip($vehicleId);
-        
-        if ($activeTrip) {
-            // Cancel previous trip if exists
-            $this->cancelTrip($activeTrip['id']);
+        if ($this->getActiveTrip($vehicleId)) {
+            return;
         }
-        
+
         // Create new trip
         $sql = "
             INSERT INTO vehicle_trips 
@@ -350,7 +357,7 @@ class TripDetectionService
     }
     
     /**
-     * Complete a trip when vehicle exits the selected destination geofence.
+     * Complete a trip when the vehicle enters a non-pit (destination) geofence.
      */
     private function completeTrip(array $activeTrip, int $destinationGeofenceId, $trackingData): void
     {
@@ -461,24 +468,6 @@ class TripDetectionService
         return $this->database->fetch($sql, [$vehicleId]);
     }
 
-    private function hasActiveTripForDate(int $vehicleId, string $timestamp): bool
-    {
-        try {
-            $date = (new \DateTime($timestamp))->format('Y-m-d');
-        } catch (\Exception $e) {
-            $date = date('Y-m-d');
-        }
-        $sql = "
-            SELECT id
-            FROM vehicle_trips
-            WHERE vehicle_id = ?
-              AND status = 'in_progress'
-              AND DATE(start_time) = ?
-            LIMIT 1
-        ";
-        return $this->database->fetch($sql, [$vehicleId, $date]) !== null;
-    }
-
     private function clearTripAndGeofenceDataForRange(int $vehicleId, string $startTime, string $endTime): array
     {
         $tripIds = $this->database->fetchAll(
@@ -493,6 +482,14 @@ class TripDetectionService
         }
 
         $tripCount = count($tripIds);
+
+        // Drop stale open trips (e.g. started before rebuild range) so replay can start/complete correctly.
+        $staleCancelled = $this->database->execute(
+            "UPDATE vehicle_trips SET status = 'cancelled'
+             WHERE vehicle_id = ? AND status = 'in_progress'",
+            [$vehicleId]
+        );
+
         $this->database->execute(
             "DELETE FROM vehicle_trips WHERE vehicle_id = ? AND start_time BETWEEN ? AND ?",
             [$vehicleId, $startTime, $endTime]
@@ -504,7 +501,8 @@ class TripDetectionService
 
         return [
             'vehicle_trips' => $tripCount,
-            'trip_stoppage_groups' => $deletedStoppages
+            'trip_stoppage_groups' => $deletedStoppages,
+            'stale_in_progress_cancelled' => $staleCancelled,
         ];
     }
 
@@ -516,15 +514,6 @@ class TripDetectionService
             VALUES (?, ?, ?, ?, ?, ?)
         ";
         $this->database->execute($sql, [$vehicleId, $geofenceId, $eventType, $lat, $lon, $timestamp]);
-    }
-    
-    /**
-     * Cancel a trip
-     */
-    private function cancelTrip(int $tripId): void
-    {
-        $sql = "UPDATE vehicle_trips SET status = 'cancelled' WHERE id = ?";
-        $this->database->execute($sql, [$tripId]);
     }
     
     /**

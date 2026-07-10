@@ -38,6 +38,56 @@ class CreditApprovalRepository
         return (int)$this->database->lastInsertId();
     }
 
+    /**
+     * Party-level credit request (no order attached). Raised by sales when
+     * order creation is blocked because the party is over its credit limit.
+     */
+    public function createPartyRequest(
+        int $partyId,
+        float $outstanding,
+        float $creditLimit,
+        ?float $requestedLimitIncrease,
+        ?string $reason,
+        int $requestedBy
+    ): int {
+        $sql = "
+            INSERT INTO credit_approval_requests
+                (order_id, party_id, outstanding, credit_limit, requested_limit_increase, reason, requested_by)
+            VALUES
+                (NULL, ?, ?, ?, ?, ?, ?)
+        ";
+
+        $this->database->execute($sql, [
+            $partyId,
+            $outstanding,
+            $creditLimit,
+            $requestedLimitIncrease,
+            $reason,
+            $requestedBy
+        ]);
+
+        return (int)$this->database->lastInsertId();
+    }
+
+    /** Counts ALL requests (pending/approved/rejected) raised for a party in the given calendar month. */
+    public function countRequestsForPartyInMonth(int $partyId, string $yearMonth): int
+    {
+        $sql = "
+            SELECT COUNT(*) AS cnt
+            FROM credit_approval_requests
+            WHERE party_id = ? AND DATE_FORMAT(requested_at, '%Y-%m') = ?
+        ";
+        $row = $this->database->fetch($sql, [$partyId, $yearMonth]);
+        return (int)($row['cnt'] ?? 0);
+    }
+
+    public function hasPendingForParty(int $partyId): bool
+    {
+        $sql = "SELECT id FROM credit_approval_requests WHERE party_id = ? AND status = 'pending' LIMIT 1";
+        $row = $this->database->fetch($sql, [$partyId]);
+        return (bool)$row;
+    }
+
     public function getForOrder(int $orderId): ?array
     {
         $sql = "SELECT * FROM credit_approval_requests WHERE order_id = ? LIMIT 1";
@@ -47,6 +97,7 @@ class CreditApprovalRepository
 
     public function getPendingApprovals(): array
     {
+        // order_id is optional: party-level requests have no order attached.
         $sql = "
             SELECT
                 car.id,
@@ -54,6 +105,8 @@ class CreditApprovalRepository
                 car.party_id,
                 car.outstanding,
                 car.credit_limit,
+                car.requested_limit_increase,
+                car.reason,
                 car.status,
                 car.requested_at,
                 car.decided_at,
@@ -64,12 +117,18 @@ class CreditApprovalRepository
                 p.name AS party_name,
                 pr.name AS product_name,
                 req.name AS requested_by_name,
-                COALESCE(decider.name, NULL) AS decided_by_name
+                COALESCE(decider.name, NULL) AS decided_by_name,
+                (
+                    SELECT COUNT(*)
+                    FROM credit_approval_requests car2
+                    WHERE car2.party_id = car.party_id
+                      AND DATE_FORMAT(car2.requested_at, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')
+                ) AS requests_this_month
             FROM credit_approval_requests car
-            JOIN orders o ON car.order_id = o.id
-            JOIN companies c ON o.company_id = c.id
+            LEFT JOIN orders o ON car.order_id = o.id
+            LEFT JOIN companies c ON o.company_id = c.id
             JOIN parties p ON car.party_id = p.id
-            JOIN products pr ON o.product_id = pr.id
+            LEFT JOIN products pr ON o.product_id = pr.id
             JOIN users AS req ON car.requested_by = req.id
             LEFT JOIN users AS decider ON car.decided_by = decider.id
             WHERE car.status = 'pending'

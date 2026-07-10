@@ -939,10 +939,42 @@
         <div class="container-fluid">
             <?php
                     $r = $user['role'] ?? '';
-                    $brandHome = ($r === 'admin') ? '/dashboard' : (($r === 'crm') ? '/crm' : (($r === 'accounts') ? '/admin/parties' : (($r === 'operator') ? '/vehicles' : '/orders')));
+                    $roleHomes = [
+                        'admin' => '/dashboard',
+                        'order_processing' => '/orders',
+                        'crm' => '/crm',
+                        'marketing' => '/crm',
+                        'accounts' => '/admin/parties',
+                        'operator' => '/vehicles',
+                        'dispatch' => '/dispatch',
+                        'technical' => '/visit-requests',
+                    ];
+                    $brandHome = $roleHomes[$r] ?? '/orders';
                     ?>
-            <a class="navbar-brand d-flex align-items-center" href="<?= htmlspecialchars($brandHome) ?>">JLD Minerals</a>
+            <a class="navbar-brand d-flex align-items-center" href="<?= htmlspecialchars($brandHome) ?>"><?= htmlspecialchars($active_company['name'] ?? 'JLD Minerals') ?></a>
             <div class="d-flex align-items-center ms-auto">
+                <?php if (!empty($companies_list)): ?>
+                <div class="nav-item dropdown me-2">
+                    <a class="nav-link dropdown-toggle text-primary fw-medium py-1 px-2" href="#" role="button" data-bs-toggle="dropdown" id="companySwitcherBtn" title="Switch company">
+                        <i class="bi bi-building me-1"></i><span class="d-none d-md-inline"><?= htmlspecialchars($active_company['name'] ?? 'Select company') ?></span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" id="companySwitcherMenu">
+                        <?php foreach ($companies_list as $co): ?>
+                        <li>
+                            <a class="dropdown-item company-switch-item <?= (int)($active_company['id'] ?? 0) === (int)$co['id'] ? 'active' : '' ?>"
+                               href="#"
+                               data-company-id="<?= (int)$co['id'] ?>"
+                               onclick="switchCompany(<?= (int)$co['id'] ?>); return false;">
+                                <?= htmlspecialchars($co['name'] ?? '') ?>
+                                <?php if ((int)($active_company['id'] ?? 0) === (int)$co['id']): ?>
+                                <i class="bi bi-check-lg float-end"></i>
+                                <?php endif; ?>
+                            </a>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+                <?php endif; ?>
                 <div class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle text-primary fw-medium" href="#" role="button" data-bs-toggle="dropdown" id="headerUserMenu">
                         <i class="bi bi-person-circle me-1"></i><?= htmlspecialchars($user['name']) ?>
@@ -986,9 +1018,17 @@
                     <?php
                     $r = $user['role'] ?? '';
                     $isAdmin = ($r === 'admin');
-                    $navHome = $isAdmin ? '/dashboard' : (
-                        $r === 'crm' ? '/crm' : ($r === 'accounts' ? '/admin/parties' : ($r === 'operator' ? '/vehicles' : '/orders'))
-                    );
+                    $roleHomes = [
+                        'admin' => '/dashboard',
+                        'order_processing' => '/orders',
+                        'crm' => '/crm',
+                        'marketing' => '/crm',
+                        'accounts' => '/admin/parties',
+                        'operator' => '/vehicles',
+                        'dispatch' => '/dispatch',
+                        'technical' => '/visit-requests',
+                    ];
+                    $navHome = $roleHomes[$r] ?? '/orders';
                     if ($isAdmin): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'dashboard' ? 'active' : '' ?>" href="/dashboard">
@@ -997,36 +1037,55 @@
                     </li>
                     <?php endif; ?>
                     <?php
-                    $canOrders = in_array($r, ['admin', 'order_processing', 'entry', 'view']);
+                    $canOrders = in_array($r, ['admin', 'order_processing', 'entry', 'view', 'sales', 'dispatch']);
+                    $canOrdersAnalytics = in_array($r, ['admin', 'entry', 'view']);
+                    $canDispatchDash = in_array($r, ['admin', 'dispatch', 'order_processing']);
+                    $canVisitRequests = in_array($r, ['admin', 'marketing', 'technical', 'crm']);
                     $canVehicles = in_array($r, ['admin', 'operator']);
                     $canExport = in_array($r, ['admin', 'accounts']);
-                    $canCrm = in_array($r, ['admin', 'crm', 'entry']);
-                    $canPartyMgmt = in_array($r, ['admin', 'accounts', 'entry', 'crm']);
+                    $canCrm = in_array($r, ['admin', 'crm', 'entry', 'sales', 'marketing']);
+                    $canPartyMgmt = in_array($r, ['admin', 'accounts', 'entry', 'crm', 'sales', 'marketing']);
                     $canProducts = in_array($r, ['admin', 'accounts', 'entry']);
                     ?>
-                    <!-- Orders & Dispatches: admin, order_processing, entry, view -->
+                    <!-- Orders & Dispatches -->
                     <?php if ($canOrders): ?>
                     <li class="nav-item mt-3">
                         <small class="text-white-50 text-uppercase px-3">Orders & Dispatches</small>
                     </li>
-                    <?php if (in_array($r, ['admin', 'order_processing', 'entry'])): ?>
+                    <?php if (in_array($r, ['admin', 'order_processing', 'entry', 'sales', 'dispatch'])): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders') === 0 && strpos($_SERVER['REQUEST_URI'], '/orders/analytics') === false && strpos($_SERVER['REQUEST_URI'], '/orders/new') === false ? 'active' : '' ?>" href="/orders">
                             <i class="bi bi-clipboard-check"></i> Orders
                         </a>
                     </li>
+                    <?php if (in_array($r, ['admin', 'order_processing', 'entry', 'sales'])): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders/new') === 0 ? 'active' : '' ?>" href="/orders/new">
+                            <i class="bi bi-plus-circle"></i> New Order
+                        </a>
+                    </li>
                     <?php endif; ?>
+                    <?php if ($canDispatchDash): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/dispatch') === 0 && strpos($_SERVER['REQUEST_URI'], '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
+                            <i class="bi bi-truck-flatbed"></i> Dispatch Dashboard
+                        </a>
+                    </li>
+                    <?php endif; ?>
+                    <?php if ($canOrdersAnalytics): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders/analytics') === 0 ? 'active' : '' ?>" href="/orders/analytics">
                             <i class="bi bi-bar-chart"></i> Orders Analytics
                         </a>
                     </li>
-                    <?php if (in_array($r, ['admin', 'order_processing', 'view'])): ?>
+                    <?php endif; ?>
+                    <?php if (in_array($r, ['admin', 'view'])): ?>
                     <li class="nav-item">
                         <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'reports' ? 'active' : '' ?>" href="/reports">
                             <i class="bi bi-graph-up"></i> Reports
                         </a>
                     </li>
+                    <?php endif; ?>
                     <?php endif; ?>
                     <?php endif; ?>
 
@@ -1092,6 +1151,18 @@
                     <li class="nav-item">
                         <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/crm/funnel') === 0 ? 'active' : '' ?>" href="/crm/funnel">
                             <i class="bi bi-funnel"></i> Funnel
+                        </a>
+                    </li>
+                    <?php endif; ?>
+
+                    <!-- Visit Requests: admin, marketing, technical, crm -->
+                    <?php if ($canVisitRequests): ?>
+                    <li class="nav-item mt-3">
+                        <small class="text-white-50 text-uppercase px-3">Client Visits</small>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/visit-requests') === 0 ? 'active' : '' ?>" href="/visit-requests">
+                            <i class="bi bi-geo-alt-fill"></i> Visit Requests
                         </a>
                     </li>
                     <?php endif; ?>
@@ -1258,6 +1329,18 @@
             } catch (error) {
                 console.error('Logout failed:', error);
                 window.location.href = '/login';
+            }
+        }
+
+        async function switchCompany(companyId) {
+            try {
+                await apiCall('/api/companies/active', {
+                    method: 'POST',
+                    body: JSON.stringify({ company_id: companyId })
+                });
+                window.location.reload();
+            } catch (error) {
+                showError(error.message || 'Failed to switch company');
             }
         }
     </script>

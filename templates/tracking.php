@@ -213,10 +213,13 @@ function initMap() {
     }
 }
 
-function loadTracking() {
+function loadTracking(options = {}) {
+    const syncNow = options.syncNow ? 1 : 0;
+    const pathHours = options.pathHours ?? 24;
+    const pathLimit = options.pathLimit ?? 500;
     const cacheBust = Date.now();
     Promise.all([
-        fetch('/api/tracking/live?sync_now=1&path_hours=24&path_limit=2000&_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json()),
+        fetch('/api/tracking/live?sync_now=' + syncNow + '&path_hours=' + pathHours + '&path_limit=' + pathLimit + '&_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json()),
         fetch('/api/geofences?_=' + cacheBust, { credentials: 'same-origin' }).then(r => r.json())
     ]).then(([trackingRes, geofencesRes]) => {
         if (trackingRes.success) {
@@ -343,7 +346,7 @@ function syncFromWheelsEye() {
                 const msg = data.synced > 0
                     ? 'Synced ' + data.synced + ' vehicle(s). Refreshing map.'
                     : (data.message || 'Sync completed. No new locations matched.');
-                if (data.synced > 0) loadTracking();
+                if (data.synced > 0) loadTracking({ syncNow: false, pathHours: 6, pathLimit: 500 });
                 alert(msg + (data.errors && data.errors.length ? '\n\nNotes: ' + data.errors.join('; ') : ''));
             } else {
                 showError(data.message || data.error || 'Sync failed');
@@ -714,7 +717,8 @@ function getStatusBadgeColor(status) {
 }
 
 function doAutoRefreshCycle() {
-    loadTracking();
+    // Do not sync WheelsEye on every poll — that blocks PHP-FPM and causes 504s site-wide.
+    loadTracking({ syncNow: false, pathHours: 6, pathLimit: 500 });
 }
 
 function toggleAutoRefresh(runImmediate = true) {

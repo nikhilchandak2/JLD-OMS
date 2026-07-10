@@ -62,6 +62,19 @@ $router->group('/api', function($router) {
     $router->post('/gps/webhook', 'GPSFuelWebhookController@receiveGPSData');
     $router->post('/fuel/webhook', 'GPSFuelWebhookController@receiveFuelData');
     $router->post('/gps/batch', 'GPSFuelWebhookController@receiveGPSData'); // Batch endpoint
+    // Providers (e.g. Ashok Leyland iAlert) probe the webhook URL with GET/HEAD before
+    // enabling data forwarding; respond 200 so the endpoint validation passes.
+    $router->get('/gps/webhook', 'GPSFuelWebhookController@webhookHealth');
+    $router->get('/fuel/webhook', 'GPSFuelWebhookController@webhookHealth');
+    $router->get('/gps/batch', 'GPSFuelWebhookController@webhookHealth');
+
+    // Reminders runner endpoints (public; authenticated using REMINDERS_RUNNER_KEY)
+    $router->get('/reminders/jobs/next', 'RemindersJobsController@next');
+    $router->get('/reminders/jobs/{id}/download', 'RemindersJobsController@download');
+    $router->post('/reminders/jobs/{id}/complete', 'RemindersJobsController@complete');
+
+    // Busy invoice webhook (public — API key / IP allowlist)
+    $router->post('/busy/webhook', 'BusyIntegrationController@receiveInvoiceWebhook');
     
     // Protected routes
     $router->group('', function($router) {
@@ -131,8 +144,12 @@ $router->group('/api', function($router) {
         $router->put('/parties/{id}', 'PartyController@update');
         $router->delete('/parties/{id}', 'PartyController@delete');
         
-        // Reminders (Python script) – admin, accounts
+        // Reminders (legacy direct-run) – admin, accounts
         $router->post('/reminders/run', 'RemindersController@run');
+        // Reminders jobs (upload -> offline runner) – admin, accounts
+        $router->post('/reminders/jobs', 'RemindersJobsController@create');
+        $router->get('/reminders/jobs/{id}', 'RemindersJobsController@status');
+        $router->post('/reminders/jobs/{id}/cancel', 'RemindersJobsController@cancel');
         
         // Product management API
         $router->get('/products', 'ProductController@index');
@@ -143,6 +160,8 @@ $router->group('/api', function($router) {
         
         // Company management API
         $router->get('/companies', 'CompanyController@index');
+        $router->get('/companies/active', 'CompanyController@active');
+        $router->post('/companies/active', 'CompanyController@setActive');
         $router->get('/companies/{id}', 'CompanyController@show');
         
         // Orders
@@ -157,7 +176,19 @@ $router->group('/api', function($router) {
         
         // Dispatches
         $router->get('/dispatches', 'DispatchController@index');
+        $router->get('/dispatch/pending', 'DispatchController@pending');
+        $router->get('/dispatches/{id}', 'DispatchController@show');
+        $router->put('/dispatches/{id}', 'DispatchController@update');
         $router->post('/orders/{id}/dispatches', 'DispatchController@create');
+
+        // Party credit status & credit requests (max 2 per party per month)
+        $router->get('/parties/{id}/credit-status', 'CreditRequestController@creditStatus');
+        $router->post('/parties/{id}/credit-requests', 'CreditRequestController@create');
+
+        // Visit requests (marketing -> technical team)
+        $router->get('/visit-requests', 'VisitRequestController@index');
+        $router->post('/visit-requests', 'VisitRequestController@create');
+        $router->put('/visit-requests/{id}', 'VisitRequestController@update');
         
         // Document Generation (OMS – orders/dispatches)
         $router->get('/documents/types', 'DocumentController@getTypes');
@@ -173,8 +204,9 @@ $router->group('/api', function($router) {
         $router->post('/export/dispatch-pack', 'ExportDocumentsController@generateDispatchPack');
         $router->get('/export/download', 'ExportDocumentsController@download');
         
-        // Busy Integration
-        $router->post('/busy/webhook', 'BusyIntegrationController@receiveInvoiceWebhook');
+        // Busy Integration (upload + status — session auth)
+        $router->post('/busy/invoices/upload', 'BusyIntegrationController@uploadInvoicesFromCsv');
+        $router->post('/busy/invoices/import', 'BusyIntegrationController@importInvoice');
         $router->post('/busy/sync', 'BusyIntegrationController@syncInvoices');
         $router->get('/busy/status', 'BusyIntegrationController@getIntegrationStatus');
         
@@ -236,6 +268,8 @@ $router->get('/orders', 'WebController@orders');
 $router->get('/orders/analytics', 'WebController@ordersAnalytics');
 $router->get('/orders/new', 'WebController@newOrder');
 $router->get('/orders/{id}', 'WebController@orderDetail');
+$router->get('/dispatch', 'WebController@dispatchDashboard');
+$router->get('/visit-requests', 'WebController@visitRequests');
 $router->get('/reports', 'WebController@reports');
 $router->get('/admin/users', 'WebController@users');
 $router->get('/admin/credit-approvals', 'WebController@creditApprovalsPage');
@@ -296,17 +330,18 @@ function applySecurityHeaders(): void
 
     $csp = trim((string)($_ENV['SECURITY_CSP'] ?? ''));
     if ($csp === '') {
-        // Compatible default with current external CDNs and inline scripts/styles.
+        // Default CSP: CDNs for Bootstrap/jQuery/Leaflet + HTTPS map tiles/APIs (Geofences, Tracking).
         $csp = "default-src 'self'; "
             . "base-uri 'self'; "
             . "frame-ancestors 'self'; "
             . "object-src 'none'; "
             . "form-action 'self'; "
-            . "img-src 'self' data: https:; "
-            . "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:; "
+            . "img-src 'self' data: blob: https:; "
+            . "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
             . "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
             . "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com; "
-            . "connect-src 'self';";
+            . "connect-src 'self' https:; "
+            . "worker-src 'self' blob:;";
     }
     header('Content-Security-Policy: ' . $csp);
 

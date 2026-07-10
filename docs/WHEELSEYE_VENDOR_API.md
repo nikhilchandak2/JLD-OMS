@@ -38,16 +38,34 @@ When you continue:
 
 The link is a **pull API**: it returns current GPS position for all vehicles on the vendor account. You can get that data into your app in two ways.
 
-### Option 1: Sync from dashboard (recommended)
+### Recommended production architecture
+
+1. **Webhook (primary)** — WheelsEye pushes GPS to `https://oms.jldminerals.com/api/gps/webhook` (real-time, best for trip accuracy).
+2. **CLI systemd backup (secondary)** — Pull `currentLoc` every **2 minutes** without using PHP-FPM:
+   ```bash
+   sudo bash scripts/configure-wheelseye-production.sh
+   ```
+3. **Live Tracking UI** — Reads from the database only; use **Sync from WheelsEye** button for on-demand pull.
+
+**Do not** schedule `curl https://oms.jldminerals.com/api/tracking/sync` — it competes with login/orders and caused 504 timeouts.
+
+In production `.env`:
+```env
+WHEELSEYE_ALLOW_HTTP_SYNC=0
+WHEELSEYE_ALLOW_LIVE_PAGE_SYNC=0
+```
+
+Logged-in **Sync from WheelsEye** still works; only URL/cron HTTP sync is blocked.
+
+### Manual sync from dashboard
 
 1. **Add the vehicle in OMS** (if not already):
    - Go to **Vehicles** → Add vehicle.
    - Set **Vehicle number** exactly as in WheelsEye (e.g. `RJ07GD5241` from the API).
    - Optionally set **GPS Device IMEI** to the device number from the API (e.g. `866992050999441`).
 2. **Trigger a sync** (while logged in):
-   - Open: **https://oms.jldminerals.com/api/tracking/sync** (GET or POST).
-   - Or use: `curl -b "your-cookies" https://oms.jldminerals.com/api/tracking/sync`
-3. The app will call WheelsEye, match vehicles by **vehicle number** or **device IMEI**, and save locations into **Live Tracking**. Refresh the **Live Tracking** page to see the data.
+   - Click **Sync from WheelsEye** on Live Tracking, or open `/api/tracking/sync` while logged in.
+3. The app will call WheelsEye, match vehicles by **vehicle number** or **device IMEI**, and save locations into **Live Tracking**.
 
 ### Option 2: Open the link in a browser
 
@@ -60,17 +78,36 @@ The link is a **pull API**: it returns current GPS position for all vehicles on 
 - Sync matches each API vehicle to an OMS vehicle by **vehicle number** (e.g. `RJ07GD5241`) or by **GPS device IMEI** (e.g. `866992050999441`).
 - If a vehicle appears in the API but not in OMS, add it in Vehicles with the same **Vehicle number** (and optionally the same **GPS Device IMEI**), then run sync again.
 
-### Optional: automate every 5 minutes (recommended)
+### Automate: systemd CLI loop (recommended backup when webhook is active)
 
-Use the dedicated script so sync + trip counting logic runs from server-side cron:
+Runs `auto_sync_wheelseye.php` **outside PHP-FPM** (does not slow the website). Default **120 seconds** when webhook is primary.
 
 ```bash
-# Every 1 minute from 7:00 AM to 6:59 PM
-* 7-18 * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php >> /var/log/wheelseye-sync.log 2>&1
-
-# Final run at 7:00 PM
-0 19 * * * /usr/bin/php /var/www/tracking/scripts/auto_sync_wheelseye.php >> /var/log/wheelseye-sync.log 2>&1
+sed -i 's/\r$//' /var/www/oms/scripts/wheelseye-sync-loop.sh /var/www/oms/scripts/install-wheelseye-systemd.sh /var/www/oms/scripts/configure-wheelseye-production.sh
+chmod +x /var/www/oms/scripts/wheelseye-sync-loop.sh /var/www/oms/scripts/configure-wheelseye-production.sh
+sudo bash scripts/configure-wheelseye-production.sh
 ```
+
+If webhook is unreliable, use 30s CLI-only (never HTTP curl):
+
+```bash
+WHEELSEYE_SYNC_INTERVAL_SECONDS=30 sudo bash scripts/install-wheelseye-systemd.sh
+```
+
+Status / logs:
+
+```bash
+systemctl status oms-wheelseye-sync
+journalctl -u oms-wheelseye-sync -f
+```
+
+### Legacy: cron every 30 seconds (CLI only)
+
+```bash
+sudo bash scripts/install-wheelseye-cron.sh
+```
+
+Do **not** run cron and systemd together. Do **not** use HTTP curl to `/api/tracking/sync`.
 
 This script:
 - Pulls latest data from WheelsEye and saves it to `gps_tracking_data`
@@ -81,25 +118,16 @@ This script:
 Quick checks:
 
 ```bash
-tail -f /var/www/tracking/storage/logs/wheelseye-sync.log
-tail -f /var/log/wheelseye-sync.log
+tail -f /var/www/oms/storage/logs/wheelseye-cron.log
+tail -f /var/www/oms/storage/logs/wheelseye-sync.log
+cat /var/www/oms/storage/last_tracking_sync.json
 ```
 
-If you prefer URL-based cron, this still works:
+### Deprecated: URL-based cron (causes 504s — do not use)
 
-1. In your `.env` on the server, set a secret:  
-   `TRACKING_SYNC_KEY=your-random-secret-string`
-2. Use:
+HTTP sync via `curl .../api/tracking/sync` uses PHP-FPM workers and can block the entire site when run every 30s. Use **CLI systemd** instead (see above).
 
-```bash
-# Every 1 minute from 7:00 AM to 6:59 PM
-* 7-18 * * * curl -s "https://oms.jldminerals.com/api/tracking/sync?key=YOUR_SECRET"
-
-# Final run at 7:00 PM
-0 19 * * * curl -s "https://oms.jldminerals.com/api/tracking/sync?key=YOUR_SECRET"
-```
-
-Then the portal will have fresh locations without manual sync clicks.
+If you must enable for debugging only, set `WHEELSEYE_ALLOW_HTTP_SYNC=1` in `.env` temporarily.
 
 ---
 

@@ -61,6 +61,11 @@ class Router
     
     public function dispatch(string $method, string $uri): void
     {
+        // HEAD requests are served by GET handlers (the web server strips the body).
+        if ($method === 'HEAD') {
+            $method = 'GET';
+        }
+
         // Remove query string
         $uri = parse_url($uri, PHP_URL_PATH);
         

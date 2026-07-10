@@ -5,7 +5,7 @@
             <h1 class="page-title">
                 <i class="bi bi-arrow-left-right me-2"></i>Trips
             </h1>
-            <p class="page-subtitle">Track trips from pit entry to stockpile entry</p>
+            <p class="page-subtitle">Trips start inside a pit, continue after leaving the pit, and end when entering any other geofence</p>
         </div>
     </div>
 </div>

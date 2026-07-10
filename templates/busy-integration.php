@@ -103,14 +103,16 @@ include 'layout.php';
   "invoice_date": "2025-10-03",
   "party_name": "ABC Construction Ltd",
   "product_name": "Sand",
-  "quantity": 5,
-  "vehicle_no": "MH12AB1234",
-  "company_name": "JLD Minerals Pvt. Ltd.",
-  "remarks": "Optional remarks"
+  "quantity": 1,
+  "product_rate": 850.00,
+  "loading_weight_tons": 12.450,
+  "order_no": "JLD-20250001",
+  "company_name": "JLD Minerals Private Limited"
 }</code></pre>
                     <small class="text-muted">
-                        <strong>Required fields:</strong> invoice_no, invoice_date, party_name, product_name, quantity<br>
-                        <strong>Optional fields:</strong> vehicle_no, company_name, remarks
+                        <strong>Required:</strong> invoice_no, invoice_date, party_name, product_name, product_rate (₹/MT)<br>
+                        <strong>Optional:</strong> quantity (trucks, default 1), loading_weight_tons, order_no, company_name<br>
+                        <strong>Dispatch team:</strong> use <a href="/dispatch">Dispatch Dashboard → Upload Busy Invoice</a> for CSV export from Busy.
                     </small>
                 </div>
             </div>
@@ -213,6 +215,8 @@ async function loadIntegrationStatus() {
         const lastWebhook = data.last_30_days.last_webhook;
         document.getElementById('lastWebhook').textContent = lastWebhook ? 
             new Date(lastWebhook).toLocaleDateString() : 'Never';
+
+        renderWebhookLogs(data.recent_logs || []);
             
     } catch (error) {
         console.error('Failed to load integration status:', error);
@@ -221,10 +225,26 @@ async function loadIntegrationStatus() {
 }
 
 async function loadWebhookLogs() {
-    // This would load recent webhook logs from the database
-    // For now, we'll show a placeholder
+    await loadIntegrationStatus();
+}
+
+function renderWebhookLogs(logs) {
     const tbody = document.querySelector('#webhookLogsTable tbody');
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent webhook activity</td></tr>';
+    if (!logs.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent invoice import activity</td></tr>';
+        return;
+    }
+    tbody.innerHTML = logs.map(log => {
+        const statusClass = log.status === 'success' ? 'success' : log.status === 'error' ? 'danger' : 'secondary';
+        return `<tr>
+            <td>${escapeHtml(log.invoice_no || '—')}</td>
+            <td><span class="badge bg-${statusClass}">${escapeHtml(log.status)}</span></td>
+            <td>${log.error_message ? escapeHtml(log.error_message) : '—'}</td>
+            <td>${log.created_at ? new Date(log.created_at).toLocaleString() : '—'}</td>
+            <td>${log.processed_at ? new Date(log.processed_at).toLocaleString() : '—'}</td>
+            <td>—</td>
+        </tr>`;
+    }).join('');
 }
 
 async function syncInvoices() {
@@ -275,8 +295,8 @@ function displaySyncResults(results) {
             const statusClass = detail.status === 'success' ? 'success' : 'danger';
             const statusText = detail.status === 'success' ? 'Success' : 'Error';
             const details = detail.status === 'success' ? 
-                `Order: ${detail.result?.order_no || 'N/A'}` : 
-                detail.error;
+                `Order: ${detail.order_no || detail.result?.order_no || 'N/A'} (${detail.action || detail.result?.action || 'ok'})` : 
+                (detail.error || detail.message);
                 
             html += `
                 <tr>

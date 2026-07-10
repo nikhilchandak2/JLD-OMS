@@ -7,7 +7,7 @@
             </h1>
             <p class="page-subtitle">Manage and track all customer orders</p>
         </div>
-        <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin'])): ?>
+        <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin', 'sales'])): ?>
         <a href="/orders/new" class="btn btn-primary">
             <i class="bi bi-plus-circle me-1"></i> New Order
         </a>
@@ -72,12 +72,11 @@
             <table class="table table-striped" id="ordersTable">
                 <thead>
                     <tr>
-                        <th>Order No.</th>
                         <th>Date</th>
-                        <th>Company</th>
                         <th>Party</th>
                         <th>Product</th>
-                        <th class="text-end">Ordered</th>
+                        <th class="text-end">Trucks</th>
+                        <th class="text-end">Weight (MT)</th>
                         <th class="text-end">Dispatched</th>
                         <th class="text-end">Pending</th>
                         <th>Priority</th>
@@ -196,50 +195,57 @@ async function loadOrders(page = 0) {
     }
 }
 
+function formatOrderCompletion(order) {
+    const ordered = Number(order.order_qty_trucks) || 0;
+    const dispatched = Number(order.total_dispatched) || 0;
+    let pct = ordered > 0 ? Math.round((dispatched / ordered) * 100) : 0;
+    pct = Math.min(100, Math.max(0, pct));
+
+    let barClass = 'bg-warning';
+    if (pct >= 100) {
+        barClass = 'bg-success';
+    } else if (pct > 0) {
+        barClass = 'bg-info';
+    }
+
+    return `
+        <div class="d-flex align-items-center gap-2">
+            <div class="progress flex-grow-1" style="height: 8px; min-width: 64px;">
+                <div class="progress-bar ${barClass}" role="progressbar" style="width: ${pct}%" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <span class="small fw-semibold text-nowrap">${pct}%</span>
+        </div>
+    `;
+}
+
 function updateOrdersTable(orders) {
     const tbody = document.querySelector('#ordersTable tbody');
     
     if (orders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">No orders found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No orders found</td></tr>';
         return;
     }
     
     const rows = orders.map(order => {
         const orderId = Number(order.id) || 0;
-        const safeOrderNo = escapeHtml(order.order_no);
-        const safeCompany = escapeHtml(order.company_name);
         const safeParty = escapeHtml(order.party_name);
         const safeProduct = escapeHtml(order.product_name);
-        const safeOrderNoJs = JSON.stringify(String(order.order_no ?? ''));
+        const recurringBadge = order.is_recurring ? ' <span class="badge bg-info">Recurring</span>' : '';
         return `
         <tr>
-            <td>
-                <strong>${safeOrderNo}</strong>
-                ${order.is_recurring ? '<span class="badge bg-info ms-1">Recurring</span>' : ''}
-            </td>
             <td>${formatDate(order.order_date)}</td>
-            <td><span class="badge bg-primary">${safeCompany}</span></td>
-            <td>${safeParty}</td>
+            <td>${safeParty}${recurringBadge}</td>
             <td>${safeProduct}</td>
             <td class="text-end">${order.order_qty_trucks}</td>
-            <td class="text-end">${order.total_dispatched}</td>
+            <td class="text-end">${order.order_weight_tons != null ? Number(order.order_weight_tons).toLocaleString('en-IN', { maximumFractionDigits: 1 }) : '—'}</td>
+            <td class="text-end">${order.total_dispatched}${order.total_dispatched_weight > 0 ? `<div class="small text-muted">${Number(order.total_dispatched_weight).toLocaleString('en-IN', { maximumFractionDigits: 1 })} MT</div>` : ''}</td>
             <td class="text-end">${order.pending_trucks}</td>
             <td>${formatPriority(order.priority)}</td>
-            <td>${formatStatus(order.status)}</td>
+            <td>${formatOrderCompletion(order)}</td>
             <td>
                 <a href="/orders/${orderId}?return=${encodeURIComponent(window.location.pathname + window.location.search)}" class="btn btn-sm btn-outline-primary">
                     <i class="bi bi-eye"></i> View
                 </a>
-                ${order.status !== 'completed' && '<?= $user["role"] ?>' !== 'view' ? `
-                    <button class="btn btn-sm btn-outline-warning" onclick="editOrder(${orderId})">
-                        <i class="bi bi-pencil"></i> Edit
-                    </button>
-                ` : ''}
-                ${'<?= $user["role"] ?>' === 'admin' && order.total_dispatched === 0 ? `
-                    <button class="btn btn-sm btn-outline-danger" onclick='deleteOrder(${orderId}, ${safeOrderNoJs})'>
-                        <i class="bi bi-trash"></i> Delete
-                    </button>
-                ` : ''}
             </td>
         </tr>
     `;
@@ -308,45 +314,6 @@ async function loadParties() {
         });
     } catch (error) {
         console.error('Failed to load parties:', error);
-    }
-}
-
-function editOrder(orderId) {
-    // This would open a modal or redirect to edit page
-    // For now, just redirect to order detail page
-    window.location.href = `/orders/${orderId}`;
-}
-
-async function deleteOrder(orderId, orderNo) {
-    if (!confirm(`Are you sure you want to delete order "${orderNo}"?\n\nThis action cannot be undone and will only work if the order has no dispatches.`)) {
-        return;
-    }
-    
-    console.log('Attempting to delete order:', orderId); // Debug log
-    
-    try {
-        const response = await fetch(`/api/orders/${orderId}`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRF-Token': csrfToken
-            }
-        });
-        
-        console.log('Delete response status:', response.status); // Debug log
-        console.log('Delete response headers:', response.headers); // Debug log
-        
-        const result = await response.json();
-        console.log('Delete response result:', result); // Debug log
-        
-        if (result.success) {
-            showAlert('Order deleted successfully', 'success');
-            loadOrders(); // Reload the orders list
-        } else {
-            showAlert('Error: ' + result.error, 'danger');
-        }
-    } catch (error) {
-        console.error('Delete error:', error); // Debug log
-        showAlert('Error deleting order: ' + error.message, 'danger');
     }
 }
 

@@ -7,6 +7,7 @@ use App\Repositories\DispatchRepository;
 use App\Repositories\OrderRepository;
 use App\Repositories\CreditApprovalRepository;
 use App\Repositories\ScheduledDeliveryRepository;
+use App\Support\CompanyContext;
 use App\Models\Dispatch;
 
 class DispatchService
@@ -40,6 +41,39 @@ class DispatchService
     {
         return $this->dispatchRepository->count($filters);
     }
+
+    /**
+     * Dispatch dashboard data: pending/partial orders queue + summary cards.
+     */
+    public function getDispatchQueue(): array
+    {
+        $companyId = CompanyContext::getActiveCompanyId();
+        $orders = $this->orderRepository->findDispatchQueue($companyId);
+        $today = $this->dispatchRepository->getDispatchedTodayTotals($companyId);
+
+        $pendingCount = 0;
+        $partialCount = 0;
+        $trucksRemaining = 0;
+        foreach ($orders as $row) {
+            if (($row['status'] ?? '') === 'partial') {
+                $partialCount++;
+            } else {
+                $pendingCount++;
+            }
+            $trucksRemaining += (int)($row['remaining_trucks'] ?? 0);
+        }
+
+        return [
+            'summary' => [
+                'pending_orders' => $pendingCount,
+                'partial_orders' => $partialCount,
+                'trucks_remaining' => $trucksRemaining,
+                'dispatched_today_trucks' => $today['trucks'],
+                'dispatched_today_count' => $today['dispatch_count'],
+            ],
+            'orders' => $orders,
+        ];
+    }
     
     public function createDispatch(array $data): Dispatch
     {
@@ -70,8 +104,13 @@ class DispatchService
         $dispatch->orderId = $data['order_id'];
         $dispatch->dispatchDate = $data['dispatch_date'];
         $dispatch->dispatchQtyTrucks = $data['dispatch_qty_trucks'];
-        $dispatch->vehicleNo = $data['vehicle_no'];
-        $dispatch->remarks = $data['remarks'];
+        $dispatch->productRate = isset($data['product_rate']) ? (float)$data['product_rate'] : null;
+        $dispatch->loadingWeightTons = isset($data['loading_weight_tons']) && $data['loading_weight_tons'] !== ''
+            ? (float)$data['loading_weight_tons']
+            : null;
+        $dispatch->busyInvoiceNo = !empty($data['busy_invoice_no']) ? (string)$data['busy_invoice_no'] : null;
+        $dispatch->vehicleNo = $data['vehicle_no'] ?? null;
+        $dispatch->remarks = $data['remarks'] ?? null;
         $dispatch->dispatchedBy = $data['dispatched_by'];
         
         // Validate dispatch data
@@ -144,7 +183,17 @@ class DispatchService
         if (isset($data['dispatch_qty_trucks'])) {
             $dispatch->dispatchQtyTrucks = $data['dispatch_qty_trucks'];
         }
-        
+
+        if (isset($data['product_rate'])) {
+            $dispatch->productRate = (float)$data['product_rate'];
+        }
+
+        if (array_key_exists('loading_weight_tons', $data)) {
+            $dispatch->loadingWeightTons = $data['loading_weight_tons'] !== null && $data['loading_weight_tons'] !== ''
+                ? (float)$data['loading_weight_tons']
+                : null;
+        }
+
         if (isset($data['vehicle_no'])) {
             $dispatch->vehicleNo = $data['vehicle_no'];
         }

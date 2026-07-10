@@ -29,20 +29,21 @@
     <p>Loading analytics data...</p>
 </div>
 
-<!-- Company-wise Summary -->
+<!-- Client-wise Summary (for selected company in header) -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-building me-2"></i>Company-wise Summary
+                <i class="bi bi-people me-2"></i>Client-wise Summary
             </div>
             <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-striped" id="companyTotalsTable">
                         <thead>
                             <tr>
-                                <th>Company</th>
-                                <th class="text-end">Total Orders</th>
+                                <th>Client</th>
+                                <th>Orders</th>
+                                <th class="text-end">Order Count</th>
                                 <th class="text-end">Ordered Trucks</th>
                                 <th class="text-end">Dispatched Trucks</th>
                                 <th class="text-end">Pending Trucks</th>
@@ -61,7 +62,7 @@
 
 <!-- Product Totals -->
 <div class="row mb-4">
-    <div class="col-md-8">
+    <div class="col-12">
         <div class="card">
             <div class="card-header">
                 <i class="bi bi-bar-chart me-2"></i>Product-wise Totals
@@ -82,17 +83,6 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="bi bi-graph-up"></i> 6-Month Trend</h5>
-            </div>
-            <div class="card-body">
-                <canvas id="trendChart" width="400" height="200"></canvas>
             </div>
         </div>
     </div>
@@ -128,7 +118,6 @@
 </div>
 
 <script>
-let trendChart = null;
 
 async function loadAnalytics() {
     const startDate = document.getElementById('startDate').value;
@@ -154,7 +143,6 @@ async function loadAnalytics() {
         // Update UI
         updateCompanyTotals(dashboardData.data.company_totals || []);
         updateProductTotals(dashboardData.data.product_totals);
-        updateTrendChart(dashboardData.data.trend_data);
         
         // Load recent activity
         await loadRecentActivity();
@@ -166,27 +154,33 @@ async function loadAnalytics() {
     }
 }
 
-function updateCompanyTotals(companyTotals) {
+function updateCompanyTotals(partyTotals) {
     const tbody = document.querySelector('#companyTotalsTable tbody');
     
-    if (companyTotals.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No data available for selected period</td></tr>';
+    if (partyTotals.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No client orders for the selected company and period</td></tr>';
         return;
     }
     
-    const rows = companyTotals.map(company => {
-        const completionRate = company.total_ordered > 0 ? ((company.total_dispatched / company.total_ordered) * 100).toFixed(1) : 0;
-        const pendingTrucks = company.total_ordered - company.total_dispatched;
+    const rows = partyTotals.map(row => {
+        const totalOrdered = Number(row.total_ordered) || 0;
+        const totalDispatched = Number(row.total_dispatched) || 0;
+        const completionRate = totalOrdered > 0 ? ((totalDispatched / totalOrdered) * 100).toFixed(1) : 0;
+        const pendingTrucks = totalOrdered - totalDispatched;
+        const orderNos = (row.order_numbers || '').split(',').map(s => s.trim()).filter(Boolean);
+        const ordersHtml = orderNos.length
+            ? orderNos.map(no => `<span class="badge bg-light text-dark border me-1 mb-1">${escapeHtml(no)}</span>`).join('')
+            : '<span class="text-muted">—</span>';
         
         return `
             <tr>
                 <td>
-                    <span class="badge bg-primary">${company.name}</span>
-                    <small class="text-muted d-block">${company.code}</small>
+                    <span class="fw-semibold">${escapeHtml(row.party_name)}</span>
                 </td>
-                <td class="text-end">${company.total_orders}</td>
-                <td class="text-end">${company.total_ordered}</td>
-                <td class="text-end">${company.total_dispatched}</td>
+                <td>${ordersHtml}</td>
+                <td class="text-end">${row.total_orders}</td>
+                <td class="text-end">${totalOrdered}</td>
+                <td class="text-end">${totalDispatched}</td>
                 <td class="text-end">${pendingTrucks}</td>
                 <td class="text-end">
                     <div class="d-flex align-items-center justify-content-end">
@@ -241,40 +235,6 @@ function updateProductTotals(productTotals) {
     `;
     
     tbody.innerHTML = rows + totalRow;
-}
-
-function updateTrendChart(trendData) {
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    
-    if (trendChart) {
-        trendChart.destroy();
-    }
-    
-    const labels = trendData.map(item => item.month);
-    const data = trendData.map(item => parseInt(item.trucks_ordered));
-    
-    trendChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Trucks Ordered',
-                data: data,
-                borderColor: 'rgb(75, 192, 192)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                tension: 0.1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
 }
 
 async function loadRecentActivity() {

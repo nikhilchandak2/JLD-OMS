@@ -11,9 +11,7 @@ git pull
 echo "=== Deploy: composer install ==="
 composer install --no-dev --optimize-autoloader
 
-echo "=== Deploy: run migrations ==="
-for n in 006 007 008 009 010 011 012 013 018 019 020; do
-  php scripts/run_migration.php $n 2>/dev/null || true
-done
+echo "=== Deploy: run all migrations ==="
+php scripts/migrate.php
 
 echo "=== Deploy done. ==="

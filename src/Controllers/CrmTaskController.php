@@ -26,7 +26,7 @@ class CrmTaskController
     {
         header('Content-Type: application/json');
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['admin', 'crm', 'entry'])) {
+        if (!$user || !$this->authService->hasAnyRole(['admin', 'crm', 'entry', 'sales', 'marketing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'CRM access required']);
             return;
@@ -146,7 +146,7 @@ class CrmTaskController
         }
 
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['admin', 'crm', 'entry'])) {
+        if (!$user || !$this->authService->hasAnyRole(['admin', 'crm', 'entry', 'sales', 'marketing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'CRM access required']);
             return;

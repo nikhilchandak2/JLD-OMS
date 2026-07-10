@@ -14,6 +14,8 @@ use App\Models\ScheduledDelivery;
 
 class OrderService
 {
+    public const MAX_CREDIT_REQUESTS_PER_MONTH = 2;
+
     private Database $database;
     private OrderRepository $orderRepository;
     private DispatchRepository $dispatchRepository;
@@ -51,9 +53,55 @@ class OrderService
         
         if ($order) {
             $order->dispatches = $this->dispatchRepository->findByOrderId($order->id);
+            $this->enrichOrderWeightTotals($order);
         }
         
         return $order;
+    }
+
+    private function enrichOrderWeightTotals(Order $order): void
+    {
+        $totalWeight = 0.0;
+        foreach ($order->dispatches as $dispatch) {
+            if ($dispatch->loadingWeightTons !== null && $dispatch->loadingWeightTons > 0) {
+                $totalWeight += $dispatch->loadingWeightTons;
+            }
+        }
+        $order->totalDispatchedWeight = round($totalWeight, 3);
+        $planned = (float)($order->orderWeightTons ?? 0);
+        $order->pendingWeightTons = max(0, round($planned - $totalWeight, 3));
+    }
+
+    public static function resolveOrderQuantities(array $data): array
+    {
+        $mode = strtolower(trim((string)($data['order_qty_mode'] ?? 'trucks')));
+        if (!in_array($mode, ['trucks', 'weight'], true)) {
+            $mode = 'trucks';
+        }
+
+        $tonsPerTruck = isset($data['tons_per_truck']) ? (float)$data['tons_per_truck'] : 40.0;
+        if ($tonsPerTruck <= 0) {
+            $tonsPerTruck = 40.0;
+        }
+
+        if ($mode === 'weight') {
+            $weight = (float)($data['order_weight_tons'] ?? 0);
+            $trucks = max(1, (int)ceil($weight / $tonsPerTruck));
+            return [
+                'order_qty_mode' => 'weight',
+                'order_qty_trucks' => $trucks,
+                'order_weight_tons' => round($weight, 3),
+                'tons_per_truck' => $tonsPerTruck,
+            ];
+        }
+
+        $trucks = (int)($data['order_qty_trucks'] ?? 0);
+        return [
+            'order_qty_mode' => 'trucks',
+            'order_qty_trucks' => $trucks,
+            'order_weight_tons' => round($trucks * $tonsPerTruck, 3),
+            'tons_per_truck' => $tonsPerTruck,
+        ];
     }
     
     public function getOrdersCount(array $filters = []): int
@@ -83,22 +131,37 @@ class OrderService
         }
         $partyId = (int)$data['party_id'];
 
+        // Hard credit gate: over-limit parties cannot get new orders (admin can override).
+        // Sales must raise a party-level credit request (max 2 per party per month) and get
+        // admin approval (which raises the credit limit) before the order can be created.
         $creditInfo = $this->getCreditLimitAndOutstanding($partyId);
-        $requiresApproval = false;
-        if ($creditInfo && $creditInfo['outstanding'] > $creditInfo['credit_limit']) {
-            $requiresApproval = true;
+        if ($creditInfo && $creditInfo['outstanding'] > $creditInfo['credit_limit'] && $createdByRole !== 'admin') {
+            $status = $this->getPartyCreditStatus($partyId);
+            throw new CreditLimitExceededException(
+                sprintf(
+                    'Order blocked: party outstanding (%.2f) exceeds credit limit (%.2f). ' .
+                    'Raise a credit request for admin approval (%d of %d used this month).',
+                    $creditInfo['outstanding'],
+                    $creditInfo['credit_limit'],
+                    $status['requests_used_this_month'],
+                    self::MAX_CREDIT_REQUESTS_PER_MONTH
+                ),
+                $status
+            );
         }
-
-        // Create an approval request whenever the party is over credit.
-        // Once the admin approves and increases credit limit, future orders won't require approval until limit is breached again.
-        $shouldCreateApprovalRequest = $requiresApproval;
         
         $order = new Order();
         $order->companyId = $data['company_id'];
         $order->orderNo = $this->orderRepository->generateOrderNumber();
         $order->orderDate = $data['order_date'];
         $order->productId = $data['product_id'];
-        $order->orderQtyTrucks = $data['order_qty_trucks'];
+
+        $qty = self::resolveOrderQuantities($data);
+        $order->orderQtyTrucks = $qty['order_qty_trucks'];
+        $order->orderQtyMode = $qty['order_qty_mode'];
+        $order->orderWeightTons = $qty['order_weight_tons'];
+        $order->tonsPerTruck = $qty['tons_per_truck'];
+
         $order->partyId = $data['party_id'];
         $order->priority = $data['priority'] ?? 'normal';
         $order->isRecurring = (bool)($data['is_recurring'] ?? false);
@@ -119,29 +182,6 @@ class OrderService
             
             $orderId = $this->orderRepository->create($order);
             $order->id = $orderId;
-
-            if ($shouldCreateApprovalRequest) {
-                $approvalId = $this->creditApprovalRepository->createRequest(
-                    $orderId,
-                    $partyId,
-                    (float)$creditInfo['outstanding'],
-                    (float)$creditInfo['credit_limit'],
-                    (int)$data['created_by']
-                );
-
-                $this->logAuditEvent(
-                    (int)$data['created_by'],
-                    'credit_approval_requests',
-                    $approvalId,
-                    'CREATE',
-                    null,
-                    [
-                        'order_id' => $orderId,
-                        'party_id' => $partyId,
-                        'status' => 'pending'
-                    ]
-                );
-            }
             
             // Create scheduled deliveries if this is a recurring order
             if ($order->isRecurring) {
@@ -177,13 +217,6 @@ class OrderService
             throw new \Exception("Order cannot be edited - it is completed");
         }
         
-        // If updating quantity, ensure it's not less than dispatched
-        if (isset($data['order_qty_trucks'])) {
-            if (!$order->canReduceQuantity($data['order_qty_trucks'])) {
-                throw new \Exception("Cannot reduce order quantity below dispatched quantity ({$order->totalDispatched})");
-            }
-        }
-        
         // Validate references if provided
         if (isset($data['product_id'])) {
             $this->validateProductExists($data['product_id']);
@@ -202,12 +235,28 @@ class OrderService
             $order->productId = $data['product_id'];
         }
         
-        if (isset($data['order_qty_trucks'])) {
-            $order->orderQtyTrucks = $data['order_qty_trucks'];
-        }
-        
         if (isset($data['party_id'])) {
             $order->partyId = $data['party_id'];
+        }
+
+        if (isset($data['priority'])) {
+            $order->priority = $data['priority'];
+        }
+
+        if (isset($data['order_qty_mode']) || isset($data['order_qty_trucks']) || isset($data['order_weight_tons']) || isset($data['tons_per_truck'])) {
+            $qty = self::resolveOrderQuantities([
+                'order_qty_mode' => $data['order_qty_mode'] ?? $order->orderQtyMode,
+                'order_qty_trucks' => $data['order_qty_trucks'] ?? $order->orderQtyTrucks,
+                'order_weight_tons' => $data['order_weight_tons'] ?? $order->orderWeightTons,
+                'tons_per_truck' => $data['tons_per_truck'] ?? $order->tonsPerTruck,
+            ]);
+            if (!$order->canReduceQuantity($qty['order_qty_trucks'])) {
+                throw new \Exception("Cannot reduce order quantity below dispatched quantity ({$order->totalDispatched})");
+            }
+            $order->orderQtyMode = $qty['order_qty_mode'];
+            $order->orderQtyTrucks = $qty['order_qty_trucks'];
+            $order->orderWeightTons = $qty['order_weight_tons'];
+            $order->tonsPerTruck = $qty['tons_per_truck'];
         }
         
         try {
@@ -278,6 +327,87 @@ class OrderService
             'credit_limit' => (float)$party->creditLimit,
             'outstanding' => (float)$outstanding
         ];
+    }
+
+    /**
+     * Credit snapshot for a party, including monthly credit-request quota usage.
+     * credit_limit/outstanding are null when the party has no credit limit configured.
+     */
+    public function getPartyCreditStatus(int $partyId): array
+    {
+        $party = $this->partyRepository->findById($partyId);
+        if (!$party) {
+            throw new \Exception("Party not found");
+        }
+
+        $creditInfo = $this->getCreditLimitAndOutstanding($partyId);
+        $yearMonth = date('Y-m');
+        $requestsUsed = $this->creditApprovalRepository->countRequestsForPartyInMonth($partyId, $yearMonth);
+        $requestsRemaining = max(0, self::MAX_CREDIT_REQUESTS_PER_MONTH - $requestsUsed);
+
+        return [
+            'party_id' => $partyId,
+            'party_name' => $party->name,
+            'has_credit_limit' => $creditInfo !== null,
+            'credit_limit' => $creditInfo['credit_limit'] ?? null,
+            'outstanding' => $creditInfo !== null
+                ? $creditInfo['outstanding']
+                : (float)$this->receivableEntryRepository->getOutstandingForParty($partyId),
+            'over_limit' => $creditInfo !== null && $creditInfo['outstanding'] > $creditInfo['credit_limit'],
+            'requests_used_this_month' => $requestsUsed,
+            'requests_remaining_this_month' => $requestsRemaining,
+            'max_requests_per_month' => self::MAX_CREDIT_REQUESTS_PER_MONTH,
+            'has_pending_request' => $this->creditApprovalRepository->hasPendingForParty($partyId),
+        ];
+    }
+
+    /**
+     * Sales raises a party-level credit request. Enforces max 2 requests per party
+     * per calendar month (all statuses count) and no duplicate pending requests.
+     */
+    public function createPartyCreditRequest(
+        int $partyId,
+        int $requestedBy,
+        ?float $requestedLimitIncrease,
+        ?string $reason
+    ): array {
+        $status = $this->getPartyCreditStatus($partyId);
+
+        if ($status['has_pending_request']) {
+            throw new \Exception('A credit request for this party is already pending admin decision.');
+        }
+
+        if ($status['requests_used_this_month'] >= self::MAX_CREDIT_REQUESTS_PER_MONTH) {
+            throw new \Exception(sprintf(
+                'Credit request limit reached: only %d requests per party per month are allowed. Try again next month.',
+                self::MAX_CREDIT_REQUESTS_PER_MONTH
+            ));
+        }
+
+        $requestId = $this->creditApprovalRepository->createPartyRequest(
+            $partyId,
+            (float)$status['outstanding'],
+            (float)($status['credit_limit'] ?? 0),
+            $requestedLimitIncrease,
+            $reason,
+            $requestedBy
+        );
+
+        $this->logAuditEvent(
+            $requestedBy,
+            'credit_approval_requests',
+            $requestId,
+            'CREATE',
+            null,
+            [
+                'party_id' => $partyId,
+                'requested_limit_increase' => $requestedLimitIncrease,
+                'reason' => $reason,
+                'status' => 'pending'
+            ]
+        );
+
+        return array_merge($this->getPartyCreditStatus($partyId), ['request_id' => $requestId]);
     }
 
     public function getCreditApprovalForOrder(int $orderId): ?array

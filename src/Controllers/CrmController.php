@@ -18,7 +18,7 @@ class CrmController
     private function requireCrmAccess(): bool
     {
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'crm'])) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'crm', 'sales', 'marketing'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Entry or Admin access required']);
             return false;

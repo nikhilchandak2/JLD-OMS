@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Core\Database;
+use App\Support\CompanyContext;
 
 class AnalyticsController
 {
@@ -144,8 +145,34 @@ class AnalyticsController
         }
     }
     
+    private function activeCompanyId(): ?int
+    {
+        return CompanyContext::getActiveCompanyId();
+    }
+
+    /** @return array{0:string,1:array} SQL fragment and params for orders alias */
+    private function ordersCompanyFilter(string $alias = 'o'): array
+    {
+        $id = $this->activeCompanyId();
+        if ($id === null) {
+            return ['', []];
+        }
+        return [" AND {$alias}.company_id = ?", [$id]];
+    }
+
+    /** @return array{0:string,1:array} SQL fragment via dispatches -> orders */
+    private function dispatchesCompanyFilter(string $dAlias = 'd', string $oAlias = 'o'): array
+    {
+        $id = $this->activeCompanyId();
+        if ($id === null) {
+            return ['', []];
+        }
+        return [" AND {$oAlias}.company_id = ?", [$id]];
+    }
+    
     private function getOrdersSummary(string $startDate, string $endDate): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter();
         $sql = "
             SELECT 
                 COUNT(*) as total_orders,
@@ -153,46 +180,63 @@ class AnalyticsController
                 COUNT(CASE WHEN status IN ('pending', 'partial') THEN 1 END) as pending_orders,
                 SUM(order_qty_trucks) as total_trucks
             FROM orders 
-            WHERE order_date BETWEEN ? AND ?
+            WHERE order_date BETWEEN ? AND ?{$companySql}
         ";
         
-        return $this->database->fetch($sql, [$startDate, $endDate]) ?: [];
+        return $this->database->fetch($sql, array_merge([$startDate, $endDate], $companyParams)) ?: [];
     }
     
     private function getOrdersStatusBreakdown(string $startDate, string $endDate): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter();
         $sql = "
             SELECT status, COUNT(*) as count
             FROM orders 
-            WHERE order_date BETWEEN ? AND ?
+            WHERE order_date BETWEEN ? AND ?{$companySql}
             GROUP BY status
             ORDER BY count DESC
         ";
         
-        return $this->database->fetchAll($sql, [$startDate, $endDate]);
+        return $this->database->fetchAll($sql, array_merge([$startDate, $endDate], $companyParams));
     }
     
     private function getOrdersCompanyBreakdown(string $startDate, string $endDate): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter('o');
         $sql = "
             SELECT c.name as company_name, COUNT(o.id) as count
             FROM orders o
             JOIN companies c ON o.company_id = c.id
-            WHERE o.order_date BETWEEN ? AND ?
+            WHERE o.order_date BETWEEN ? AND ?{$companySql}
             GROUP BY c.id, c.name
             ORDER BY count DESC
         ";
         
-        return $this->database->fetchAll($sql, [$startDate, $endDate]);
+        return $this->database->fetchAll($sql, array_merge([$startDate, $endDate], $companyParams));
     }
     
     private function getDispatchesSummary(string $startDate, string $endDate): array
     {
+        $id = $this->activeCompanyId();
+        if ($id !== null) {
+            $sql = "
+                SELECT 
+                    COUNT(*) as total_dispatches,
+                    SUM(d.dispatch_qty_trucks) as total_trucks,
+                    ROUND(COUNT(*) / GREATEST(DATEDIFF(?, ?), 1), 1) as avg_per_day,
+                    COUNT(DISTINCT d.order_id) as active_orders
+                FROM dispatches d
+                JOIN orders o ON d.order_id = o.id
+                WHERE d.dispatch_date BETWEEN ? AND ? AND o.company_id = ?
+            ";
+            return $this->database->fetch($sql, [$endDate, $startDate, $startDate, $endDate, $id]) ?: [];
+        }
+
         $sql = "
             SELECT 
                 COUNT(*) as total_dispatches,
                 SUM(dispatch_qty_trucks) as total_trucks,
-                ROUND(COUNT(*) / DATEDIFF(?, ?), 1) as avg_per_day,
+                ROUND(COUNT(*) / GREATEST(DATEDIFF(?, ?), 1), 1) as avg_per_day,
                 COUNT(DISTINCT order_id) as active_orders
             FROM dispatches 
             WHERE dispatch_date BETWEEN ? AND ?
@@ -203,21 +247,35 @@ class AnalyticsController
     
     private function getDispatchesCompanyBreakdown(string $startDate, string $endDate): array
     {
+        [$companySql, $companyParams] = $this->dispatchesCompanyFilter();
         $sql = "
             SELECT c.name as company_name, COUNT(d.id) as count
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
             JOIN companies c ON o.company_id = c.id
-            WHERE d.dispatch_date BETWEEN ? AND ?
+            WHERE d.dispatch_date BETWEEN ? AND ?{$companySql}
             GROUP BY c.id, c.name
             ORDER BY count DESC
         ";
         
-        return $this->database->fetchAll($sql, [$startDate, $endDate]);
+        return $this->database->fetchAll($sql, array_merge([$startDate, $endDate], $companyParams));
     }
     
     private function getDispatchesDailyTrend(string $startDate, string $endDate): array
     {
+        $id = $this->activeCompanyId();
+        if ($id !== null) {
+            $sql = "
+                SELECT d.dispatch_date as date, COUNT(*) as count
+                FROM dispatches d
+                JOIN orders o ON d.order_id = o.id
+                WHERE d.dispatch_date BETWEEN ? AND ? AND o.company_id = ?
+                GROUP BY d.dispatch_date
+                ORDER BY d.dispatch_date ASC
+            ";
+            return $this->database->fetchAll($sql, [$startDate, $endDate, $id]);
+        }
+
         $sql = "
             SELECT dispatch_date as date, COUNT(*) as count
             FROM dispatches 
@@ -231,6 +289,7 @@ class AnalyticsController
     
     private function getPendingSummary(): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter('o');
         $sql = "
             SELECT 
                 COUNT(*) as total_pending,
@@ -243,41 +302,44 @@ class AnalyticsController
                 FROM dispatches
                 GROUP BY order_id
             ) d ON o.id = d.order_id
-            WHERE o.status IN ('pending', 'partial')
+            WHERE o.status IN ('pending', 'partial'){$companySql}
         ";
         
-        return $this->database->fetch($sql) ?: [];
+        return $this->database->fetch($sql, $companyParams) ?: [];
     }
     
     private function getPendingPriorityBreakdown(): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter();
         $sql = "
             SELECT priority, COUNT(*) as count
             FROM orders 
-            WHERE status IN ('pending', 'partial')
+            WHERE status IN ('pending', 'partial'){$companySql}
             GROUP BY priority
             ORDER BY count DESC
         ";
         
-        return $this->database->fetchAll($sql);
+        return $this->database->fetchAll($sql, $companyParams);
     }
     
     private function getPendingCompanyBreakdown(): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter('o');
         $sql = "
             SELECT c.name as company_name, COUNT(o.id) as count
             FROM orders o
             JOIN companies c ON o.company_id = c.id
-            WHERE o.status IN ('pending', 'partial')
+            WHERE o.status IN ('pending', 'partial'){$companySql}
             GROUP BY c.id, c.name
             ORDER BY count DESC
         ";
         
-        return $this->database->fetchAll($sql);
+        return $this->database->fetchAll($sql, $companyParams);
     }
     
     private function getUrgentOrders(): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter('o');
         $sql = "
             SELECT o.id, o.order_no, p.name as party_name,
                    (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) as pending_trucks
@@ -288,22 +350,36 @@ class AnalyticsController
                 FROM dispatches
                 GROUP BY order_id
             ) d ON o.id = d.order_id
-            WHERE o.status IN ('pending', 'partial') AND o.priority = 'urgent'
+            WHERE o.status IN ('pending', 'partial') AND o.priority = 'urgent'{$companySql}
             ORDER BY o.order_date ASC
             LIMIT 10
         ";
         
-        return $this->database->fetchAll($sql);
+        return $this->database->fetchAll($sql, $companyParams);
     }
     
     private function getPartiesSummary(string $startDate, string $endDate): array
     {
+        $id = $this->activeCompanyId();
+        if ($id !== null) {
+            $sql = "
+                SELECT 
+                    COUNT(DISTINCT p.id) as total_parties,
+                    COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN p.id END) as active_parties,
+                    COUNT(DISTINCT CASE WHEN o.id IS NULL THEN p.id END) as inactive_parties,
+                    ROUND(COUNT(o.id) / NULLIF(COUNT(DISTINCT p.id), 0), 1) as avg_orders_per_party
+                FROM parties p
+                LEFT JOIN orders o ON p.id = o.party_id AND o.order_date BETWEEN ? AND ? AND o.company_id = ?
+            ";
+            return $this->database->fetch($sql, [$startDate, $endDate, $id]) ?: [];
+        }
+
         $sql = "
             SELECT 
                 COUNT(DISTINCT p.id) as total_parties,
                 COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN p.id END) as active_parties,
                 COUNT(DISTINCT CASE WHEN o.id IS NULL THEN p.id END) as inactive_parties,
-                ROUND(COUNT(o.id) / COUNT(DISTINCT p.id), 1) as avg_orders_per_party
+                ROUND(COUNT(o.id) / NULLIF(COUNT(DISTINCT p.id), 0), 1) as avg_orders_per_party
             FROM parties p
             LEFT JOIN orders o ON p.id = o.party_id AND o.order_date BETWEEN ? AND ?
         ";
@@ -313,6 +389,24 @@ class AnalyticsController
     
     private function getPartiesWithStats(string $startDate, string $endDate): array
     {
+        $id = $this->activeCompanyId();
+        if ($id !== null) {
+            $sql = "
+                SELECT 
+                    p.*,
+                    COUNT(o.id) as total_orders,
+                    COALESCE(SUM(o.order_qty_trucks), 0) as total_trucks,
+                    COUNT(CASE WHEN o.status IN ('pending', 'partial') THEN 1 END) as pending_orders,
+                    MAX(o.order_date) as last_order_date
+                FROM parties p
+                LEFT JOIN orders o ON p.id = o.party_id AND o.company_id = ?
+                GROUP BY p.id
+                HAVING total_orders > 0
+                ORDER BY total_orders DESC, p.name ASC
+            ";
+            return $this->database->fetchAll($sql, [$id]);
+        }
+
         $sql = "
             SELECT 
                 p.*,
@@ -331,6 +425,7 @@ class AnalyticsController
     
     private function getTopPerformingParties(string $startDate, string $endDate): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter('o');
         $sql = "
             SELECT 
                 p.id, p.name,
@@ -339,35 +434,56 @@ class AnalyticsController
                 MAX(o.order_date) as last_order_date
             FROM parties p
             JOIN orders o ON p.id = o.party_id
-            WHERE o.order_date BETWEEN ? AND ?
+            WHERE o.order_date BETWEEN ? AND ?{$companySql}
             GROUP BY p.id, p.name
             HAVING total_orders > 0
             ORDER BY total_orders DESC, total_trucks DESC
             LIMIT 10
         ";
         
-        return $this->database->fetchAll($sql, [$startDate, $endDate]);
+        return $this->database->fetchAll($sql, array_merge([$startDate, $endDate], $companyParams));
     }
     
     private function getTopPartiesByOrders(string $startDate, string $endDate): array
     {
+        [$companySql, $companyParams] = $this->ordersCompanyFilter('o');
         $sql = "
             SELECT 
                 p.name,
                 COUNT(o.id) as total_orders
             FROM parties p
             JOIN orders o ON p.id = o.party_id
-            WHERE o.order_date BETWEEN ? AND ?
+            WHERE o.order_date BETWEEN ? AND ?{$companySql}
             GROUP BY p.id, p.name
             ORDER BY total_orders DESC
             LIMIT 10
         ";
         
-        return $this->database->fetchAll($sql, [$startDate, $endDate]);
+        return $this->database->fetchAll($sql, array_merge([$startDate, $endDate], $companyParams));
     }
     
     private function getPartiesActivityDistribution(): array
     {
+        $id = $this->activeCompanyId();
+        if ($id !== null) {
+            $sql = "
+                SELECT 
+                    SUM(CASE WHEN last_order_days <= 7 THEN 1 ELSE 0 END) as very_active,
+                    SUM(CASE WHEN last_order_days > 7 AND last_order_days <= 30 THEN 1 ELSE 0 END) as active,
+                    SUM(CASE WHEN last_order_days > 30 THEN 1 ELSE 0 END) as low_activity,
+                    SUM(CASE WHEN last_order_days IS NULL THEN 1 ELSE 0 END) as inactive
+                FROM (
+                    SELECT 
+                        p.id,
+                        DATEDIFF(CURDATE(), MAX(o.order_date)) as last_order_days
+                    FROM parties p
+                    LEFT JOIN orders o ON p.id = o.party_id AND o.company_id = ?
+                    GROUP BY p.id
+                ) party_activity
+            ";
+            return $this->database->fetch($sql, [$id]) ?: [];
+        }
+
         $sql = "
             SELECT 
                 SUM(CASE WHEN last_order_days <= 7 THEN 1 ELSE 0 END) as very_active,

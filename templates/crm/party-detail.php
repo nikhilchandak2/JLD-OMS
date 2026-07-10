@@ -21,6 +21,9 @@
         <div class="d-flex flex-wrap gap-2">
             <button type="button" class="btn btn-light btn-sm" id="btnEditProfile"><i class="bi bi-pencil me-1"></i>Edit company</button>
             <button type="button" class="btn btn-outline-light btn-sm" id="btnAddContact"><i class="bi bi-person-plus me-1"></i>Add contact</button>
+            <?php if (in_array($user['role'] ?? '', ['admin', 'marketing', 'crm'])): ?>
+            <a href="/visit-requests?raise_party_id=<?= $party_id ?>" class="btn btn-warning btn-sm"><i class="bi bi-geo-alt me-1"></i>Request technical visit</a>
+            <?php endif; ?>
             <a href="/orders?party_id=<?= $party_id ?>" class="btn btn-outline-light btn-sm">Orders</a>
             <a href="/admin/parties" class="btn btn-outline-light btn-sm">All parties</a>
         </div>

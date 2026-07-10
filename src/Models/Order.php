@@ -12,6 +12,9 @@ class Order
     public int $productId = 0;
     public string $productName = '';
     public int $orderQtyTrucks = 0;
+    public string $orderQtyMode = 'trucks';
+    public ?float $orderWeightTons = null;
+    public float $tonsPerTruck = 40.0;
     public int $partyId = 0;
     public string $partyName = '';
     public string $status = 'pending';
@@ -28,6 +31,8 @@ class Order
     // Computed fields
     public int $totalDispatched = 0;
     public int $pendingTrucks = 0;
+    public float $totalDispatchedWeight = 0;
+    public float $pendingWeightTons = 0;
     public array $dispatches = [];
     
     public function __construct(array $data = [])
@@ -47,6 +52,13 @@ class Order
         $this->productId = $data['product_id'] ?? 0;
         $this->productName = $data['product_name'] ?? '';
         $this->orderQtyTrucks = $data['order_qty_trucks'] ?? 0;
+        $this->orderQtyMode = $data['order_qty_mode'] ?? 'trucks';
+        $this->orderWeightTons = isset($data['order_weight_tons']) && $data['order_weight_tons'] !== '' && $data['order_weight_tons'] !== null
+            ? (float)$data['order_weight_tons']
+            : null;
+        $this->tonsPerTruck = isset($data['tons_per_truck']) && $data['tons_per_truck'] !== ''
+            ? (float)$data['tons_per_truck']
+            : 40.0;
         $this->partyId = $data['party_id'] ?? 0;
         $this->partyName = $data['party_name'] ?? '';
         $this->status = $data['status'] ?? 'pending';
@@ -63,6 +75,9 @@ class Order
         // Computed fields
         $this->totalDispatched = $data['total_dispatched'] ?? 0;
         $this->pendingTrucks = $this->orderQtyTrucks - $this->totalDispatched;
+        $this->totalDispatchedWeight = (float)($data['total_dispatched_weight'] ?? 0);
+        $plannedWeight = (float)($this->orderWeightTons ?? 0);
+        $this->pendingWeightTons = max(0, $plannedWeight - $this->totalDispatchedWeight);
     }
     
     public function toArray(): array
@@ -76,6 +91,9 @@ class Order
             'product_id' => $this->productId ?? 0,
             'product_name' => $this->productName ?? '',
             'order_qty_trucks' => $this->orderQtyTrucks ?? 0,
+            'order_qty_mode' => $this->orderQtyMode,
+            'order_weight_tons' => $this->orderWeightTons,
+            'tons_per_truck' => $this->tonsPerTruck,
             'party_id' => $this->partyId ?? 0,
             'party_name' => $this->partyName ?? '',
             'status' => $this->status ?? 'pending',
@@ -90,6 +108,8 @@ class Order
             'updated_at' => $this->updatedAt ?? '',
             'total_dispatched' => $this->totalDispatched,
             'pending_trucks' => $this->pendingTrucks,
+            'total_dispatched_weight' => $this->totalDispatchedWeight,
+            'pending_weight_tons' => $this->pendingWeightTons,
             'dispatches' => array_map(function($dispatch) {
                 return is_object($dispatch) ? $dispatch->toArray() : $dispatch;
             }, $this->dispatches ?? [])

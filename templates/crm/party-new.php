@@ -11,7 +11,7 @@
     <div class="d-flex justify-content-between align-items-end flex-wrap gap-3">
         <div>
             <h1 class="page-title mb-1">Add new company</h1>
-            <p class="page-subtitle mb-0">Fill in the company details below. Name and contact person are required.</p>
+            <p class="page-subtitle mb-0">Fill in the company details below. Name, contact, GST, phone and email are required.</p>
         </div>
         <a href="/crm" class="btn btn-outline-secondary">Cancel</a>
     </div>
@@ -35,12 +35,16 @@
                         <input type="text" class="form-control" id="profileContactPerson" required placeholder="Primary contact">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Phone</label>
-                        <input type="text" class="form-control" id="profilePhone" placeholder="Phone">
+                        <label class="form-label">GST No. <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control text-uppercase" id="profileGstNumber" required maxlength="15" placeholder="15-character GSTIN">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Email</label>
-                        <input type="email" class="form-control" id="profileEmail" placeholder="Email">
+                        <label class="form-label">Phone <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="profilePhone" required placeholder="Phone">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Email <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" id="profileEmail" required placeholder="Email">
                     </div>
                     <div class="col-12">
                         <label class="form-label">Address</label>
@@ -180,8 +184,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         errEl.classList.add('d-none');
         const name = document.getElementById('profileName').value.trim();
         const contactPerson = document.getElementById('profileContactPerson').value.trim();
-        if (!name || !contactPerson) {
-            errEl.textContent = 'Company name and contact person are required.';
+        const gstNumber = document.getElementById('profileGstNumber').value.trim().toUpperCase();
+        const phone = document.getElementById('profilePhone').value.trim();
+        const email = document.getElementById('profileEmail').value.trim();
+        if (!name || !contactPerson || !gstNumber || !phone || !email) {
+            errEl.textContent = 'Company name, contact person, GST number, phone and email are required.';
             errEl.classList.remove('d-none');
             return;
         }
@@ -198,8 +205,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             const payload = {
                 name: name,
                 contact_person: contactPerson,
-                phone: document.getElementById('profilePhone').value.trim() || null,
-                email: document.getElementById('profileEmail').value.trim() || null,
+                gst_number: gstNumber,
+                phone: phone,
+                email: email,
                 address: document.getElementById('profileAddress').value.trim() || null,
                 region: document.getElementById('profileRegion').value.trim() || null,
                 year_of_association: document.getElementById('profileYearOfAssociation').value ? parseInt(document.getElementById('profileYearOfAssociation').value, 10) : null,

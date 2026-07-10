@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Models\User;
+use App\Support\CompanyContext;
 
 class AuthService
 {
@@ -97,7 +98,8 @@ class AuthService
             'id' => $_SESSION['user_id'],
             'email' => $_SESSION['user_email'],
             'name' => $_SESSION['user_name'],
-            'role' => $_SESSION['user_role']
+            'role' => $_SESSION['user_role'],
+            'active_company' => CompanyContext::getActiveCompany(),
         ];
     }
     
@@ -311,6 +313,8 @@ class AuthService
         $_SESSION['user_name'] = $user['name'];
         $_SESSION['user_role'] = $user['role_name'];
         $_SESSION['login_time'] = time();
+
+        CompanyContext::initializeForUser();
         
         // Store session in database
         $sessionId = session_id();

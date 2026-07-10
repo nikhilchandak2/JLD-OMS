@@ -48,15 +48,38 @@ class PartyRepository
         return $row ? new Party($row) : null;
     }
 
+    public function findByGstNumber(string $gstNumber, ?int $excludeId = null): ?Party
+    {
+        $gstNumber = Party::normalizeGstNumber($gstNumber);
+        if ($gstNumber === '') {
+            return null;
+        }
+
+        $sql = 'SELECT * FROM parties WHERE gst_number = ?';
+        $params = [$gstNumber];
+        if ($excludeId !== null) {
+            $sql .= ' AND id <> ?';
+            $params[] = $excludeId;
+        }
+        $sql .= ' LIMIT 1';
+
+        $stmt = $this->database->getConnection()->prepare($sql);
+        $stmt->execute($params);
+
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ? new Party($row) : null;
+    }
+
     public function create(Party $party): Party
     {
-        $sql = "INSERT INTO parties (name, contact_person, phone, email, address, is_active, created_at, updated_at) 
-                VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())";
+        $sql = "INSERT INTO parties (name, contact_person, gst_number, phone, email, address, is_active, created_at, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
         
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([
             $party->name,
             $party->contactPerson,
+            $party->gstNumber !== '' ? $party->gstNumber : null,
             $party->phone,
             $party->email,
             $party->address,
@@ -73,7 +96,7 @@ class PartyRepository
         $values = [];
         
         $allowedFields = [
-            'name', 'contact_person', 'phone', 'email', 'address', 'is_active',
+            'name', 'contact_person', 'gst_number', 'phone', 'email', 'address', 'is_active',
             'region', 'product_category', 'production_capacity', 'factory_locations',
             'credit_limit', 'payment_terms_days', 'technical_notes',
             'products_introduced', 'monthly_consumption', 'year_of_association',

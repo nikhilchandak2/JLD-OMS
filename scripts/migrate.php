@@ -67,12 +67,16 @@ try {
             } catch (PDOException $e) {
                 $msg = $e->getMessage();
 
-                // Idempotency: ignore harmless "already exists" / "duplicate" errors
+                // Idempotency: ignore harmless "already exists" / "duplicate" errors,
+                // plus re-run errors from DROP INDEX / DROP FOREIGN KEY on already-migrated schemas
                 $isIgnorable =
                     stripos($msg, 'already exists') !== false ||
                     stripos($msg, 'Duplicate') !== false ||
                     stripos($msg, 'duplicate entry') !== false ||
-                    stripos($msg, 'Duplicate column name') !== false;
+                    stripos($msg, 'Duplicate column name') !== false ||
+                    stripos($msg, 'check that column/key exists') !== false ||
+                    stripos($msg, 'check that it exists') !== false ||
+                    stripos($msg, "Can't DROP") !== false;
 
                 if ($isIgnorable) {
                     continue;

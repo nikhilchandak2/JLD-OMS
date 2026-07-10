@@ -7,9 +7,13 @@ class Dispatch
     public int $id = 0;
     public int $orderId = 0;
     public string $orderNo = '';
+    public string $partyName = '';
     public string $dispatchDate = '';
     public int $dispatchQtyTrucks = 0;
     public ?string $vehicleNo = null;
+    public ?float $productRate = null;
+    public ?float $loadingWeightTons = null;
+    public ?string $busyInvoiceNo = null;
     public ?string $remarks = null;
     public int $dispatchedBy = 0;
     public string $dispatchedByName = '';
@@ -27,9 +31,17 @@ class Dispatch
         $this->id = $data['id'] ?? 0;
         $this->orderId = $data['order_id'] ?? 0;
         $this->orderNo = $data['order_no'] ?? '';
+        $this->partyName = $data['party_name'] ?? '';
         $this->dispatchDate = $data['dispatch_date'] ?? '';
         $this->dispatchQtyTrucks = $data['dispatch_qty_trucks'] ?? 0;
         $this->vehicleNo = $data['vehicle_no'] ?? null;
+        $this->productRate = isset($data['product_rate']) && $data['product_rate'] !== '' && $data['product_rate'] !== null
+            ? (float)$data['product_rate']
+            : null;
+        $this->loadingWeightTons = isset($data['loading_weight_tons']) && $data['loading_weight_tons'] !== '' && $data['loading_weight_tons'] !== null
+            ? (float)$data['loading_weight_tons']
+            : null;
+        $this->busyInvoiceNo = !empty($data['busy_invoice_no']) ? (string)$data['busy_invoice_no'] : null;
         $this->remarks = $data['remarks'] ?? null;
         $this->dispatchedBy = $data['dispatched_by'] ?? 0;
         $this->dispatchedByName = $data['dispatched_by_name'] ?? '';
@@ -42,9 +54,13 @@ class Dispatch
             'id' => $this->id,
             'order_id' => $this->orderId,
             'order_no' => $this->orderNo,
+            'party_name' => $this->partyName,
             'dispatch_date' => $this->dispatchDate,
             'dispatch_qty_trucks' => $this->dispatchQtyTrucks,
             'vehicle_no' => $this->vehicleNo,
+            'product_rate' => $this->productRate,
+            'loading_weight_tons' => $this->loadingWeightTons,
+            'busy_invoice_no' => $this->busyInvoiceNo,
             'remarks' => $this->remarks,
             'dispatched_by' => $this->dispatchedBy,
             'dispatched_by_name' => $this->dispatchedByName,
@@ -62,6 +78,10 @@ class Dispatch
         
         if ($this->dispatchQtyTrucks <= 0) {
             $errors[] = 'Dispatch quantity must be greater than 0';
+        }
+
+        if ($this->id <= 0 && ($this->productRate === null || $this->productRate <= 0)) {
+            $errors[] = 'Product rate per ton is required and must be greater than 0';
         }
         
         if ($this->orderId <= 0) {
