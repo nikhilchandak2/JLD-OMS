@@ -62,8 +62,8 @@ class BusyInvoiceImportService
     public function parsePdfText(string $text): array
     {
         $errors = [];
-        $normalized = preg_replace("/\r\n|\r/", "\n", $text);
-        $normalized = preg_replace('/[ \t]+/u', ' ', (string)$normalized);
+        $text = preg_replace('/[\x{00A0}\x{202F}\x{2007}]/u', ' ', $text) ?? $text;
+        $normalized = $this->normalizePdfText($text);
 
         if (!preg_match('/TAX\s+INVOICE|Tax\s+Invoice/i', $normalized)) {
             return [
@@ -143,12 +143,29 @@ class BusyInvoiceImportService
             $lineItem = $this->extractGoodsLine($text);
         }
         if ($lineItem === null) {
-            $lineItem = $this->extractGoodsLineFromGrandTotal($normalized);
+            $goodsSection = $this->extractGoodsSectionText($text);
+            if ($goodsSection !== null) {
+                $collapsed = preg_replace('/\s+/u', ' ', trim($goodsSection)) ?? trim($goodsSection);
+                $lineItem = $this->extractGoodsLine($collapsed);
+            }
         }
         if ($lineItem === null) {
+            $lineItem = $this->extractGoodsLineFromComponents($text, $normalized);
+        }
+        if ($lineItem === null) {
+            $lineItem = $this->extractGoodsLineFromGrandTotal($text, $normalized);
+        }
+        if ($lineItem === null) {
+            $details = ['Could not find goods line (Qty in M.T. and Unit Price) in PDF.'];
+            if (filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                $snippet = $this->extractGoodsSectionText($text);
+                if ($snippet !== null) {
+                    $details[] = 'Extracted goods section: ' . mb_substr(preg_replace('/\s+/', ' ', $snippet) ?? $snippet, 0, 300);
+                }
+            }
             return [
                 'invoices' => [],
-                'errors' => ['Could not find goods line (Qty in M.T. and Unit Price) in PDF.'],
+                'errors' => $details,
                 'preview' => [],
             ];
         }
@@ -178,18 +195,44 @@ class BusyInvoiceImportService
         ];
     }
 
+    private function normalizePdfText(string $text): string
+    {
+        $text = preg_replace("/\r\n|\r/", "\n", $text) ?? $text;
+        $text = preg_replace('/[\x{00A0}\x{202F}\x{2007}]/u', ' ', $text) ?? $text;
+        $text = preg_replace('/[ \t]+/u', ' ', $text) ?? $text;
+        return trim($text);
+    }
+
+    private function extractGoodsSectionText(string $text): ?string
+    {
+        if (!preg_match(
+            '/Description\s+of\s+Goods(.+?)(?:Grand\s+Total|Add\s*:\s*CGST|Add\s*:\s*SGST|HSN\/SAC\s+Tax\s+Rate)/is',
+            $text,
+            $m
+        )) {
+            return null;
+        }
+
+        $section = trim($m[1]);
+        return $section !== '' ? $section : null;
+    }
+
     /**
      * @return array{product_name: string, loading_weight_tons: float, product_rate: float}|null
      */
     private function extractGoodsLine(string $text): ?array
     {
+        $qtyUnit = '(?:M\.?\s*T\.?|MT|M\s*TON|TON(?:NE)?S?)';
         $patterns = [
             // Busy PDF: "1.BALL CLAY C GRADE 25084010 26.170M.T. 270.00 7,066.00"
-            '/\d+\.?\s*(.+?)\s+(\d{4,8})\s+([\d,]+\.?\d*)\s*M\.?\s*T\.?\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
+            '/\d+\.?\s*(.+?)\s+(\d{4,8})\s+([\d,]+\.?\d*)\s*' . $qtyUnit . '\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
+            // Qty and unit separated: "26.170 M.T."
+            '/\d+\.?\s*(.+?)\s+(\d{4,8})\s+([\d,]+\.?\d*)\s+' . $qtyUnit . '\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
+            // Without unit suffix on qty (header already says M.T.)
+            '/\d+\.?\s*(.+?)\s+(\d{4,8})\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
             // Without HSN code
-            '/\d+\.?\s*(.+?)\s+([\d,]+\.?\d*)\s*M\.?\s*T\.?\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
-            // Qty and M.T. separated: "26.170 M.T."
-            '/\d+\.?\s*(.+?)\s+(\d{4,8})\s+([\d,]+\.?\d*)\s+M\.?\s*T\.?\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
+            '/\d+\.?\s*(.+?)\s+([\d,]+\.?\d*)\s*' . $qtyUnit . '\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
+            '/\d+\.?\s*(.+?)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu',
         ];
 
         foreach ($patterns as $index => $pattern) {
@@ -197,11 +240,19 @@ class BusyInvoiceImportService
                 continue;
             }
 
-            if ($index === 1) {
+            if (in_array($index, [3, 4], true)) {
                 $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
                 $weight = $this->parseNumber($m[2]);
                 $rate = $this->parseNumber($m[3]);
                 $amount = $this->parseNumber($m[4]);
+            } elseif ($index === 2) {
+                $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
+                $weight = $this->parseNumber($m[3]);
+                $rate = $this->parseNumber($m[4]);
+                $amount = $this->parseNumber($m[5]);
+                if ($weight === null || $weight <= 0 || $weight > 1000) {
+                    continue;
+                }
             } else {
                 $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
                 $weight = $this->parseNumber($m[3]);
@@ -209,21 +260,10 @@ class BusyInvoiceImportService
                 $amount = $this->parseNumber($m[5]);
             }
 
-            $productName = preg_replace('/\s*\(LOOSE\)\s*/iu', '', $productName) ?? $productName;
-
-            if (($rate === null || $rate <= 0) && $amount !== null && $weight !== null && $weight > 0) {
-                $rate = round($amount / $weight, 2);
+            $result = $this->buildGoodsLineResult($productName, $weight, $rate, $amount);
+            if ($result !== null) {
+                return $result;
             }
-
-            if ($productName === '' || $weight === null || $weight <= 0 || $rate === null || $rate <= 0) {
-                continue;
-            }
-
-            return [
-                'product_name' => $productName,
-                'loading_weight_tons' => $weight,
-                'product_rate' => $rate,
-            ];
         }
 
         return null;
@@ -232,34 +272,104 @@ class BusyInvoiceImportService
     /**
      * @return array{product_name: string, loading_weight_tons: float, product_rate: float}|null
      */
-    private function extractGoodsLineFromGrandTotal(string $text): ?array
+    private function extractGoodsLineFromComponents(string $text, string $normalized): ?array
     {
+        $productName = null;
+        if (preg_match('/\d+\.?\s*([A-Za-z][A-Za-z0-9 \-\/\(\)]+?)(?:\s+\d{4,8}\b|\s+[\d,]+\.?\d*\s*(?:M\.?\s*T\.?|MT\b))/iu', $normalized, $m)) {
+            $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
+            $productName = preg_replace('/\s*\(LOOSE\)\s*/iu', '', $productName) ?? $productName;
+        }
+
         $weight = null;
-        if (preg_match('/Grand\s+Total\s+([\d,]+\.?\d*)\s*M\.?\s*T\.?/iu', $text, $m)) {
+        if (preg_match('/([\d,]+\.?\d*)\s*(?:M\.?\s*T\.?|MT\b)/iu', $normalized, $m)) {
             $weight = $this->parseNumber($m[1]);
         }
 
         $rate = null;
-        if (preg_match('/Description\s+of\s+Goods.*?(\d+\.?\s*.+?)\s+(\d{4,8})/iu', $text, $m)) {
-            $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
-            $productName = preg_replace('/^\d+\.?\s*/', '', $productName) ?? $productName;
-        } else {
-            $productName = null;
+        $amount = null;
+        if (preg_match('/(?:M\.?\s*T\.?|MT\b)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/iu', $normalized, $m)) {
+            $rate = $this->parseNumber($m[1]);
+            $amount = $this->parseNumber($m[2]);
         }
 
-        if (preg_match_all('/([\d,]+\.?\d*)\s+M\.?\s*T\.?\s+([\d,]+\.?\d*)/iu', $text, $matches, PREG_SET_ORDER)) {
-            foreach ($matches as $match) {
-                $candidateWeight = $this->parseNumber($match[1]);
-                $candidateRate = $this->parseNumber($match[2]);
-                if ($candidateWeight !== null && $candidateWeight > 0 && $candidateRate !== null && $candidateRate > 0) {
-                    $weight = $weight ?? $candidateWeight;
-                    $rate = $rate ?? $candidateRate;
-                    break;
+        if (($rate === null || $rate <= 0) && preg_match_all('/([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/', $normalized, $pairs, PREG_SET_ORDER)) {
+            foreach ($pairs as $pair) {
+                $left = $this->parseNumber($pair[1]);
+                $right = $this->parseNumber($pair[2]);
+                if ($left === null || $right === null) {
+                    continue;
+                }
+                if ($weight !== null && abs($left - $weight) < 0.001 && $right > 0 && $right < 100000) {
+                    if ($right < 10000) {
+                        $rate = $rate ?? $right;
+                    } else {
+                        $amount = $amount ?? $right;
+                    }
                 }
             }
         }
 
-        if ($productName === null || $productName === '' || $weight === null || $weight <= 0 || $rate === null || $rate <= 0) {
+        if ($amount === null && preg_match('/Taxable\s+Amt\.?\s*([\d,]+\.?\d*)/iu', $text, $m)) {
+            $amount = $this->parseNumber($m[1]);
+        }
+
+        return $this->buildGoodsLineResult($productName ?? '', $weight, $rate, $amount);
+    }
+
+    /**
+     * @return array{product_name: string, loading_weight_tons: float, product_rate: float}|null
+     */
+    private function extractGoodsLineFromGrandTotal(string $text, string $normalized): ?array
+    {
+        $weight = null;
+        if (preg_match('/Grand\s+Total\s+([\d,]+\.?\d*)\s*(?:M\.?\s*T\.?|MT\b)/iu', $normalized, $m)) {
+            $weight = $this->parseNumber($m[1]);
+        }
+
+        $productName = null;
+        if (preg_match('/\d+\.?\s*([A-Za-z][A-Za-z0-9 \-\/\(\)]+?)\s+\d{4,8}/iu', $normalized, $m)) {
+            $productName = trim(preg_replace('/\s+/', ' ', $m[1]));
+        }
+
+        $amount = null;
+        if (preg_match('/Grand\s+Total\s+[\d,]+\.?\d*\s*(?:M\.?\s*T\.?|MT\b)\s*[`\']?\s*([\d,]+\.?\d*)/iu', $normalized, $m)) {
+            $amount = $this->parseNumber($m[1]);
+        }
+        if ($amount === null && preg_match('/\b(\d{4,8})\s+\d+%\s+([\d,]+\.?\d*)/u', $normalized, $m)) {
+            $amount = $this->parseNumber($m[2]);
+        }
+
+        $rate = null;
+        if ($amount !== null && $weight !== null && $weight > 0) {
+            $taxable = $amount;
+            if ($taxable > 10000 && $weight > 0) {
+                // Grand total includes tax; prefer taxable amount from HSN summary when available.
+                if (preg_match('/\b\d{4,8}\s+\d+%\s+([\d,]+\.?\d*)/u', $normalized, $taxMatch)) {
+                    $taxable = $this->parseNumber($taxMatch[1]) ?? $taxable;
+                }
+            }
+            if ($taxable > 0) {
+                $rate = round($taxable / $weight, 2);
+            }
+        }
+
+        return $this->buildGoodsLineResult($productName ?? '', $weight, $rate, $amount);
+    }
+
+    /**
+     * @return array{product_name: string, loading_weight_tons: float, product_rate: float}|null
+     */
+    private function buildGoodsLineResult(string $productName, ?float $weight, ?float $rate, ?float $amount): ?array
+    {
+        $productName = trim(preg_replace('/\s+/', ' ', $productName));
+        $productName = preg_replace('/\s*\(LOOSE\)\s*/iu', '', $productName) ?? $productName;
+        $productName = preg_replace('/^\d+\.?\s*/', '', $productName) ?? $productName;
+
+        if (($rate === null || $rate <= 0) && $amount !== null && $weight !== null && $weight > 0) {
+            $rate = round($amount / $weight, 2);
+        }
+
+        if ($productName === '' || $weight === null || $weight <= 0 || $rate === null || $rate <= 0) {
             return null;
         }
 
