@@ -138,15 +138,15 @@ class BusyInvoiceImportService
             ];
         }
 
-        $lineItem = $this->extractGoodsLine($normalized);
+        $lineItem = $this->extractGoodsLine($normalized, $normalized);
         if ($lineItem === null) {
-            $lineItem = $this->extractGoodsLine($text);
+            $lineItem = $this->extractGoodsLine($text, $normalized);
         }
         if ($lineItem === null) {
             $goodsSection = $this->extractGoodsSectionText($text);
             if ($goodsSection !== null) {
                 $collapsed = preg_replace('/\s+/u', ' ', trim($goodsSection)) ?? trim($goodsSection);
-                $lineItem = $this->extractGoodsLine($collapsed);
+                $lineItem = $this->extractGoodsLine($collapsed, $normalized);
             }
         }
         if ($lineItem === null) {
@@ -154,6 +154,12 @@ class BusyInvoiceImportService
         }
         if ($lineItem === null) {
             $lineItem = $this->extractGoodsLineFromGrandTotal($text, $normalized);
+        }
+        if ($lineItem !== null && $this->looksLikeInvalidProductName($lineItem['product_name'])) {
+            $betterName = $this->extractProductNameFromText($normalized);
+            if ($betterName !== null) {
+                $lineItem['product_name'] = $betterName;
+            }
         }
         if ($lineItem === null) {
             $details = ['Could not find goods line (Qty in M.T. and Unit Price) in PDF.'];
@@ -220,7 +226,7 @@ class BusyInvoiceImportService
     /**
      * @return array{product_name: string, loading_weight_tons: float, product_rate: float}|null
      */
-    private function extractGoodsLine(string $text): ?array
+    private function extractGoodsLine(string $text, ?string $fullText = null): ?array
     {
         $qtyUnit = '(?:M\.?\s*T\.?|MT|M\s*TON|TON(?:NE)?S?)';
         $patterns = [
@@ -260,7 +266,7 @@ class BusyInvoiceImportService
                 $amount = $this->parseNumber($m[5]);
             }
 
-            $result = $this->buildGoodsLineResult($productName, $weight, $rate, $amount);
+            $result = $this->buildGoodsLineResult($productName, $weight, $rate, $amount, $fullText);
             if ($result !== null) {
                 return $result;
             }
@@ -313,7 +319,7 @@ class BusyInvoiceImportService
             $amount = $this->parseNumber($m[1]);
         }
 
-        return $this->buildGoodsLineResult($productName ?? '', $weight, $rate, $amount);
+        return $this->buildGoodsLineResult($productName ?? '', $weight, $rate, $amount, $normalized);
     }
 
     /**
@@ -353,23 +359,21 @@ class BusyInvoiceImportService
             }
         }
 
-        return $this->buildGoodsLineResult($productName ?? '', $weight, $rate, $amount);
+        return $this->buildGoodsLineResult($productName ?? '', $weight, $rate, $amount, $normalized);
     }
 
     /**
      * @return array{product_name: string, loading_weight_tons: float, product_rate: float}|null
      */
-    private function buildGoodsLineResult(string $productName, ?float $weight, ?float $rate, ?float $amount): ?array
+    private function buildGoodsLineResult(string $productName, ?float $weight, ?float $rate, ?float $amount, ?string $fullText = null): ?array
     {
-        $productName = trim(preg_replace('/\s+/', ' ', $productName));
-        $productName = preg_replace('/\s*\(LOOSE\)\s*/iu', '', $productName) ?? $productName;
-        $productName = preg_replace('/^\d+\.?\s*/', '', $productName) ?? $productName;
+        $productName = $this->refineProductName($productName, $fullText);
 
         if (($rate === null || $rate <= 0) && $amount !== null && $weight !== null && $weight > 0) {
             $rate = round($amount / $weight, 2);
         }
 
-        if ($productName === '' || $weight === null || $weight <= 0 || $rate === null || $rate <= 0) {
+        if ($productName === '' || $this->looksLikeInvalidProductName($productName) || $weight === null || $weight <= 0 || $rate === null || $rate <= 0) {
             return null;
         }
 
@@ -378,6 +382,71 @@ class BusyInvoiceImportService
             'loading_weight_tons' => $weight,
             'product_rate' => $rate,
         ];
+    }
+
+    private function cleanProductName(string $name): string
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name));
+        $name = preg_replace('/\bP\d+\s+\d+\b/iu', '', $name) ?? $name;
+        $name = preg_replace('/\bP\d+\b/iu', '', $name) ?? $name;
+        $name = preg_replace('/\s*\(LOOSE\)\s*/iu', '', $name) ?? $name;
+        return trim(preg_replace('/\s+/', ' ', $name));
+    }
+
+    private function refineProductName(string $productName, ?string $fullText = null): string
+    {
+        if ($fullText !== null) {
+            $fromText = $this->extractProductNameFromText($fullText);
+            if ($fromText !== null) {
+                return $fromText;
+            }
+        }
+
+        $productName = trim(preg_replace('/\s+/', ' ', $productName));
+        $productName = preg_replace('/^\d+\.?\s*/', '', $productName) ?? $productName;
+        return $this->cleanProductName($productName);
+    }
+
+    private function looksLikeInvalidProductName(string $name): bool
+    {
+        $name = trim($name);
+        if ($name === '' || strlen($name) < 3) {
+            return true;
+        }
+
+        if (preg_match('/^(?:P\d+\s+\d+\s*)+$/iu', $name)) {
+            return true;
+        }
+
+        $withoutDims = $this->cleanProductName($name);
+        if ($withoutDims === '' || preg_match('/^(?:P\d+\s+\d+\s*)+$/iu', $withoutDims)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function extractProductNameFromText(string $text): ?string
+    {
+        $patterns = [
+            '/\b(UBC-\d+(?:\s*\([^)]+\))?)/iu',
+            '/\b(BALL\s+CLAY[^0-9\n]{0,40})/iu',
+            '/\d+\.?\s*(?:P\d+\s+\d+\s*)*([A-Z][A-Za-z0-9 \-\/]+(?:\([^)]+\))?)\s+\d{4,8}\b/iu',
+            '/Description\s+of\s+Goods.*?(\d+\.?\s*[A-Z][A-Za-z0-9 \-\/\(\)]+)\s+\d{4,8}/isu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (!preg_match($pattern, $text, $m)) {
+                continue;
+            }
+
+            $candidate = $this->cleanProductName(trim($m[1]));
+            if (!$this->looksLikeInvalidProductName($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     private function extractPartyName(string $text): ?string

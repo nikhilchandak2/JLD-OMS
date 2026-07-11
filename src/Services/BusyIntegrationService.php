@@ -48,10 +48,16 @@ class BusyIntegrationService
             $order = $this->findMatchingOrder($mapped, $companyId);
 
             if (!$order) {
+                $party = $this->findPartyByName($mapped['party_name']);
+                $pendingCount = $party
+                    ? count($this->findPendingOrdersForParty((int)$party->id, $companyId, (int)$mapped['quantity']))
+                    : 0;
+                $hint = $pendingCount > 1
+                    ? ' This party has multiple pending orders — include Order No in the invoice or ensure the product name matches.'
+                    : ' Create the order first or include Order No in the invoice export.';
                 throw new \RuntimeException(
                     'No matching pending order found for party "' . $mapped['party_name'] .
-                    '", product "' . $mapped['product_name'] . '". ' .
-                    'Create the order first or include Order No in the invoice export.'
+                    '", product "' . $mapped['product_name'] . '".' . $hint
                 );
             }
 
@@ -232,11 +238,78 @@ class BusyIntegrationService
         }
 
         $party = $this->findPartyByName($data['party_name']);
-        $product = $this->findProductByName($data['product_name']);
-        if (!$party || !$product) {
+        if (!$party) {
             return null;
         }
 
+        $product = $this->findProductByName($data['product_name']);
+        if ($product) {
+            $order = $this->findPendingOrderForPartyProduct(
+                (int)$party->id,
+                (int)$product->id,
+                $companyId,
+                (int)$data['quantity']
+            );
+            if ($order) {
+                return $order;
+            }
+        }
+
+        $pendingOrders = $this->findPendingOrdersForParty((int)$party->id, $companyId, (int)$data['quantity']);
+        if (empty($pendingOrders)) {
+            return null;
+        }
+
+        if (count($pendingOrders) === 1) {
+            return $pendingOrders[0];
+        }
+
+        foreach ($pendingOrders as $order) {
+            if ($this->productNamesLooselyMatch($data['product_name'], (string)$order->productName)) {
+                return $order;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return Order[]
+     */
+    private function findPendingOrdersForParty(int $partyId, int $companyId, int $quantity): array
+    {
+        $sql = "
+            SELECT o.id
+            FROM orders o
+            LEFT JOIN (
+                SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
+                FROM dispatches
+                GROUP BY order_id
+            ) d ON d.order_id = o.id
+            WHERE o.party_id = ?
+              AND o.company_id = ?
+              AND o.status IN ('pending', 'partial')
+              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
+            ORDER BY
+                CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
+                o.order_date ASC,
+                o.id ASC
+        ";
+
+        $rows = $this->database->fetchAll($sql, [$partyId, $companyId, $quantity]);
+        $orders = [];
+        foreach ($rows as $row) {
+            $order = $this->orderRepository->findById((int)$row['id']);
+            if ($order) {
+                $orders[] = $order;
+            }
+        }
+
+        return $orders;
+    }
+
+    private function findPendingOrderForPartyProduct(int $partyId, int $productId, int $companyId, int $quantity): ?Order
+    {
         $sql = "
             SELECT o.id
             FROM orders o
@@ -257,19 +330,13 @@ class BusyIntegrationService
             LIMIT 1
         ";
 
-        $row = $this->database->fetch($sql, [
-            $party->id,
-            $product->id,
-            $companyId,
-            $data['quantity'],
-        ]);
-
+        $row = $this->database->fetch($sql, [$partyId, $productId, $companyId, $quantity]);
         return $row ? $this->orderRepository->findById((int)$row['id']) : null;
     }
 
     private function findPartyByName(string $partyName): ?object
     {
-        foreach ($this->partyRepository->findAll(['search' => $partyName]) as $party) {
+        foreach ($this->partyRepository->findAll() as $party) {
             if (strcasecmp($party->name, $partyName) === 0) {
                 return $party;
             }
@@ -279,12 +346,51 @@ class BusyIntegrationService
 
     private function findProductByName(string $productName): ?object
     {
-        foreach ($this->productRepository->findAll(['search' => $productName]) as $product) {
+        $productName = trim($productName);
+        if ($productName === '') {
+            return null;
+        }
+
+        foreach ($this->productRepository->findAll() as $product) {
             if (strcasecmp($product->name, $productName) === 0) {
                 return $product;
             }
         }
+
+        $normalizedInvoice = $this->normalizeProductLabel($productName);
+        foreach ($this->productRepository->findAll() as $product) {
+            $normalizedDb = $this->normalizeProductLabel($product->name);
+            if ($normalizedInvoice === $normalizedDb) {
+                return $product;
+            }
+            if ($normalizedInvoice !== '' && $normalizedDb !== ''
+                && (str_contains($normalizedDb, $normalizedInvoice) || str_contains($normalizedInvoice, $normalizedDb))) {
+                return $product;
+            }
+        }
+
         return null;
+    }
+
+    private function productNamesLooselyMatch(string $invoiceProduct, string $orderProduct): bool
+    {
+        $left = $this->normalizeProductLabel($invoiceProduct);
+        $right = $this->normalizeProductLabel($orderProduct);
+        if ($left === '' || $right === '') {
+            return false;
+        }
+        if ($left === $right) {
+            return true;
+        }
+        return str_contains($right, $left) || str_contains($left, $right);
+    }
+
+    private function normalizeProductLabel(string $name): string
+    {
+        $name = preg_replace('/\bP\d+\s+\d+\b/iu', '', $name) ?? $name;
+        $name = preg_replace('/\s*\((PROCESSED|LOOSE)\)\s*/iu', '', $name) ?? $name;
+        $name = preg_replace('/\s+/', ' ', trim($name)) ?? trim($name);
+        return strtoupper($name);
     }
 
     /**
