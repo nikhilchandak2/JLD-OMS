@@ -37,14 +37,7 @@ class OrderService
     
     public function getOrders(array $filters = []): array
     {
-        $orders = $this->orderRepository->findAll($filters);
-        
-        // Load dispatches for each order
-        foreach ($orders as $order) {
-            $order->dispatches = $this->dispatchRepository->findByOrderId($order->id);
-        }
-        
-        return $orders;
+        return $this->orderRepository->findAll($filters);
     }
     
     public function getOrderById(int $id): ?Order

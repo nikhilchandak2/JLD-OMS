@@ -181,8 +181,8 @@ async function loadOrders(page = 0) {
         
         const response = await apiCall(`/api/orders?${params}`);
         
-        updateOrdersTable(response.data);
-        updatePagination(response.pagination);
+        updateOrdersTable(response.data || []);
+        updatePagination(response.pagination || { total: 0, limit: pageSize, offset: 0 });
         currentPage = page;
         
         // Save current state
@@ -220,13 +220,14 @@ function formatOrderCompletion(order) {
 
 function updateOrdersTable(orders) {
     const tbody = document.querySelector('#ordersTable tbody');
+    const list = Array.isArray(orders) ? orders : [];
     
-    if (orders.length === 0) {
+    if (list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No orders found</td></tr>';
         return;
     }
     
-    const rows = orders.map(order => {
+    const rows = list.map(order => {
         const orderId = Number(order.id) || 0;
         const safeParty = escapeHtml(order.party_name);
         const safeProduct = escapeHtml(order.product_name);

@@ -1267,10 +1267,15 @@
             };
             
             const response = await fetch(url, { ...defaultOptions, ...options });
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch (e) {
+                throw new Error('Server error — check that database migrations are up to date (php scripts/migrate.php).');
+            }
             
             if (!response.ok) {
-                throw new Error(data.error || 'Request failed');
+                throw new Error(data.error || data.message || 'Request failed');
             }
             
             return data;

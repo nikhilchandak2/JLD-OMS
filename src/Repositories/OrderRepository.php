@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Core\Database;
 use App\Models\Order;
+use App\Support\DispatchSchema;
 
 class OrderRepository
 {
@@ -16,13 +17,15 @@ class OrderRepository
     
     public function findAll(array $filters = []): array
     {
+        $activeWhere = DispatchSchema::activeDispatchWhere();
         $sql = "
             SELECT o.*, 
                    c.name as company_name,
                    p.name as product_name,
                    pt.name as party_name,
                    u.name as created_by_name,
-                   COALESCE(d.total_dispatched, 0) as total_dispatched
+                   COALESCE(d.total_dispatched, 0) as total_dispatched,
+                   COALESCE(d.total_dispatched_weight, 0) as total_dispatched_weight
             FROM orders o
             JOIN companies c ON o.company_id = c.id
             JOIN products p ON o.product_id = p.id
@@ -33,7 +36,7 @@ class OrderRepository
                        SUM(dispatch_qty_trucks) as total_dispatched,
                        SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
-                WHERE status = 'active'
+                WHERE {$activeWhere}
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             WHERE 1=1
@@ -98,6 +101,8 @@ class OrderRepository
      */
     public function findDispatchQueue(?int $companyId = null): array
     {
+        $activeWhere = DispatchSchema::activeDispatchWhere();
+        $transportDoc = DispatchSchema::companyTransportDocSelect('c');
         $sql = "
             SELECT o.id,
                    o.order_no,
@@ -107,7 +112,7 @@ class OrderRepository
                    o.priority,
                    o.order_qty_trucks,
                    c.name AS company_name,
-                   c.transport_doc_type AS transport_doc_type,
+                   {$transportDoc},
                    p.name AS product_name,
                    pt.id AS party_id,
                    pt.name AS party_name,
@@ -123,7 +128,7 @@ class OrderRepository
             LEFT JOIN (
                 SELECT order_id, SUM(dispatch_qty_trucks) AS total_dispatched
                 FROM dispatches
-                WHERE status = 'active'
+                WHERE {$activeWhere}
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             LEFT JOIN (
@@ -148,14 +153,17 @@ class OrderRepository
 
     public function findById(int $id): ?Order
     {
+        $activeWhere = DispatchSchema::activeDispatchWhere();
+        $transportDoc = DispatchSchema::companyTransportDocSelect('c');
         $sql = "
             SELECT o.*, 
                    c.name as company_name,
-                   c.transport_doc_type as transport_doc_type,
+                   {$transportDoc},
                    p.name as product_name,
                    pt.name as party_name,
                    u.name as created_by_name,
-                   COALESCE(d.total_dispatched, 0) as total_dispatched
+                   COALESCE(d.total_dispatched, 0) as total_dispatched,
+                   COALESCE(d.total_dispatched_weight, 0) as total_dispatched_weight
             FROM orders o
             JOIN companies c ON o.company_id = c.id
             JOIN products p ON o.product_id = p.id
@@ -166,7 +174,7 @@ class OrderRepository
                        SUM(dispatch_qty_trucks) as total_dispatched,
                        SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
-                WHERE status = 'active'
+                WHERE {$activeWhere}
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             WHERE o.id = ?
@@ -179,6 +187,7 @@ class OrderRepository
     
     public function findByOrderNo(string $orderNo): ?Order
     {
+        $activeWhere = DispatchSchema::activeDispatchWhere();
         $sql = "
             SELECT o.*, 
                    p.name as product_name,
@@ -194,7 +203,7 @@ class OrderRepository
                        SUM(dispatch_qty_trucks) as total_dispatched,
                        SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
-                WHERE status = 'active'
+                WHERE {$activeWhere}
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             WHERE o.order_no = ?
@@ -281,7 +290,8 @@ class OrderRepository
     
     public function getTotalDispatched(int $orderId): int
     {
-        $sql = "SELECT COALESCE(SUM(dispatch_qty_trucks), 0) as total FROM dispatches WHERE order_id = ? AND status = 'active'";
+        $activeWhere = DispatchSchema::activeDispatchWhere('dispatches');
+        $sql = "SELECT COALESCE(SUM(dispatch_qty_trucks), 0) as total FROM dispatches WHERE order_id = ? AND {$activeWhere}";
         $result = $this->database->fetch($sql, [$orderId]);
         return (int)$result['total'];
     }

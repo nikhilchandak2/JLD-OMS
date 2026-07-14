@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Core\Database;
 use App\Models\Dispatch;
+use App\Support\DispatchSchema;
 
 class DispatchRepository
 {
@@ -46,7 +47,7 @@ class DispatchRepository
             $params[] = $filters['end_date'];
         }
 
-        if (!empty($filters['status'])) {
+        if (!empty($filters['status']) && DispatchSchema::hasDispatchStatusColumn()) {
             $sql .= " AND d.status = ?";
             $params[] = $filters['status'];
         }
@@ -228,12 +229,13 @@ class DispatchRepository
     /** Trucks and dispatch count for today's date. */
     public function getDispatchedTodayTotals(?int $companyId = null): array
     {
+        $activeWhere = DispatchSchema::activeDispatchWhere('d');
         $sql = "
             SELECT COUNT(*) AS dispatch_count,
                    COALESCE(SUM(d.dispatch_qty_trucks), 0) AS trucks
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
-            WHERE d.dispatch_date = CURDATE() AND d.status = 'active'
+            WHERE d.dispatch_date = CURDATE() AND {$activeWhere}
         ";
         $params = [];
         if ($companyId !== null && $companyId > 0) {
@@ -249,7 +251,8 @@ class DispatchRepository
 
     public function getTotalDispatchedForOrder(int $orderId): int
     {
-        $sql = "SELECT COALESCE(SUM(dispatch_qty_trucks), 0) as total FROM dispatches WHERE order_id = ? AND status = 'active'";
+        $activeWhere = DispatchSchema::activeDispatchWhere();
+        $sql = "SELECT COALESCE(SUM(dispatch_qty_trucks), 0) as total FROM dispatches WHERE order_id = ? AND {$activeWhere}";
         $result = $this->database->fetch($sql, [$orderId]);
         return (int)$result['total'];
     }
@@ -275,7 +278,7 @@ class DispatchRepository
             $params[] = $filters['end_date'];
         }
 
-        if (!empty($filters['status'])) {
+        if (!empty($filters['status']) && DispatchSchema::hasDispatchStatusColumn()) {
             $sql .= " AND d.status = ?";
             $params[] = $filters['status'];
         }

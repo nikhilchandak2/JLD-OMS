@@ -78,8 +78,8 @@ class Order
         
         // Computed fields
         $this->totalDispatched = $data['total_dispatched'] ?? 0;
-        $this->pendingTrucks = $this->orderQtyTrucks - $this->totalDispatched;
         $this->totalDispatchedWeight = (float)($data['total_dispatched_weight'] ?? 0);
+        $this->pendingTrucks = $this->orderQtyTrucks - $this->totalDispatched;
         $plannedWeight = (float)($this->orderWeightTons ?? 0);
         $this->pendingWeightTons = max(0, $plannedWeight - $this->totalDispatchedWeight);
     }
