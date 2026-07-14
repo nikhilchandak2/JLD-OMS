@@ -176,6 +176,7 @@ $router->group('/api', function($router) {
         $router->get('/orders/{id}/scheduled-deliveries', 'OrderController@getScheduledDeliveries');
         
         // Dispatches
+        $router->get('/dispatches/{id}/eway-bill-file', 'DispatchController@downloadEwayBillFile');
         $router->get('/dispatches/{id}/transfer-targets', 'DispatchController@transferTargets');
         $router->post('/dispatches/{id}/reject-transfer', 'DispatchController@rejectTransfer');
         $router->get('/dispatches', 'DispatchController@index');

@@ -122,9 +122,9 @@ class DispatchRepository
         $sql = "
             INSERT INTO dispatches (
                 order_id, dispatch_date, dispatch_qty_trucks, status, source_dispatch_id,
-                product_rate, loading_weight_tons, busy_invoice_no, vehicle_no, rawana_no, eway_bill_no, remarks, dispatched_by
+                product_rate, loading_weight_tons, busy_invoice_no, vehicle_no, rawana_no, eway_bill_no, eway_bill_file_path, remarks, dispatched_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ";
         
         $this->database->execute($sql, [
@@ -139,6 +139,7 @@ class DispatchRepository
             $dispatch->vehicleNo,
             $dispatch->rawanaNo,
             $dispatch->ewayBillNo,
+            $dispatch->ewayBillFilePath,
             $dispatch->remarks,
             $dispatch->dispatchedBy
         ]);
@@ -171,7 +172,7 @@ class DispatchRepository
     {
         $sql = "
             UPDATE dispatches 
-            SET dispatch_date = ?, dispatch_qty_trucks = ?, product_rate = ?, loading_weight_tons = ?, busy_invoice_no = ?, vehicle_no = ?, rawana_no = ?, eway_bill_no = ?, remarks = ?
+            SET dispatch_date = ?, dispatch_qty_trucks = ?, product_rate = ?, loading_weight_tons = ?, busy_invoice_no = ?, vehicle_no = ?, rawana_no = ?, eway_bill_no = ?, eway_bill_file_path = ?, remarks = ?
             WHERE id = ?
         ";
         
@@ -184,6 +185,7 @@ class DispatchRepository
             $dispatch->vehicleNo,
             $dispatch->rawanaNo,
             $dispatch->ewayBillNo,
+            $dispatch->ewayBillFilePath,
             $dispatch->remarks,
             $dispatch->id
         ]);
@@ -207,6 +209,14 @@ class DispatchRepository
 
         $result = $this->database->fetch($sql, [$invoiceNo]);
         return $result ? new Dispatch($result) : null;
+    }
+
+    public function updateEwayBillFile(int $id, string $relativePath): bool
+    {
+        return $this->database->execute(
+            'UPDATE dispatches SET eway_bill_file_path = ? WHERE id = ?',
+            [$relativePath, $id]
+        );
     }
 
     public function delete(int $id): bool

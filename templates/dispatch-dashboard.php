@@ -99,48 +99,49 @@
 
 <!-- Dispatch Modal -->
 <div class="modal fade" id="dispatchModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Record Dispatch</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="dispatchForm">
+            <form id="dispatchForm" enctype="multipart/form-data">
                 <div class="modal-body">
                     <div class="alert alert-info py-2" id="dispatchOrderInfo"></div>
                     <input type="hidden" id="dispatchOrderId">
+                    <input type="hidden" id="dispatchTransportDocType">
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="mb-3">
                                 <label for="dispatchDate" class="form-label">Dispatch Date <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control" id="dispatchDate" required value="<?= date('Y-m-d') ?>">
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="mb-3">
                                 <label for="dispatchQty" class="form-label">Trucks <span class="text-danger">*</span></label>
                                 <input type="number" class="form-control" id="dispatchQty" required min="1">
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="mb-3">
-                                <label for="dispatchProductRate" class="form-label">Product Rate (₹/MT) <span class="text-danger">*</span></label>
-                                <input type="number" class="form-control" id="dispatchProductRate" step="0.01" min="0.01" required placeholder="Rate per metric ton">
-                                <div class="form-text">Loading weight from kanta parchi can be entered later on the order page.</div>
+                                <label for="dispatchProductRate" class="form-label">Rate (₹/MT) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="dispatchProductRate" step="0.01" min="0.01" required>
                             </div>
                         </div>
                     </div>
-                    <div class="mb-3" id="dashEwayBillGroup" style="display:none;">
-                        <label for="dispatchEwayBillNo" class="form-label">E-way Bill No. <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="dispatchEwayBillNo" placeholder="Required for JLD Minerals">
-                    </div>
                     <div class="mb-3" id="dashRawanaGroup" style="display:none;">
                         <label for="dispatchRawanaNo" class="form-label">Rawana No.</label>
-                        <input type="text" class="form-control" id="dispatchRawanaNo" placeholder="Optional — from invoice">
+                        <input type="text" class="form-control" id="dispatchRawanaNo" name="rawana_no" placeholder="Optional — from invoice">
+                    </div>
+                    <div id="dashTruckEwaySection" style="display:none;">
+                        <label class="form-label fw-semibold">E-way bill per truck <span class="text-danger">*</span></label>
+                        <p class="small text-muted">One E-way bill number (and optional upload) per truck.</p>
+                        <div id="dashTruckEwayRows" class="d-flex flex-column gap-3 mb-3"></div>
                     </div>
                     <div class="mb-3">
                         <label for="dispatchRemarks" class="form-label">Remarks</label>
-                        <textarea class="form-control" id="dispatchRemarks" rows="2"></textarea>
+                        <textarea class="form-control" id="dispatchRemarks" name="remarks" rows="2"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -179,7 +180,7 @@
                         <th>Busy Inv.</th>
                     </tr>
                 </thead>
-                <tbody><tr><td colspan="7" class="text-center text-muted p-3">Loading…</td></tr></tbody>
+                <tbody><tr><td colspan="8" class="text-center text-muted p-3">Loading…</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -298,15 +299,44 @@ async function loadDispatchQueue() {
 
 function toggleDashTransportDoc(docType) {
     const isEway = docType === 'eway_bill';
-    document.getElementById('dashEwayBillGroup').style.display = isEway ? '' : 'none';
+    document.getElementById('dashTruckEwaySection').style.display = isEway ? '' : 'none';
     document.getElementById('dashRawanaGroup').style.display = isEway ? 'none' : '';
-    document.getElementById('dispatchEwayBillNo').required = isEway;
+    if (isEway) buildDashTruckEwayRows();
+}
+
+function buildDashTruckEwayRows() {
+    const container = document.getElementById('dashTruckEwayRows');
+    const orderId = document.getElementById('dispatchOrderId').value;
+    const order = queueOrders.find(o => Number(o.id) === Number(orderId));
+    const max = Number(order?.remaining_trucks) || 1;
+    let qty = parseInt(document.getElementById('dispatchQty').value, 10) || 1;
+    if (qty > max) qty = max;
+
+    container.innerHTML = Array.from({ length: qty }, (_, i) => `
+        <div class="border rounded p-3 bg-light">
+            <div class="fw-semibold small mb-2">Truck ${i + 1}</div>
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label class="form-label small">E-way Bill No. <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control form-control-sm dash-truck-eway-no" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Upload (PDF/image)</label>
+                    <input type="file" class="form-control form-control-sm" name="eway_file_${i}" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*">
+                </div>
+            </div>
+        </div>
+    `).join('');
 }
 
 function formatTransportDoc(d) {
-    if (d.eway_bill_no) return escapeHtml(d.eway_bill_no) + ' <span class="badge bg-primary">E-way</span>';
-    if (d.rawana_no) return escapeHtml(d.rawana_no) + ' <span class="badge bg-secondary">Rawana</span>';
-    return '—';
+    let text = '—';
+    if (d.eway_bill_no) text = escapeHtml(d.eway_bill_no) + ' <span class="badge bg-primary">E-way</span>';
+    else if (d.rawana_no) text = escapeHtml(d.rawana_no) + ' <span class="badge bg-secondary">Rawana</span>';
+    if (d.has_eway_bill_file || d.eway_bill_file_path) {
+        text += ` <a href="/api/dispatches/${d.id}/eway-bill-file" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-file-earmark-pdf"></i></a>`;
+    }
+    return text;
 }
 
 function openDispatchModal(orderId) {
@@ -314,6 +344,7 @@ function openDispatchModal(orderId) {
     if (!order) return;
 
     document.getElementById('dispatchOrderId').value = order.id;
+    document.getElementById('dispatchTransportDocType').value = order.transport_doc_type || 'rawana';
     document.getElementById('dispatchOrderInfo').innerHTML = `
         <strong>${escapeHtml(order.order_no)}</strong> — ${escapeHtml(order.party_name)} · ${escapeHtml(order.product_name)}<br>
         <small>Remaining: <strong>${order.remaining_trucks}</strong> of ${order.order_qty_trucks} trucks</small>`;
@@ -323,12 +354,17 @@ function openDispatchModal(orderId) {
     document.getElementById('dispatchDate').value = order.scheduled_dispatch_date || new Date().toISOString().split('T')[0];
     document.getElementById('dispatchProductRate').value = '';
     document.getElementById('dispatchRemarks').value = '';
-    document.getElementById('dispatchEwayBillNo').value = '';
     document.getElementById('dispatchRawanaNo').value = '';
     toggleDashTransportDoc(order.transport_doc_type || 'rawana');
 
     new bootstrap.Modal(document.getElementById('dispatchModal')).show();
 }
+
+document.getElementById('dispatchQty').addEventListener('input', function() {
+    if (document.getElementById('dispatchTransportDocType').value === 'eway_bill') {
+        buildDashTruckEwayRows();
+    }
+});
 
 document.getElementById('dispatchForm').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -336,26 +372,55 @@ document.getElementById('dispatchForm').addEventListener('submit', async functio
     const orderId = document.getElementById('dispatchOrderId').value;
     const submitBtn = document.getElementById('dispatchSubmitBtn');
     const spinner = document.getElementById('dispatchSpinner');
+    const qty = parseInt(document.getElementById('dispatchQty').value, 10);
+    const isEway = document.getElementById('dispatchTransportDocType').value === 'eway_bill';
+
+    const formData = new FormData();
+    formData.append('dispatch_date', document.getElementById('dispatchDate').value);
+    formData.append('dispatch_qty_trucks', String(qty));
+    formData.append('product_rate', document.getElementById('dispatchProductRate').value);
+    formData.append('remarks', document.getElementById('dispatchRemarks').value || '');
+    formData.append('csrf_token', <?= json_encode($csrf_token ?? '') ?>);
+
+    if (isEway) {
+        const truckBills = [];
+        let valid = true;
+        document.querySelectorAll('.dash-truck-eway-no').forEach((input) => {
+            const no = input.value.trim();
+            if (!no) valid = false;
+            else truckBills.push({ eway_bill_no: no });
+        });
+        if (!valid || truckBills.length !== qty) {
+            showError(`Enter E-way bill number for each of ${qty} truck(s).`);
+            return;
+        }
+        formData.append('truck_eway_bills', JSON.stringify(truckBills));
+        document.querySelectorAll('#dashTruckEwayRows input[type="file"]').forEach(fileInput => {
+            if (fileInput.files && fileInput.files[0]) {
+                formData.append(fileInput.name, fileInput.files[0]);
+            }
+        });
+    } else {
+        formData.append('rawana_no', document.getElementById('dispatchRawanaNo').value.trim() || '');
+    }
 
     submitBtn.disabled = true;
     spinner.classList.remove('d-none');
 
     try {
-        await apiCall(`/api/orders/${orderId}/dispatches`, {
+        const response = await fetch(`/api/orders/${orderId}/dispatches`, {
             method: 'POST',
-            body: JSON.stringify({
-                dispatch_date: document.getElementById('dispatchDate').value,
-                dispatch_qty_trucks: parseInt(document.getElementById('dispatchQty').value),
-                product_rate: parseFloat(document.getElementById('dispatchProductRate').value),
-                eway_bill_no: document.getElementById('dispatchEwayBillNo').value.trim() || null,
-                rawana_no: document.getElementById('dispatchRawanaNo').value.trim() || null,
-                remarks: document.getElementById('dispatchRemarks').value || null
-            })
+            body: formData,
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': <?= json_encode($csrf_token ?? '') ?> }
         });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Dispatch failed');
 
         bootstrap.Modal.getInstance(document.getElementById('dispatchModal')).hide();
-        showSuccess('Dispatch recorded successfully.');
+        showSuccess(data.message || 'Dispatch recorded successfully.');
         await loadDispatchQueue();
+        loadRecentDispatches();
     } catch (error) {
         showError(error.message);
     } finally {

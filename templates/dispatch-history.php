@@ -155,9 +155,13 @@ let historyRows = [];
 const filterOrderId = new URLSearchParams(window.location.search).get('order_id');
 
 function formatTransportDoc(d) {
-    if (d.eway_bill_no) return `<span class="badge bg-primary">E-way: ${escapeHtml(d.eway_bill_no)}</span>`;
-    if (d.rawana_no) return `<span class="badge bg-secondary">Rawana: ${escapeHtml(d.rawana_no)}</span>`;
-    return '—';
+    let html = '—';
+    if (d.eway_bill_no) html = `<span class="badge bg-primary">E-way: ${escapeHtml(d.eway_bill_no)}</span>`;
+    else if (d.rawana_no) html = `<span class="badge bg-secondary">Rawana: ${escapeHtml(d.rawana_no)}</span>`;
+    if (d.has_eway_bill_file || d.eway_bill_file_path) {
+        html += ` <a href="/api/dispatches/${d.id}/eway-bill-file" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-1 ms-1"><i class="bi bi-file-earmark-pdf"></i></a>`;
+    }
+    return html;
 }
 
 function formatDispatchStatus(status) {

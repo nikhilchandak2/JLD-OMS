@@ -17,6 +17,7 @@ class Dispatch
     public ?string $vehicleNo = null;
     public ?string $rawanaNo = null;
     public ?string $ewayBillNo = null;
+    public ?string $ewayBillFilePath = null;
     public ?float $productRate = null;
     public ?float $loadingWeightTons = null;
     public ?string $busyInvoiceNo = null;
@@ -51,6 +52,7 @@ class Dispatch
         $this->vehicleNo = $data['vehicle_no'] ?? null;
         $this->rawanaNo = !empty($data['rawana_no']) ? (string)$data['rawana_no'] : null;
         $this->ewayBillNo = !empty($data['eway_bill_no']) ? (string)$data['eway_bill_no'] : null;
+        $this->ewayBillFilePath = !empty($data['eway_bill_file_path']) ? (string)$data['eway_bill_file_path'] : null;
         $this->productRate = isset($data['product_rate']) && $data['product_rate'] !== '' && $data['product_rate'] !== null
             ? (float)$data['product_rate']
             : null;
@@ -80,6 +82,8 @@ class Dispatch
             'vehicle_no' => $this->vehicleNo,
             'rawana_no' => $this->rawanaNo,
             'eway_bill_no' => $this->ewayBillNo,
+            'eway_bill_file_path' => $this->ewayBillFilePath,
+            'has_eway_bill_file' => !empty($this->ewayBillFilePath),
             'product_rate' => $this->productRate,
             'loading_weight_tons' => $this->loadingWeightTons,
             'busy_invoice_no' => $this->busyInvoiceNo,

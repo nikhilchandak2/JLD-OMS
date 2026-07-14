@@ -107,18 +107,23 @@ class DispatchController
             return;
         }
         
-        // Check permissions
         $user = $this->authService->getCurrentUser();
         if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing', 'dispatch'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Insufficient permissions']);
             return;
         }
+
+        $isMultipart = str_contains($_SERVER['CONTENT_TYPE'] ?? '', 'multipart/form-data');
+        $input = $isMultipart ? $_POST : (json_decode(file_get_contents('php://input'), true) ?? $_POST);
+
+        if ($isMultipart && !empty($input['truck_eway_bills']) && is_string($input['truck_eway_bills'])) {
+            $decoded = json_decode($input['truck_eway_bills'], true);
+            if (is_array($decoded)) {
+                $input['truck_eway_bills'] = $decoded;
+            }
+        }
         
-        // Get input data
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
-        
-        // Validate required fields
         $requiredFields = ['dispatch_date', 'dispatch_qty_trucks', 'product_rate'];
         $errors = [];
         
@@ -134,7 +139,6 @@ class DispatchController
             }
         }
         
-        // Validate data types and values
         if (!empty($input['dispatch_qty_trucks']) && (!is_numeric($input['dispatch_qty_trucks']) || $input['dispatch_qty_trucks'] <= 0)) {
             $errors[] = 'Dispatch quantity must be a positive number';
         }
@@ -152,6 +156,15 @@ class DispatchController
             echo json_encode(['error' => 'Validation failed', 'details' => $errors]);
             return;
         }
+
+        $ewayFiles = [];
+        if ($isMultipart) {
+            foreach ($_FILES as $key => $file) {
+                if (preg_match('/^eway_file_(\d+)$/', (string)$key, $m)) {
+                    $ewayFiles[(int)$m[1]] = $file;
+                }
+            }
+        }
         
         try {
             $dispatchData = [
@@ -161,22 +174,64 @@ class DispatchController
                 'product_rate' => (float)$input['product_rate'],
                 'rawana_no' => $input['rawana_no'] ?? null,
                 'eway_bill_no' => $input['eway_bill_no'] ?? null,
+                'truck_eway_bills' => $input['truck_eway_bills'] ?? null,
                 'remarks' => $input['remarks'] ?? null,
                 'dispatched_by' => $user['id']
             ];
             
-            $dispatch = $this->dispatchService->createDispatch($dispatchData);
+            $dispatches = $this->dispatchService->createManualDispatch($dispatchData, $ewayFiles);
+            $count = count($dispatches);
             
             http_response_code(201);
             echo json_encode([
                 'success' => true,
-                'message' => 'Dispatch created successfully',
-                'data' => $dispatch->toArray()
+                'message' => $count > 1
+                    ? "{$count} truck dispatches created (one E-way bill per truck)."
+                    : 'Dispatch created successfully',
+                'data' => array_map(fn($d) => $d->toArray(), $dispatches),
+                'count' => $count,
             ]);
         } catch (\Exception $e) {
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
         }
+    }
+
+    /** GET /api/dispatches/{id}/eway-bill-file — download uploaded E-way bill document. */
+    public function downloadEwayBillFile(int $id): void
+    {
+        if (!$this->requireDispatchReadAccess()) {
+            return;
+        }
+
+        $dispatch = $this->dispatchService->getDispatchById($id);
+        if (!$dispatch || empty($dispatch->ewayBillFilePath)) {
+            http_response_code(404);
+            echo json_encode(['error' => 'E-way bill file not found']);
+            return;
+        }
+
+        $fileService = new \App\Services\EwayBillFileService();
+        if (!$fileService->isReadable($dispatch->ewayBillFilePath)) {
+            http_response_code(404);
+            echo json_encode(['error' => 'E-way bill file missing on server']);
+            return;
+        }
+
+        $absolute = $fileService->getAbsolutePath($dispatch->ewayBillFilePath);
+        $ext = strtolower(pathinfo($absolute, PATHINFO_EXTENSION));
+        $mime = match ($ext) {
+            'pdf' => 'application/pdf',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            default => 'image/jpeg',
+        };
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="eway-bill-' . $dispatch->id . '.' . $ext . '"');
+        header('Content-Length: ' . filesize($absolute));
+        readfile($absolute);
+        exit;
     }
     
     public function show(int $id): void

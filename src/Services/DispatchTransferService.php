@@ -104,6 +104,7 @@ class DispatchTransferService
                 $newDispatch->vehicleNo = $source->vehicleNo;
                 $newDispatch->rawanaNo = $source->rawanaNo;
                 $newDispatch->ewayBillNo = $source->ewayBillNo;
+                $newDispatch->ewayBillFilePath = $source->ewayBillFilePath;
                 $newDispatch->remarks = trim(
                     'Transferred from order ' . $sourceOrder->orderNo .
                     ($source->busyInvoiceNo ? ' (invoice ' . $source->busyInvoiceNo . ')' : '') .

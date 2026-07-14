@@ -79,6 +79,69 @@ class DispatchService
         ];
     }
     
+    /**
+     * Manual dispatch from UI. E-way bill companies: one dispatch record per truck, each with its own E-way bill.
+     *
+     * @param array<int, array{tmp_name:string,name:string,size:int,error:int}> $ewayFiles
+     * @return Dispatch[]
+     */
+    public function createManualDispatch(array $data, array $ewayFiles = []): array
+    {
+        $order = $this->orderRepository->findById((int)$data['order_id']);
+        if (!$order) {
+            throw new \Exception('Order not found');
+        }
+
+        $qty = (int)($data['dispatch_qty_trucks'] ?? 0);
+        if ($qty <= 0) {
+            throw new \Exception('Dispatch quantity must be at least 1');
+        }
+
+        $docType = $order->transportDocType ?? 'rawana';
+        if ($docType === '') {
+            $company = $this->companyRepository->findById((int)$order->companyId);
+            $docType = $company?->transportDocType ?? 'rawana';
+        }
+
+        if ($docType === 'eway_bill') {
+            $trucks = $data['truck_eway_bills'] ?? [];
+            if (!is_array($trucks) || count($trucks) !== $qty) {
+                throw new \Exception("Provide E-way bill details for each of {$qty} truck(s).");
+            }
+
+            $created = [];
+            $fileService = new EwayBillFileService();
+            foreach ($trucks as $index => $truck) {
+                $ewayNo = trim((string)($truck['eway_bill_no'] ?? ''));
+                if ($ewayNo === '') {
+                    throw new \Exception('E-way bill number is required for truck ' . ($index + 1));
+                }
+
+                $record = $this->createDispatch([
+                    'order_id' => $order->id,
+                    'dispatch_date' => $data['dispatch_date'],
+                    'dispatch_qty_trucks' => 1,
+                    'product_rate' => (float)$data['product_rate'],
+                    'eway_bill_no' => $ewayNo,
+                    'remarks' => $data['remarks'] ?? null,
+                    'dispatched_by' => $data['dispatched_by'],
+                ]);
+
+                if (isset($ewayFiles[$index]) && ($ewayFiles[$index]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                    $path = $fileService->store($record->id, $order->id, $ewayFiles[$index]);
+                    $this->dispatchRepository->updateEwayBillFile($record->id, $path);
+                    $record = $this->getDispatchById($record->id) ?? $record;
+                }
+
+                $created[] = $record;
+            }
+
+            return $created;
+        }
+
+        return [$this->createDispatch($data)];
+    }
+
     public function createDispatch(array $data): Dispatch
     {
         // Validate that order exists
@@ -116,6 +179,7 @@ class DispatchService
         $dispatch->vehicleNo = $data['vehicle_no'] ?? null;
         $dispatch->rawanaNo = !empty($data['rawana_no']) ? trim((string)$data['rawana_no']) : null;
         $dispatch->ewayBillNo = !empty($data['eway_bill_no']) ? trim((string)$data['eway_bill_no']) : null;
+        $dispatch->ewayBillFilePath = !empty($data['eway_bill_file_path']) ? (string)$data['eway_bill_file_path'] : null;
         $dispatch->remarks = $data['remarks'] ?? null;
         $dispatch->dispatchedBy = $data['dispatched_by'];
 
