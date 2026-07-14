@@ -21,6 +21,8 @@ class BusyInvoiceImportService
     private const WEIGHT_HEADERS = ['weight', 'net weight', 'loading weight', 'weight mt', 'weight (mt)', 'qty mt', 'quantity mt', 'mt'];
     private const ORDER_HEADERS = ['order no', 'order number', 'order #', 'oms order', 'order id'];
     private const VEHICLE_HEADERS = ['vehicle no', 'vehicle', 'lr no', 'vehicle number'];
+    private const RAWANA_HEADERS = ['rawana no', 'rawana', 'rawana number'];
+    private const EWAY_HEADERS = ['e-way bill', 'eway bill', 'e way bill', 'eway bill no', 'e-way bill no', 'ewb no'];
     private const AMOUNT_HEADERS = ['amount', 'total', 'invoice amount', 'bill amount'];
     private const COMPANY_HEADERS = ['company', 'company name', 'unit', 'branch'];
 
@@ -101,6 +103,15 @@ class BusyInvoiceImportService
         $rawanaNo = null;
         if (preg_match('/Rawana\s+No\.?\s*:\s*(\S+)/i', $normalized, $m)) {
             $rawanaNo = trim($m[1]);
+        }
+
+        $ewayBillNo = null;
+        if (preg_match('/E[-\s]?Way\s+Bill\s+No\.?\s*:\s*(\S+)/i', $normalized, $m)) {
+            $ewayBillNo = trim($m[1]);
+        } elseif (preg_match('/EWB\s+No\.?\s*:\s*(\S+)/i', $normalized, $m)) {
+            $ewayBillNo = trim($m[1]);
+        } elseif (preg_match('/E[-\s]?Way\s+Bill\s*#?\s*(\d{12})/i', $normalized, $m)) {
+            $ewayBillNo = trim($m[1]);
         }
 
         $orderNo = null;
@@ -191,10 +202,12 @@ class BusyInvoiceImportService
             'loading_weight_tons' => $lineItem['loading_weight_tons'],
             'order_no' => $orderNo,
             'vehicle_no' => $vehicleNo,
+            'rawana_no' => $rawanaNo,
+            'eway_bill_no' => $ewayBillNo,
             'company_name' => $companyName,
             'remarks' => trim(
                 "Imported from Busy tax invoice #{$invoiceNo}" .
-                ($rawanaNo ? " | Rawana: {$rawanaNo}" : '') .
+                ($ewayBillNo ? " | E-way Bill: {$ewayBillNo}" : ($rawanaNo ? " | Rawana: {$rawanaNo}" : '')) .
                 ($vehicleNo ? " | Vehicle: {$vehicleNo}" : '')
             ),
         ];
@@ -585,6 +598,8 @@ class BusyInvoiceImportService
         $qtyCol = $this->findColumn($headerRow, self::QTY_HEADERS);
         $orderCol = $this->findColumn($headerRow, self::ORDER_HEADERS);
         $vehicleCol = $this->findColumn($headerRow, self::VEHICLE_HEADERS);
+        $rawanaCol = $this->findColumn($headerRow, self::RAWANA_HEADERS);
+        $ewayCol = $this->findColumn($headerRow, self::EWAY_HEADERS);
         $amountCol = $this->findColumn($headerRow, self::AMOUNT_HEADERS);
         $companyCol = $this->findColumn($headerRow, self::COMPANY_HEADERS);
 
@@ -666,6 +681,8 @@ class BusyInvoiceImportService
                 'loading_weight_tons' => $weight !== null && $weight > 0 ? (float)$weight : null,
                 'order_no' => $orderCol !== null ? trim((string)($row[$orderCol] ?? '')) : null,
                 'vehicle_no' => $vehicleCol !== null ? trim((string)($row[$vehicleCol] ?? '')) : null,
+                'rawana_no' => $rawanaCol !== null ? trim((string)($row[$rawanaCol] ?? '')) : null,
+                'eway_bill_no' => $ewayCol !== null ? trim((string)($row[$ewayCol] ?? '')) : null,
                 'company_name' => $companyCol !== null ? trim((string)($row[$companyCol] ?? '')) : null,
                 'remarks' => "Imported from Busy invoice #{$invoiceNo}",
             ];

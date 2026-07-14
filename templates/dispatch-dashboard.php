@@ -130,6 +130,14 @@
                             </div>
                         </div>
                     </div>
+                    <div class="mb-3" id="dashEwayBillGroup" style="display:none;">
+                        <label for="dispatchEwayBillNo" class="form-label">E-way Bill No. <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="dispatchEwayBillNo" placeholder="Required for JLD Minerals">
+                    </div>
+                    <div class="mb-3" id="dashRawanaGroup" style="display:none;">
+                        <label for="dispatchRawanaNo" class="form-label">Rawana No.</label>
+                        <input type="text" class="form-control" id="dispatchRawanaNo" placeholder="Optional — from invoice">
+                    </div>
                     <div class="mb-3">
                         <label for="dispatchRemarks" class="form-label">Remarks</label>
                         <textarea class="form-control" id="dispatchRemarks" rows="2"></textarea>
@@ -167,6 +175,7 @@
                         <th>Trucks</th>
                         <th>Rate (₹/MT)</th>
                         <th>Weight (MT)</th>
+                        <th>Transport</th>
                         <th>Busy Inv.</th>
                     </tr>
                 </thead>
@@ -191,7 +200,9 @@
                         OMS reads party, product, rate per MT, loading weight, and vehicle details, then creates or updates the dispatch.
                     </p>
                     <div class="alert alert-info py-2 small">
-                        <strong>PDF (recommended):</strong> Busy tax invoice like invoice 2418 — party, 26.170 M.T., rate ₹/MT, vehicle no.<br>
+                        <strong>PDF (recommended):</strong> Busy tax invoice — party, weight, rate ₹/MT, vehicle no.<br>
+                        <strong>JLD Minerals:</strong> invoice must include <strong>E-way Bill No.</strong> (not Rawana).<br>
+                        <strong>Jaichand Lal Daga / Mines:</strong> Rawana no. is captured when present on invoice.<br>
                         <strong>CSV:</strong> Invoice No, Party, Product, Rate, Weight (MT), optional Order No.
                     </div>
                     <div class="mb-3">
@@ -285,6 +296,19 @@ async function loadDispatchQueue() {
     }
 }
 
+function toggleDashTransportDoc(docType) {
+    const isEway = docType === 'eway_bill';
+    document.getElementById('dashEwayBillGroup').style.display = isEway ? '' : 'none';
+    document.getElementById('dashRawanaGroup').style.display = isEway ? 'none' : '';
+    document.getElementById('dispatchEwayBillNo').required = isEway;
+}
+
+function formatTransportDoc(d) {
+    if (d.eway_bill_no) return escapeHtml(d.eway_bill_no) + ' <span class="badge bg-primary">E-way</span>';
+    if (d.rawana_no) return escapeHtml(d.rawana_no) + ' <span class="badge bg-secondary">Rawana</span>';
+    return '—';
+}
+
 function openDispatchModal(orderId) {
     const order = queueOrders.find(o => Number(o.id) === Number(orderId));
     if (!order) return;
@@ -299,6 +323,9 @@ function openDispatchModal(orderId) {
     document.getElementById('dispatchDate').value = order.scheduled_dispatch_date || new Date().toISOString().split('T')[0];
     document.getElementById('dispatchProductRate').value = '';
     document.getElementById('dispatchRemarks').value = '';
+    document.getElementById('dispatchEwayBillNo').value = '';
+    document.getElementById('dispatchRawanaNo').value = '';
+    toggleDashTransportDoc(order.transport_doc_type || 'rawana');
 
     new bootstrap.Modal(document.getElementById('dispatchModal')).show();
 }
@@ -320,6 +347,8 @@ document.getElementById('dispatchForm').addEventListener('submit', async functio
                 dispatch_date: document.getElementById('dispatchDate').value,
                 dispatch_qty_trucks: parseInt(document.getElementById('dispatchQty').value),
                 product_rate: parseFloat(document.getElementById('dispatchProductRate').value),
+                eway_bill_no: document.getElementById('dispatchEwayBillNo').value.trim() || null,
+                rawana_no: document.getElementById('dispatchRawanaNo').value.trim() || null,
                 remarks: document.getElementById('dispatchRemarks').value || null
             })
         });
@@ -346,7 +375,7 @@ async function loadRecentDispatches() {
         const response = await apiCall('/api/dispatches?limit=10');
         const rows = response.data || [];
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-3">No dispatches yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-3">No dispatches yet</td></tr>';
             return;
         }
         tbody.innerHTML = rows.map(d => `
@@ -357,11 +386,12 @@ async function loadRecentDispatches() {
                 <td>${d.dispatch_qty_trucks}</td>
                 <td>${d.product_rate != null ? Number(d.product_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
                 <td>${d.loading_weight_tons != null ? Number(d.loading_weight_tons).toLocaleString('en-IN', { minimumFractionDigits: 3 }) : '—'}</td>
+                <td>${formatTransportDoc(d)}</td>
                 <td>${d.busy_invoice_no ? escapeHtml(d.busy_invoice_no) : '—'}</td>
             </tr>
         `).join('');
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger p-3">${escapeHtml(error.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger p-3">${escapeHtml(error.message)}</td></tr>`;
     }
 }
 

@@ -159,6 +159,8 @@ class DispatchController
                 'dispatch_date' => $input['dispatch_date'],
                 'dispatch_qty_trucks' => (int)$input['dispatch_qty_trucks'],
                 'product_rate' => (float)$input['product_rate'],
+                'rawana_no' => $input['rawana_no'] ?? null,
+                'eway_bill_no' => $input['eway_bill_no'] ?? null,
                 'remarks' => $input['remarks'] ?? null,
                 'dispatched_by' => $user['id']
             ];
@@ -257,6 +259,14 @@ class DispatchController
                     echo json_encode(['error' => 'Loading weight must be a positive number (metric tons)']);
                     return;
                 }
+            }
+            
+            if (array_key_exists('rawana_no', $input)) {
+                $updateData['rawana_no'] = $input['rawana_no'];
+            }
+
+            if (array_key_exists('eway_bill_no', $input)) {
+                $updateData['eway_bill_no'] = $input['eway_bill_no'];
             }
             
             if (isset($input['remarks'])) {

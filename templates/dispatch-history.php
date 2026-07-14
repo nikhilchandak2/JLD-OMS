@@ -63,6 +63,7 @@
                         <th>Trucks</th>
                         <th>Rate (₹/MT)</th>
                         <th>Weight (MT)</th>
+                        <th>Transport Doc</th>
                         <th>Busy Invoice</th>
                         <th>By</th>
                         <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch'])): ?>
@@ -71,7 +72,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="<?= in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch']) ? 10 : 9 ?>" class="text-center text-muted p-4">Loading…</td></tr>
+                    <tr><td colspan="<?= in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch']) ? 11 : 10 ?>" class="text-center text-muted p-4">Loading…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -146,12 +147,18 @@
 
 <script>
 const canEditDispatch = <?= in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch']) ? 'true' : 'false' ?>;
-const historyColSpan = canEditDispatch ? 10 : 9;
+const historyColSpan = canEditDispatch ? 11 : 10;
 const historyPageSize = 25;
 let historyPage = 0;
 let historyTotal = 0;
 let historyRows = [];
 const filterOrderId = new URLSearchParams(window.location.search).get('order_id');
+
+function formatTransportDoc(d) {
+    if (d.eway_bill_no) return `<span class="badge bg-primary">E-way: ${escapeHtml(d.eway_bill_no)}</span>`;
+    if (d.rawana_no) return `<span class="badge bg-secondary">Rawana: ${escapeHtml(d.rawana_no)}</span>`;
+    return '—';
+}
 
 function formatDispatchStatus(status) {
     const s = status || 'active';
@@ -219,6 +226,7 @@ function renderHistoryTable() {
             <td>${d.dispatch_qty_trucks}</td>
             <td>${d.product_rate != null ? Number(d.product_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
             <td>${d.loading_weight_tons != null ? formatWeightTons(d.loading_weight_tons) : '<span class="badge bg-warning text-dark">Pending</span>'}</td>
+            <td>${formatTransportDoc(d)}</td>
             <td>${d.busy_invoice_no ? escapeHtml(d.busy_invoice_no) : '—'}</td>
             <td>${escapeHtml(d.dispatched_by_name || '—')}</td>
             ${actions}

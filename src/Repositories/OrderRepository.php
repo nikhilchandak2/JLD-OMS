@@ -107,6 +107,7 @@ class OrderRepository
                    o.priority,
                    o.order_qty_trucks,
                    c.name AS company_name,
+                   c.transport_doc_type AS transport_doc_type,
                    p.name AS product_name,
                    pt.id AS party_id,
                    pt.name AS party_name,
@@ -149,11 +150,14 @@ class OrderRepository
     {
         $sql = "
             SELECT o.*, 
+                   c.name as company_name,
+                   c.transport_doc_type as transport_doc_type,
                    p.name as product_name,
                    pt.name as party_name,
                    u.name as created_by_name,
                    COALESCE(d.total_dispatched, 0) as total_dispatched
             FROM orders o
+            JOIN companies c ON o.company_id = c.id
             JOIN products p ON o.product_id = p.id
             JOIN parties pt ON o.party_id = pt.id
             LEFT JOIN users u ON o.created_by = u.id

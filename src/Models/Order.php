@@ -7,6 +7,7 @@ class Order
     public int $id = 0;
     public int $companyId = 0;
     public string $companyName = '';
+    public string $transportDocType = 'rawana';
     public string $orderNo = '';
     public string $orderDate = '';
     public ?string $scheduledDispatchDate = null;
@@ -48,6 +49,7 @@ class Order
         $this->id = $data['id'] ?? 0;
         $this->companyId = $data['company_id'] ?? 0;
         $this->companyName = $data['company_name'] ?? '';
+        $this->transportDocType = $data['transport_doc_type'] ?? 'rawana';
         $this->orderNo = $data['order_no'] ?? '';
         $this->orderDate = $data['order_date'] ?? '';
         $this->scheduledDispatchDate = !empty($data['scheduled_dispatch_date']) ? (string)$data['scheduled_dispatch_date'] : null;
@@ -88,6 +90,7 @@ class Order
             'id' => $this->id ?? 0,
             'company_id' => $this->companyId ?? 0,
             'company_name' => $this->companyName ?? '',
+            'transport_doc_type' => $this->transportDocType,
             'order_no' => $this->orderNo ?? '',
             'order_date' => $this->orderDate ?? '',
             'scheduled_dispatch_date' => $this->scheduledDispatchDate,

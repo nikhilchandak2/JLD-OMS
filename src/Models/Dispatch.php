@@ -15,6 +15,8 @@ class Dispatch
     public ?int $transferredToDispatchId = null;
     public ?int $sourceDispatchId = null;
     public ?string $vehicleNo = null;
+    public ?string $rawanaNo = null;
+    public ?string $ewayBillNo = null;
     public ?float $productRate = null;
     public ?float $loadingWeightTons = null;
     public ?string $busyInvoiceNo = null;
@@ -47,6 +49,8 @@ class Dispatch
             ? (int)$data['source_dispatch_id']
             : null;
         $this->vehicleNo = $data['vehicle_no'] ?? null;
+        $this->rawanaNo = !empty($data['rawana_no']) ? (string)$data['rawana_no'] : null;
+        $this->ewayBillNo = !empty($data['eway_bill_no']) ? (string)$data['eway_bill_no'] : null;
         $this->productRate = isset($data['product_rate']) && $data['product_rate'] !== '' && $data['product_rate'] !== null
             ? (float)$data['product_rate']
             : null;
@@ -74,6 +78,8 @@ class Dispatch
             'transferred_to_dispatch_id' => $this->transferredToDispatchId,
             'source_dispatch_id' => $this->sourceDispatchId,
             'vehicle_no' => $this->vehicleNo,
+            'rawana_no' => $this->rawanaNo,
+            'eway_bill_no' => $this->ewayBillNo,
             'product_rate' => $this->productRate,
             'loading_weight_tons' => $this->loadingWeightTons,
             'busy_invoice_no' => $this->busyInvoiceNo,

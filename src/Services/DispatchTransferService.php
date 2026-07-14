@@ -102,6 +102,8 @@ class DispatchTransferService
                 $newDispatch->productRate = $source->productRate;
                 $newDispatch->loadingWeightTons = $source->loadingWeightTons;
                 $newDispatch->vehicleNo = $source->vehicleNo;
+                $newDispatch->rawanaNo = $source->rawanaNo;
+                $newDispatch->ewayBillNo = $source->ewayBillNo;
                 $newDispatch->remarks = trim(
                     'Transferred from order ' . $sourceOrder->orderNo .
                     ($source->busyInvoiceNo ? ' (invoice ' . $source->busyInvoiceNo . ')' : '') .

@@ -14,6 +14,7 @@ class Company
     public string $gstNumber = '';
     public string $panNumber = '';
     public string $status = 'active';
+    public string $transportDocType = 'rawana';
     public string $createdAt = '';
     public string $updatedAt = '';
 
@@ -29,6 +30,7 @@ class Company
         $this->gstNumber = $data['gst_number'] ?? '';
         $this->panNumber = $data['pan_number'] ?? '';
         $this->status = $data['status'] ?? 'active';
+        $this->transportDocType = $data['transport_doc_type'] ?? 'rawana';
         $this->createdAt = $data['created_at'] ?? '';
         $this->updatedAt = $data['updated_at'] ?? '';
     }
@@ -46,6 +48,7 @@ class Company
             'gst_number' => $this->gstNumber,
             'pan_number' => $this->panNumber,
             'status' => $this->status,
+            'transport_doc_type' => $this->transportDocType,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];
@@ -54,6 +57,16 @@ class Company
     public function isActive(): bool
     {
         return $this->status === 'active';
+    }
+
+    public function requiresEwayBill(): bool
+    {
+        return $this->transportDocType === 'eway_bill';
+    }
+
+    public function usesRawana(): bool
+    {
+        return $this->transportDocType === 'rawana';
     }
 }
 

@@ -27,26 +27,29 @@ $companies = [
     [
         'name' => 'Jaichand Lal Daga',
         'code' => 'JAICHAND_LAL_DAGA',
+        'transport_doc_type' => 'rawana',
     ],
     [
         'name' => 'JLD Minerals Private Limited',
         'code' => 'JLD_MINERALS_PRIVATE_LIMITED',
+        'transport_doc_type' => 'eway_bill',
     ],
     [
         'name' => 'J L daga Mines & Minerals',
         'code' => 'JL_DAGA_MINES_MINERALS',
+        'transport_doc_type' => 'rawana',
     ],
 ];
 
 $companySelect = $pdo->prepare("SELECT id FROM companies WHERE name = ? LIMIT 1");
 $companyUpdate = $pdo->prepare("
     UPDATE companies
-    SET code = ?, status = 'active'
+    SET code = ?, transport_doc_type = ?, status = 'active'
     WHERE id = ?
 ");
 $companyInsert = $pdo->prepare("
-    INSERT INTO companies (name, code, address, phone, email, contact_person, gst_number, pan_number, status)
-    VALUES (?, ?, '', '', '', '', '', '', 'active')
+    INSERT INTO companies (name, code, address, phone, email, contact_person, gst_number, pan_number, status, transport_doc_type)
+    VALUES (?, ?, '', '', '', '', '', '', 'active', ?)
 ");
 
 foreach ($companies as $c) {
@@ -54,9 +57,9 @@ foreach ($companies as $c) {
     $id = $companySelect->fetchColumn();
 
     if ($id) {
-        $companyUpdate->execute([$c['code'], (int)$id]);
+        $companyUpdate->execute([$c['code'], $c['transport_doc_type'], (int)$id]);
     } else {
-        $companyInsert->execute([$c['name'], $c['code']]);
+        $companyInsert->execute([$c['name'], $c['code'], $c['transport_doc_type']]);
     }
 }
 

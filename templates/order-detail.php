@@ -209,6 +209,7 @@
                                     <th>Trucks</th>
                                     <th>Rate (₹/MT)</th>
                                     <th>Weight (MT)</th>
+                                    <th>Transport Doc</th>
                                     <th>Busy Invoice</th>
                                     <th>Remarks</th>
                                     <th>By</th>
@@ -249,6 +250,17 @@
                             <label for="productRate" class="form-label">Product Rate (₹/MT) <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" id="productRate" name="product_rate" step="0.01" min="0.01" required placeholder="Rate per MT">
                             <div class="form-text">Enter loading weight from kanta parchi after weighbridge.</div>
+                        </div>
+
+                        <div class="mb-3" id="ewayBillGroup" style="display:none;">
+                            <label for="ewayBillNo" class="form-label">E-way Bill No. <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="ewayBillNo" name="eway_bill_no" placeholder="12-digit E-way bill number">
+                            <div class="form-text">Required for JLD Minerals dispatches (no Rawana).</div>
+                        </div>
+
+                        <div class="mb-3" id="rawanaGroup" style="display:none;">
+                            <label for="rawanaNo" class="form-label">Rawana No.</label>
+                            <input type="text" class="form-control" id="rawanaNo" name="rawana_no" placeholder="Rawana number from invoice">
                         </div>
 
                         <div class="mb-3">
@@ -491,6 +503,7 @@ function updateOrderDisplay(order) {
     document.getElementById('partyName').textContent = order.party_name;
     document.getElementById('productName').textContent = order.product_name;
     document.getElementById('infoCompanyBadge').textContent = order.company_name || '—';
+    toggleTransportDocFields(order.transport_doc_type || 'rawana');
 
     const ordered = Number(order.order_qty_trucks) || 0;
     const dispatched = Number(order.total_dispatched) || 0;
@@ -681,7 +694,8 @@ function updateDispatchSummary(dispatches) {
                 <div class="col-md-2"><span class="text-muted">Trucks</span><br><strong>${d.dispatch_qty_trucks}</strong></div>
                 <div class="col-md-2"><span class="text-muted">Rate</span><br><strong>${d.product_rate != null ? '₹' + Number(d.product_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 }) + '/MT' : '—'}</strong></div>
                 <div class="col-md-2"><span class="text-muted">Weight</span><br><strong>${d.loading_weight_tons != null ? Number(d.loading_weight_tons).toLocaleString('en-IN', { minimumFractionDigits: 3 }) + ' MT' : '<span class="text-warning">Awaiting kanta parchi</span>'}</strong></div>
-                <div class="col-md-3"><span class="text-muted">Invoice</span><br><strong>${d.busy_invoice_no ? escapeHtml(d.busy_invoice_no) : '—'}</strong></div>
+                <div class="col-md-2"><span class="text-muted">Transport</span><br><strong>${formatTransportDoc(d)}</strong></div>
+                <div class="col-md-2"><span class="text-muted">Invoice</span><br><strong>${d.busy_invoice_no ? escapeHtml(d.busy_invoice_no) : '—'}</strong></div>
             </div>
             ${d.remarks ? `<div class="small text-muted mt-2 pt-2 border-top">${escapeHtml(d.remarks)}</div>` : ''}
         </div>
@@ -703,9 +717,29 @@ function formatDispatchStatus(status) {
     return map[s] || escapeHtml(s);
 }
 
+function formatTransportDoc(dispatch) {
+    if (dispatch.eway_bill_no) {
+        return `<span class="badge bg-primary">E-way: ${escapeHtml(dispatch.eway_bill_no)}</span>`;
+    }
+    if (dispatch.rawana_no) {
+        return `<span class="badge bg-secondary">Rawana: ${escapeHtml(dispatch.rawana_no)}</span>`;
+    }
+    return '—';
+}
+
+function toggleTransportDocFields(docType) {
+    const isEway = docType === 'eway_bill';
+    const ewayGroup = document.getElementById('ewayBillGroup');
+    const rawanaGroup = document.getElementById('rawanaGroup');
+    const ewayInput = document.getElementById('ewayBillNo');
+    if (ewayGroup) ewayGroup.style.display = isEway ? '' : 'none';
+    if (rawanaGroup) rawanaGroup.style.display = isEway ? 'none' : '';
+    if (ewayInput) ewayInput.required = isEway;
+}
+
 function updateDispatchHistory(dispatches) {
     const tbody = document.querySelector('#dispatchesTable tbody');
-    const colSpan = canEditDispatch ? 9 : 8;
+    const colSpan = canEditDispatch ? 10 : 9;
     
     if (dispatches.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted">No dispatches yet</td></tr>`;
@@ -734,6 +768,7 @@ function updateDispatchHistory(dispatches) {
             <td><span class="badge bg-success">${dispatch.dispatch_qty_trucks}</span></td>
             <td>${dispatch.product_rate != null ? Number(dispatch.product_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
             <td>${weightCell}</td>
+            <td>${formatTransportDoc(dispatch)}</td>
             <td>${dispatch.busy_invoice_no ? escapeHtml(dispatch.busy_invoice_no) : '—'}</td>
             <td>${escapeHtml(dispatch.remarks || '-')}</td>
             <td>${escapeHtml(dispatch.dispatched_by_name || 'Unknown')}</td>
@@ -827,6 +862,8 @@ document.getElementById('dispatchForm').addEventListener('submit', async functio
             dispatch_date: formData.get('dispatch_date'),
             dispatch_qty_trucks: qty,
             product_rate: parseFloat(formData.get('product_rate')),
+            eway_bill_no: formData.get('eway_bill_no') || null,
+            rawana_no: formData.get('rawana_no') || null,
             remarks: formData.get('remarks') || null
         };
         

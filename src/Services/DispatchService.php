@@ -7,8 +7,10 @@ use App\Repositories\DispatchRepository;
 use App\Repositories\OrderRepository;
 use App\Repositories\CreditApprovalRepository;
 use App\Repositories\ScheduledDeliveryRepository;
+use App\Repositories\CompanyRepository;
 use App\Support\CompanyContext;
 use App\Models\Dispatch;
+use App\Models\Order;
 
 class DispatchService
 {
@@ -17,6 +19,7 @@ class DispatchService
     private OrderRepository $orderRepository;
     private CreditApprovalRepository $creditApprovalRepository;
     private ScheduledDeliveryRepository $scheduledDeliveryRepository;
+    private CompanyRepository $companyRepository;
     
     public function __construct()
     {
@@ -25,6 +28,7 @@ class DispatchService
         $this->orderRepository = new OrderRepository();
         $this->creditApprovalRepository = new CreditApprovalRepository();
         $this->scheduledDeliveryRepository = new ScheduledDeliveryRepository();
+        $this->companyRepository = new CompanyRepository();
     }
     
     public function getDispatches(array $filters = []): array
@@ -110,8 +114,12 @@ class DispatchService
             : null;
         $dispatch->busyInvoiceNo = !empty($data['busy_invoice_no']) ? (string)$data['busy_invoice_no'] : null;
         $dispatch->vehicleNo = $data['vehicle_no'] ?? null;
+        $dispatch->rawanaNo = !empty($data['rawana_no']) ? trim((string)$data['rawana_no']) : null;
+        $dispatch->ewayBillNo = !empty($data['eway_bill_no']) ? trim((string)$data['eway_bill_no']) : null;
         $dispatch->remarks = $data['remarks'] ?? null;
         $dispatch->dispatchedBy = $data['dispatched_by'];
+
+        $this->validateTransportDocument($order, $dispatch, true);
         
         // Validate dispatch data
         $errors = $dispatch->validate();
@@ -199,10 +207,24 @@ class DispatchService
         if (isset($data['vehicle_no'])) {
             $dispatch->vehicleNo = $data['vehicle_no'];
         }
+
+        if (array_key_exists('rawana_no', $data)) {
+            $dispatch->rawanaNo = $data['rawana_no'] !== null && $data['rawana_no'] !== ''
+                ? trim((string)$data['rawana_no'])
+                : null;
+        }
+
+        if (array_key_exists('eway_bill_no', $data)) {
+            $dispatch->ewayBillNo = $data['eway_bill_no'] !== null && $data['eway_bill_no'] !== ''
+                ? trim((string)$data['eway_bill_no'])
+                : null;
+        }
         
         if (isset($data['remarks'])) {
             $dispatch->remarks = $data['remarks'];
         }
+
+        $this->validateTransportDocument($order, $dispatch, false);
         
         // Validate updated dispatch data
         $errors = $dispatch->validate();
@@ -411,6 +433,26 @@ class DispatchService
                 ]);
             }
         }
+    }
+
+    private function validateTransportDocument(Order $order, Dispatch $dispatch, bool $isCreate): void
+    {
+        $docType = $order->transportDocType ?? 'rawana';
+        if ($docType === '') {
+            $company = $this->companyRepository->findById((int)$order->companyId);
+            $docType = $company?->transportDocType ?? 'rawana';
+        }
+
+        if ($docType === 'eway_bill') {
+            if ($isCreate && ($dispatch->ewayBillNo === null || $dispatch->ewayBillNo === '')) {
+                throw new \Exception(
+                    'E-way bill number is required for dispatches under ' . ($order->companyName ?: 'JLD Minerals') . '.'
+                );
+            }
+            return;
+        }
+
+        // Rawana-based companies: optional at create (often filled from Busy invoice import)
     }
 }
 

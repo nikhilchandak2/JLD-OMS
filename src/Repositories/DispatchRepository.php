@@ -122,9 +122,9 @@ class DispatchRepository
         $sql = "
             INSERT INTO dispatches (
                 order_id, dispatch_date, dispatch_qty_trucks, status, source_dispatch_id,
-                product_rate, loading_weight_tons, busy_invoice_no, vehicle_no, remarks, dispatched_by
+                product_rate, loading_weight_tons, busy_invoice_no, vehicle_no, rawana_no, eway_bill_no, remarks, dispatched_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ";
         
         $this->database->execute($sql, [
@@ -137,6 +137,8 @@ class DispatchRepository
             $dispatch->loadingWeightTons,
             $dispatch->busyInvoiceNo,
             $dispatch->vehicleNo,
+            $dispatch->rawanaNo,
+            $dispatch->ewayBillNo,
             $dispatch->remarks,
             $dispatch->dispatchedBy
         ]);
@@ -169,7 +171,7 @@ class DispatchRepository
     {
         $sql = "
             UPDATE dispatches 
-            SET dispatch_date = ?, dispatch_qty_trucks = ?, product_rate = ?, loading_weight_tons = ?, busy_invoice_no = ?, vehicle_no = ?, remarks = ?
+            SET dispatch_date = ?, dispatch_qty_trucks = ?, product_rate = ?, loading_weight_tons = ?, busy_invoice_no = ?, vehicle_no = ?, rawana_no = ?, eway_bill_no = ?, remarks = ?
             WHERE id = ?
         ";
         
@@ -180,6 +182,8 @@ class DispatchRepository
             $dispatch->loadingWeightTons,
             $dispatch->busyInvoiceNo,
             $dispatch->vehicleNo,
+            $dispatch->rawanaNo,
+            $dispatch->ewayBillNo,
             $dispatch->remarks,
             $dispatch->id
         ]);

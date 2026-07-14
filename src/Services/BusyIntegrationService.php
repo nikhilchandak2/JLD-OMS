@@ -413,6 +413,8 @@ class BusyIntegrationService
                 'dispatch_qty_trucks' => $data['quantity'],
                 'product_rate' => $data['product_rate'],
                 'loading_weight_tons' => $data['loading_weight_tons'],
+                'rawana_no' => $data['rawana_no'] ?? null,
+                'eway_bill_no' => $data['eway_bill_no'] ?? null,
                 'remarks' => $data['remarks'],
             ]);
 
@@ -442,6 +444,8 @@ class BusyIntegrationService
             'loading_weight_tons' => $data['loading_weight_tons'],
             'busy_invoice_no' => $data['invoice_no'],
             'vehicle_no' => $data['vehicle_no'],
+            'rawana_no' => $data['rawana_no'] ?? null,
+            'eway_bill_no' => $data['eway_bill_no'] ?? null,
             'remarks' => $data['remarks'],
             'dispatched_by' => $userId,
         ]);
