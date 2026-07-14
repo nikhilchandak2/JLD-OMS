@@ -1040,6 +1040,7 @@
                     $canOrders = in_array($r, ['admin', 'order_processing', 'entry', 'view', 'sales', 'dispatch']);
                     $canOrdersAnalytics = in_array($r, ['admin', 'entry', 'view']);
                     $canDispatchDash = in_array($r, ['admin', 'dispatch', 'order_processing']);
+                    $canDispatchHistory = in_array($r, ['admin', 'dispatch', 'order_processing', 'entry']);
                     $canVisitRequests = in_array($r, ['admin', 'marketing', 'technical', 'crm']);
                     $canVehicles = in_array($r, ['admin', 'operator']);
                     $canExport = in_array($r, ['admin', 'accounts']);
@@ -1067,8 +1068,15 @@
                     <?php endif; ?>
                     <?php if ($canDispatchDash): ?>
                     <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/dispatch') === 0 && strpos($_SERVER['REQUEST_URI'], '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/dispatch') === 0 && strpos($_SERVER['REQUEST_URI'], '/dispatch/history') === false && strpos($_SERVER['REQUEST_URI'], '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
                             <i class="bi bi-truck-flatbed"></i> Dispatch Dashboard
+                        </a>
+                    </li>
+                    <?php endif; ?>
+                    <?php if ($canDispatchHistory): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/dispatch/history') === 0 ? 'active' : '' ?>" href="/dispatch/history">
+                            <i class="bi bi-clock-history"></i> Dispatch History
                         </a>
                     </li>
                     <?php endif; ?>

@@ -195,8 +195,9 @@
 
             <!-- Dispatch History -->
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Dispatch History</h5>
+                    <a href="/dispatch/history?order_id=<?= (int)$order_id ?>" class="btn btn-sm btn-outline-primary">Full history</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -204,6 +205,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>Date</th>
+                                    <th>Status</th>
                                     <th>Trucks</th>
                                     <th>Rate (₹/MT)</th>
                                     <th>Weight (MT)</th>
@@ -360,6 +362,67 @@
                     <button type="submit" class="btn btn-primary" id="weightSubmitBtn">
                         <span class="spinner-border spinner-border-sm d-none" id="weightSpinner"></span>
                         Save Weight
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Reject / transfer truck (party rejection workflow) -->
+<div class="modal fade" id="rejectTransferModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Reject / Transfer Truck</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rejectTransferForm">
+                <div class="modal-body">
+                    <p class="text-muted small" id="rejectTransferInfo"></p>
+                    <div class="alert alert-info py-2 small">
+                        When a party rejects a truck, issue a <strong>credit note</strong> to them and either
+                        <strong>transfer the same truck</strong> to another party's order or
+                        <strong>send a replacement truck</strong> later on this order.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">What happened? <span class="text-danger">*</span></label>
+                        <select class="form-select" id="rejectAction" name="action" required>
+                            <option value="transfer">Transfer truck to another party</option>
+                            <option value="replacement">Reject — send replacement truck (same party)</option>
+                            <option value="credit_note">Reject — credit note only</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="targetOrderGroup">
+                        <label for="targetOrderId" class="form-label">Transfer to order <span class="text-danger">*</span></label>
+                        <select class="form-select" id="targetOrderId" name="target_order_id"></select>
+                        <div class="form-text">Pending/partial orders with remaining truck capacity</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="rejectReason" class="form-label">Reason</label>
+                        <textarea class="form-control" id="rejectReason" name="reason" rows="2" placeholder="e.g. Material rejected at gate, quality issue"></textarea>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="issueCreditNote" name="issue_credit_note" checked>
+                        <label class="form-check-label" for="issueCreditNote">Issue credit note to rejecting party</label>
+                    </div>
+                    <div class="row g-3" id="creditNoteFields">
+                        <div class="col-md-6">
+                            <label for="creditNoteNo" class="form-label">Busy credit note no. (optional)</label>
+                            <input type="text" class="form-control" id="creditNoteNo" name="credit_note_no" placeholder="CN number from Busy">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="creditAmount" class="form-label">Credit amount (₹)</label>
+                            <input type="number" class="form-control" id="creditAmount" name="credit_amount" step="0.01" min="0.01" placeholder="Auto: weight × rate">
+                        </div>
+                    </div>
+                    <input type="hidden" id="rejectDispatchId">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning" id="rejectTransferBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="rejectTransferSpinner"></span>
+                        Confirm
                     </button>
                 </div>
             </form>
@@ -630,9 +693,19 @@ function formatWeightTons(value) {
     return Number(value).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
+function formatDispatchStatus(status) {
+    const s = status || 'active';
+    const map = {
+        active: '<span class="badge bg-success">Active</span>',
+        rejected: '<span class="badge bg-danger">Rejected</span>',
+        transferred: '<span class="badge bg-info text-dark">Transferred</span>',
+    };
+    return map[s] || escapeHtml(s);
+}
+
 function updateDispatchHistory(dispatches) {
     const tbody = document.querySelector('#dispatchesTable tbody');
-    const colSpan = canEditDispatch ? 8 : 7;
+    const colSpan = canEditDispatch ? 9 : 8;
     
     if (dispatches.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted">No dispatches yet</td></tr>`;
@@ -643,16 +716,21 @@ function updateDispatchHistory(dispatches) {
         const weightCell = dispatch.loading_weight_tons != null
             ? formatWeightTons(dispatch.loading_weight_tons)
             : '<span class="badge bg-warning text-dark">Awaiting kanta parchi</span>';
+        const isActive = (dispatch.status || 'active') === 'active';
         const actionCell = canEditDispatch
-            ? `<td class="text-end">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openWeightModal(${dispatch.id})" title="Enter weight from kanta parchi">
+            ? `<td class="text-end text-nowrap">
+                    ${isActive ? `<button type="button" class="btn btn-sm btn-outline-warning me-1" onclick="openRejectTransferModal(${dispatch.id})" title="Party rejected — transfer or credit note">
+                        <i class="bi bi-arrow-left-right"></i>
+                    </button>` : ''}
+                    ${isActive ? `<button type="button" class="btn btn-sm btn-outline-secondary" onclick="openWeightModal(${dispatch.id})" title="Enter weight from kanta parchi">
                         <i class="bi bi-scale"></i>
-                    </button>
+                    </button>` : ''}
                </td>`
             : '';
         return `
-        <tr>
+        <tr class="${!isActive ? 'table-secondary' : ''}">
             <td>${formatDate(dispatch.dispatch_date)}</td>
+            <td>${formatDispatchStatus(dispatch.status)}</td>
             <td><span class="badge bg-success">${dispatch.dispatch_qty_trucks}</span></td>
             <td>${dispatch.product_rate != null ? Number(dispatch.product_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
             <td>${weightCell}</td>
@@ -664,6 +742,52 @@ function updateDispatchHistory(dispatches) {
     }).join('');
     
     tbody.innerHTML = rows;
+}
+
+async function openRejectTransferModal(dispatchId) {
+    const dispatch = (currentOrder?.dispatches || []).find(d => Number(d.id) === Number(dispatchId));
+    if (!dispatch) return;
+
+    document.getElementById('rejectDispatchId').value = dispatch.id;
+    document.getElementById('rejectTransferInfo').textContent =
+        `Invoice ${dispatch.busy_invoice_no || '—'} · ${dispatch.dispatch_qty_trucks} truck(s) · ` +
+        `${dispatch.loading_weight_tons != null ? formatWeightTons(dispatch.loading_weight_tons) + ' MT' : 'weight pending'} · ` +
+        `${dispatch.product_rate != null ? '₹' + Number(dispatch.product_rate).toLocaleString('en-IN') + '/MT' : 'rate —'}`;
+
+    const autoAmount = (dispatch.loading_weight_tons && dispatch.product_rate)
+        ? Math.round(dispatch.loading_weight_tons * dispatch.product_rate * 100) / 100
+        : '';
+    document.getElementById('creditAmount').value = autoAmount;
+    document.getElementById('creditAmount').placeholder = autoAmount ? `Auto: ₹${autoAmount}` : 'Enter amount';
+    document.getElementById('rejectReason').value = '';
+    document.getElementById('issueCreditNote').checked = true;
+
+    const targetSelect = document.getElementById('targetOrderId');
+    targetSelect.innerHTML = '<option value="">Loading orders…</option>';
+    try {
+        const response = await apiCall(`/api/dispatches/${dispatch.id}/transfer-targets`);
+        const targets = response.data || [];
+        if (!targets.length) {
+            targetSelect.innerHTML = '<option value="">No pending orders with capacity</option>';
+        } else {
+            targetSelect.innerHTML = '<option value="">Select target order</option>' + targets.map(t =>
+                `<option value="${t.order_id}">${escapeHtml(t.order_no)} — ${escapeHtml(t.party_name)} (${escapeHtml(t.product_name)}, ${t.remaining_trucks} left)</option>`
+            ).join('');
+        }
+    } catch (error) {
+        targetSelect.innerHTML = '<option value="">Could not load orders</option>';
+        showError(error.message);
+    }
+
+    toggleRejectTransferFields();
+    new bootstrap.Modal(document.getElementById('rejectTransferModal')).show();
+}
+
+function toggleRejectTransferFields() {
+    const action = document.getElementById('rejectAction').value;
+    const showTarget = action === 'transfer';
+    document.getElementById('targetOrderGroup').style.display = showTarget ? '' : 'none';
+    document.getElementById('targetOrderId').required = showTarget;
 }
 
 function openWeightModal(dispatchId) {
@@ -756,6 +880,51 @@ document.getElementById('weightForm').addEventListener('submit', async function(
 
         bootstrap.Modal.getInstance(document.getElementById('weightModal')).hide();
         showSuccess('Loading weight updated.');
+        await loadOrderDetails();
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        submitBtn.disabled = false;
+        spinner.classList.add('d-none');
+    }
+});
+document.getElementById('rejectAction').addEventListener('change', toggleRejectTransferFields);
+document.getElementById('rejectTransferForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const dispatchId = document.getElementById('rejectDispatchId').value;
+    const submitBtn = document.getElementById('rejectTransferBtn');
+    const spinner = document.getElementById('rejectTransferSpinner');
+    const action = document.getElementById('rejectAction').value;
+
+    if (action === 'transfer' && !document.getElementById('targetOrderId').value) {
+        showError('Select the order to transfer this truck to.');
+        return;
+    }
+
+    submitBtn.disabled = true;
+    spinner.classList.remove('d-none');
+
+    const payload = {
+        action: action,
+        reason: document.getElementById('rejectReason').value.trim() || null,
+        issue_credit_note: document.getElementById('issueCreditNote').checked,
+        credit_note_no: document.getElementById('creditNoteNo').value.trim() || null,
+    };
+    const creditAmount = document.getElementById('creditAmount').value;
+    if (creditAmount) payload.credit_amount = parseFloat(creditAmount);
+    if (action === 'transfer') {
+        payload.target_order_id = parseInt(document.getElementById('targetOrderId').value, 10);
+    }
+
+    try {
+        const response = await apiCall(`/api/dispatches/${dispatchId}/reject-transfer`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        bootstrap.Modal.getInstance(document.getElementById('rejectTransferModal')).hide();
+        showSuccess(response.message || 'Rejection processed.');
         await loadOrderDetails();
     } catch (error) {
         showError(error.message);

@@ -1,3 +1,5 @@
+<?php include __DIR__ . '/partials/dispatch-nav.php'; ?>
+
 <!-- Page Header -->
 <div class="page-header">
     <div class="d-flex justify-content-between align-items-start">
@@ -149,7 +151,10 @@
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-receipt me-2"></i>Recent Dispatches</span>
-        <button class="btn btn-sm btn-outline-secondary" onclick="loadRecentDispatches()"><i class="bi bi-arrow-clockwise"></i></button>
+        <div class="d-flex gap-2">
+            <a href="/dispatch/history" class="btn btn-sm btn-outline-primary">View full history</a>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadRecentDispatches()"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">

@@ -151,8 +151,10 @@ class DispatchService
         if (!$dispatch) {
             throw new \Exception("Dispatch not found");
         }
-        
-        // Store old values for audit
+
+        if (($dispatch->status ?? 'active') !== 'active') {
+            throw new \Exception("Only active dispatches can be updated");
+        }
         $oldValues = $dispatch->toArray();
         
         // Get the order to validate constraints
@@ -278,6 +280,12 @@ class DispatchService
                 $this->orderRepository->updateStatus($orderId, $newStatus);
             }
         }
+    }
+
+    /** Public wrapper used after reject/transfer lifecycle changes. */
+    public function recalculateOrderStatus(int $orderId): void
+    {
+        $this->updateOrderStatus($orderId);
     }
     
     private function logAuditEvent(?int $userId, string $tableName, int $recordId, string $action, ?array $oldValues, ?array $newValues): void

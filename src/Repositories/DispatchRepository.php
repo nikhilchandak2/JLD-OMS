@@ -46,6 +46,11 @@ class DispatchRepository
             $params[] = $filters['end_date'];
         }
 
+        if (!empty($filters['status'])) {
+            $sql .= " AND d.status = ?";
+            $params[] = $filters['status'];
+        }
+
         if (!empty($filters['company_id'])) {
             $sql .= " AND o.company_id = ?";
             $params[] = (int)$filters['company_id'];
@@ -115,14 +120,19 @@ class DispatchRepository
     public function create(Dispatch $dispatch): int
     {
         $sql = "
-            INSERT INTO dispatches (order_id, dispatch_date, dispatch_qty_trucks, product_rate, loading_weight_tons, busy_invoice_no, vehicle_no, remarks, dispatched_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO dispatches (
+                order_id, dispatch_date, dispatch_qty_trucks, status, source_dispatch_id,
+                product_rate, loading_weight_tons, busy_invoice_no, vehicle_no, remarks, dispatched_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ";
         
         $this->database->execute($sql, [
             $dispatch->orderId,
             $dispatch->dispatchDate,
             $dispatch->dispatchQtyTrucks,
+            $dispatch->status ?? 'active',
+            $dispatch->sourceDispatchId,
             $dispatch->productRate,
             $dispatch->loadingWeightTons,
             $dispatch->busyInvoiceNo,
@@ -132,6 +142,27 @@ class DispatchRepository
         ]);
         
         return (int)$this->database->lastInsertId();
+    }
+
+    public function updateLifecycle(int $id, array $data): bool
+    {
+        $fields = [];
+        $params = [];
+
+        foreach (['status', 'rejection_reason', 'transferred_to_dispatch_id', 'source_dispatch_id'] as $col) {
+            if (array_key_exists($col, $data)) {
+                $fields[] = "{$col} = ?";
+                $params[] = $data[$col];
+            }
+        }
+
+        if (empty($fields)) {
+            return true;
+        }
+
+        $params[] = $id;
+        $sql = 'UPDATE dispatches SET ' . implode(', ', $fields) . ' WHERE id = ?';
+        return $this->database->execute($sql, $params);
     }
     
     public function update(Dispatch $dispatch): bool
@@ -188,7 +219,7 @@ class DispatchRepository
                    COALESCE(SUM(d.dispatch_qty_trucks), 0) AS trucks
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
-            WHERE d.dispatch_date = CURDATE()
+            WHERE d.dispatch_date = CURDATE() AND d.status = 'active'
         ";
         $params = [];
         if ($companyId !== null && $companyId > 0) {
@@ -204,7 +235,7 @@ class DispatchRepository
 
     public function getTotalDispatchedForOrder(int $orderId): int
     {
-        $sql = "SELECT COALESCE(SUM(dispatch_qty_trucks), 0) as total FROM dispatches WHERE order_id = ?";
+        $sql = "SELECT COALESCE(SUM(dispatch_qty_trucks), 0) as total FROM dispatches WHERE order_id = ? AND status = 'active'";
         $result = $this->database->fetch($sql, [$orderId]);
         return (int)$result['total'];
     }
@@ -228,6 +259,11 @@ class DispatchRepository
         if (!empty($filters['end_date'])) {
             $sql .= " AND d.dispatch_date <= ?";
             $params[] = $filters['end_date'];
+        }
+
+        if (!empty($filters['status'])) {
+            $sql .= " AND d.status = ?";
+            $params[] = $filters['status'];
         }
 
         if (!empty($filters['company_id'])) {

@@ -4,17 +4,20 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Services\DispatchService;
+use App\Services\DispatchTransferService;
 use App\Support\CompanyContext;
 
 class DispatchController
 {
     private AuthService $authService;
     private DispatchService $dispatchService;
+    private DispatchTransferService $dispatchTransferService;
     
     public function __construct()
     {
         $this->authService = new AuthService();
         $this->dispatchService = new DispatchService();
+        $this->dispatchTransferService = new DispatchTransferService();
     }
     
     public function index(): void
@@ -30,10 +33,18 @@ class DispatchController
         $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
         $limit = max(1, min($limit, 200));
         $offset = max(0, $offset);
+        $status = isset($_GET['status']) ? trim((string)$_GET['status']) : null;
+        if ($status !== null && $status !== '' && !in_array($status, ['active', 'rejected', 'transferred'], true)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid status filter']);
+            return;
+        }
+
         $filters = CompanyContext::mergeFilter([
             'order_id' => isset($_GET['order_id']) ? max(0, (int)$_GET['order_id']) : null,
             'start_date' => $_GET['start_date'] ?? null,
             'end_date' => $_GET['end_date'] ?? null,
+            'status' => $status !== '' ? $status : null,
             'limit' => $limit,
             'offset' => $offset
         ]);
@@ -306,6 +317,70 @@ class DispatchController
             echo json_encode(['error' => $e->getMessage()]);
         }
     }
+
+    /** GET /api/dispatches/{id}/transfer-targets — pending orders for reject-transfer workflow. */
+    public function transferTargets(int $id): void
+    {
+        header('Content-Type: application/json');
+
+        if (!$this->requireDispatchWriteAccess()) {
+            return;
+        }
+
+        $dispatch = $this->dispatchService->getDispatchById($id);
+        if (!$dispatch) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Dispatch not found']);
+            return;
+        }
+
+        try {
+            $targets = $this->dispatchTransferService->getTransferTargets(
+                (int)$dispatch->orderId,
+                CompanyContext::getActiveCompanyId()
+            );
+            echo json_encode(['success' => true, 'data' => $targets]);
+        } catch (\Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /** POST /api/dispatches/{id}/reject-transfer — party rejected truck: credit note and/or transfer. */
+    public function rejectTransfer(int $id): void
+    {
+        header('Content-Type: application/json');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
+
+        $user = $this->authService->getCurrentUser();
+        if (!$user || !$this->requireDispatchWriteAccess()) {
+            return;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        if (empty($input['action'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'action is required (transfer, credit_note, or replacement)']);
+            return;
+        }
+
+        try {
+            $result = $this->dispatchTransferService->handleRejection($id, $input, (int)$user['id']);
+            echo json_encode([
+                'success' => true,
+                'message' => $result['message'] ?? 'Dispatch rejection processed',
+                'data' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
     
     private function isValidDate(string $date): bool
     {
@@ -325,6 +400,24 @@ class DispatchController
         if (!$this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'view', 'sales', 'dispatch'])) {
             http_response_code(403);
             echo json_encode(['error' => 'Dispatch access required']);
+            return false;
+        }
+
+        return true;
+    }
+
+    private function requireDispatchWriteAccess(): bool
+    {
+        $user = $this->authService->getCurrentUser();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Authentication required']);
+            return false;
+        }
+
+        if (!$this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing', 'entry'])) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Dispatch write access required']);
             return false;
         }
 

@@ -10,6 +10,10 @@ class Dispatch
     public string $partyName = '';
     public string $dispatchDate = '';
     public int $dispatchQtyTrucks = 0;
+    public string $status = 'active';
+    public ?string $rejectionReason = null;
+    public ?int $transferredToDispatchId = null;
+    public ?int $sourceDispatchId = null;
     public ?string $vehicleNo = null;
     public ?float $productRate = null;
     public ?float $loadingWeightTons = null;
@@ -34,6 +38,14 @@ class Dispatch
         $this->partyName = $data['party_name'] ?? '';
         $this->dispatchDate = $data['dispatch_date'] ?? '';
         $this->dispatchQtyTrucks = $data['dispatch_qty_trucks'] ?? 0;
+        $this->status = $data['status'] ?? 'active';
+        $this->rejectionReason = $data['rejection_reason'] ?? null;
+        $this->transferredToDispatchId = isset($data['transferred_to_dispatch_id']) && $data['transferred_to_dispatch_id'] !== ''
+            ? (int)$data['transferred_to_dispatch_id']
+            : null;
+        $this->sourceDispatchId = isset($data['source_dispatch_id']) && $data['source_dispatch_id'] !== ''
+            ? (int)$data['source_dispatch_id']
+            : null;
         $this->vehicleNo = $data['vehicle_no'] ?? null;
         $this->productRate = isset($data['product_rate']) && $data['product_rate'] !== '' && $data['product_rate'] !== null
             ? (float)$data['product_rate']
@@ -57,6 +69,10 @@ class Dispatch
             'party_name' => $this->partyName,
             'dispatch_date' => $this->dispatchDate,
             'dispatch_qty_trucks' => $this->dispatchQtyTrucks,
+            'status' => $this->status,
+            'rejection_reason' => $this->rejectionReason,
+            'transferred_to_dispatch_id' => $this->transferredToDispatchId,
+            'source_dispatch_id' => $this->sourceDispatchId,
             'vehicle_no' => $this->vehicleNo,
             'product_rate' => $this->productRate,
             'loading_weight_tons' => $this->loadingWeightTons,

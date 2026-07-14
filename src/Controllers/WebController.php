@@ -141,6 +141,23 @@ class WebController
         ]);
     }
 
+    /** Full dispatch history with filters, pagination, and reject/transfer actions. */
+    public function dispatchHistory(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing', 'entry'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Dispatch access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('dispatch-history', [
+            'title' => 'Dispatch History',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
     /**
      * Visit requests – marketing raises client visit requests, technical team executes them.
      */

@@ -33,6 +33,7 @@ class OrderRepository
                        SUM(dispatch_qty_trucks) as total_dispatched,
                        SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
+                WHERE status = 'active'
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             WHERE 1=1
@@ -121,6 +122,7 @@ class OrderRepository
             LEFT JOIN (
                 SELECT order_id, SUM(dispatch_qty_trucks) AS total_dispatched
                 FROM dispatches
+                WHERE status = 'active'
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             LEFT JOIN (
@@ -160,6 +162,7 @@ class OrderRepository
                        SUM(dispatch_qty_trucks) as total_dispatched,
                        SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
+                WHERE status = 'active'
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             WHERE o.id = ?
@@ -187,6 +190,7 @@ class OrderRepository
                        SUM(dispatch_qty_trucks) as total_dispatched,
                        SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
                 FROM dispatches
+                WHERE status = 'active'
                 GROUP BY order_id
             ) d ON o.id = d.order_id
             WHERE o.order_no = ?
@@ -273,7 +277,7 @@ class OrderRepository
     
     public function getTotalDispatched(int $orderId): int
     {
-        $sql = "SELECT COALESCE(SUM(dispatch_qty_trucks), 0) as total FROM dispatches WHERE order_id = ?";
+        $sql = "SELECT COALESCE(SUM(dispatch_qty_trucks), 0) as total FROM dispatches WHERE order_id = ? AND status = 'active'";
         $result = $this->database->fetch($sql, [$orderId]);
         return (int)$result['total'];
     }
