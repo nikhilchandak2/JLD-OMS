@@ -147,17 +147,5 @@ class Order
             return 'completed';
         }
     }
-    
-    public function generateOrderNumber(): string
-    {
-        $year = date('Y');
-        $month = date('m');
-        
-        // This would typically query the database for the next sequence number
-        // For now, we'll use a timestamp-based approach
-        $sequence = str_pad(date('His'), 4, '0', STR_PAD_LEFT);
-        
-        return "ORD-{$year}{$month}{$sequence}";
-    }
 }
 

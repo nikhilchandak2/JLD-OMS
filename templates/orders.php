@@ -72,6 +72,7 @@
             <table class="table table-striped" id="ordersTable">
                 <thead>
                     <tr>
+                        <th>Order No.</th>
                         <th>Date</th>
                         <th>Party</th>
                         <th>Product</th>
@@ -223,28 +224,30 @@ function updateOrdersTable(orders) {
     const list = Array.isArray(orders) ? orders : [];
     
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No orders found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">No orders found</td></tr>';
         return;
     }
     
     const rows = list.map(order => {
         const orderId = Number(order.id) || 0;
+        const detailUrl = `/orders/${orderId}?return=${encodeURIComponent(window.location.pathname + window.location.search)}`;
         const safeParty = escapeHtml(order.party_name);
         const safeProduct = escapeHtml(order.product_name);
         const recurringBadge = order.is_recurring ? ' <span class="badge bg-info">Recurring</span>' : '';
         return `
         <tr>
+            <td><a href="${detailUrl}" class="fw-semibold">${escapeHtml(order.order_no || '—')}</a></td>
             <td>${formatDate(order.order_date)}</td>
             <td>${safeParty}${recurringBadge}</td>
             <td>${safeProduct}</td>
             <td class="text-end">${order.order_qty_trucks}</td>
             <td class="text-end">${order.order_weight_tons != null ? Number(order.order_weight_tons).toLocaleString('en-IN', { maximumFractionDigits: 1 }) : '—'}</td>
             <td class="text-end">${order.total_dispatched}${order.total_dispatched_weight > 0 ? `<div class="small text-muted">${Number(order.total_dispatched_weight).toLocaleString('en-IN', { maximumFractionDigits: 1 })} MT</div>` : ''}</td>
-            <td class="text-end">${order.pending_trucks}</td>
+            <td class="text-end">${Number(order.pending_trucks) > 0 ? `<span class="badge bg-warning text-dark">${order.pending_trucks}</span>` : '<span class="text-muted">0</span>'}</td>
             <td>${formatPriority(order.priority)}</td>
             <td>${formatOrderCompletion(order)}</td>
             <td>
-                <a href="/orders/${orderId}?return=${encodeURIComponent(window.location.pathname + window.location.search)}" class="btn btn-sm btn-outline-primary">
+                <a href="${detailUrl}" class="btn btn-sm btn-outline-primary">
                     <i class="bi bi-eye"></i> View
                 </a>
             </td>
@@ -316,23 +319,6 @@ async function loadParties() {
     } catch (error) {
         console.error('Failed to load parties:', error);
     }
-}
-
-function showAlert(message, type) {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    const safeMessage = escapeHtml(message);
-    alertDiv.innerHTML = `
-        ${safeMessage}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    const container = document.querySelector('.container-fluid');
-    container.insertBefore(alertDiv, container.firstChild);
-    
-    setTimeout(() => {
-        alertDiv.remove();
-    }, 5000);
 }
 
 // Clean up URL parameters when navigating away (except to order details)

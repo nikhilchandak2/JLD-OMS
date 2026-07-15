@@ -259,6 +259,8 @@ async function loadDispatchQueue() {
             const overLimit = o.party_credit_limit !== null
                 && Number(o.party_credit_limit) > 0
                 && Number(o.party_outstanding) > Number(o.party_credit_limit);
+            const today = new Date().toISOString().split('T')[0];
+            const isOverdue = o.scheduled_dispatch_date && o.scheduled_dispatch_date < today;
             return `
             <tr>
                 <td>
@@ -276,7 +278,7 @@ async function loadDispatchQueue() {
                 <td>${o.total_dispatched}</td>
                 <td><span class="badge bg-primary">${o.remaining_trucks}</span></td>
                 <td>${o.scheduled_dispatch_date
-                    ? `<span class="text-primary fw-semibold">${escapeHtml(o.scheduled_dispatch_date)}</span>`
+                    ? `<span class="${isOverdue ? 'text-danger' : 'text-primary'} fw-semibold">${formatDate(o.scheduled_dispatch_date)}</span>${isOverdue ? '<div><small class="text-danger">Overdue</small></div>' : ''}`
                     : '<span class="text-muted">—</span>'}</td>
                 <td>${o.age_days} day${Number(o.age_days) === 1 ? '' : 's'}</td>
                 <td>
@@ -450,7 +452,7 @@ async function loadRecentDispatches() {
                 <td>${escapeHtml(d.party_name || '—')}</td>
                 <td>${d.dispatch_qty_trucks}</td>
                 <td>${d.product_rate != null ? Number(d.product_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
-                <td>${d.loading_weight_tons != null ? Number(d.loading_weight_tons).toLocaleString('en-IN', { minimumFractionDigits: 3 }) : '—'}</td>
+                <td>${d.loading_weight_tons != null ? Number(d.loading_weight_tons).toLocaleString('en-IN', { minimumFractionDigits: 3 }) : '<span class="badge bg-warning text-dark">Awaiting weight</span>'}</td>
                 <td>${formatTransportDoc(d)}</td>
                 <td>${d.busy_invoice_no ? escapeHtml(d.busy_invoice_no) : '—'}</td>
             </tr>

@@ -103,6 +103,22 @@
     <p>Loading order details...</p>
 </div>
 
+<div id="loadErrorState" class="card text-center" style="display: none;">
+    <div class="card-body py-5">
+        <i class="bi bi-exclamation-triangle text-warning" style="font-size: 2.5rem;"></i>
+        <h5 class="mt-3 mb-2">Could not load this order</h5>
+        <p class="text-muted mb-4" id="loadErrorMessage">Something went wrong.</p>
+        <div class="d-flex justify-content-center gap-2">
+            <button type="button" class="btn btn-primary" onclick="loadOrderDetails()">
+                <i class="bi bi-arrow-clockwise me-1"></i> Try Again
+            </button>
+            <a href="/orders" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i> Back to Orders
+            </a>
+        </div>
+    </div>
+</div>
+
 <div id="orderContent" style="display: none;">
     <!-- KPI summary -->
     <div class="row g-3 mb-4">
@@ -465,9 +481,11 @@ let editFormProducts = [];
 async function loadOrderDetails() {
     const loading = document.getElementById('loading');
     const content = document.getElementById('orderContent');
+    const errorState = document.getElementById('loadErrorState');
     
     loading.style.display = 'block';
     content.style.display = 'none';
+    errorState.style.display = 'none';
     
     try {
         const response = await apiCall(`/api/orders/${orderId}`);
@@ -480,7 +498,9 @@ async function loadOrderDetails() {
         content.style.display = 'block';
         
     } catch (error) {
-        showError(error.message);
+        document.getElementById('headerSubtitle').textContent = 'Order could not be loaded';
+        document.getElementById('loadErrorMessage').textContent = error.message || 'Something went wrong.';
+        errorState.style.display = 'block';
     } finally {
         loading.style.display = 'none';
     }

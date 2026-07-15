@@ -92,7 +92,14 @@ class OrderController
             $activeCompanyId = CompanyContext::getActiveCompanyId();
             if ($activeCompanyId !== null && (int)$order->companyId !== $activeCompanyId) {
                 http_response_code(404);
-                echo json_encode(['error' => 'Order not found']);
+                echo json_encode([
+                    'error' => sprintf(
+                        'This order belongs to %s. Switch the active company from the header to view it.',
+                        $order->companyName !== '' ? $order->companyName : 'another company'
+                    ),
+                    'order_company_id' => (int)$order->companyId,
+                    'order_company_name' => $order->companyName,
+                ]);
                 return;
             }
 
@@ -119,8 +126,6 @@ class OrderController
             return;
         }
         
-        // Check permissions
-        $user = $this->authService->getCurrentUser();
         // Check permissions
         $user = $this->authService->getCurrentUser();
         if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing', 'sales'])) {
