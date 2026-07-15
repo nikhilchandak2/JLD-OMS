@@ -221,6 +221,8 @@ $router->group('/api', function($router) {
         // Reports
         $router->get('/reports/partywise', 'ReportController@partywise');
         $router->get('/reports/partywise/export', 'ReportController@export');
+        $router->get('/reports/daily-dispatch', 'ReportController@dailyDispatch');
+        $router->get('/reports/daily-dispatch/export', 'ReportController@exportDailyDispatch');
         $router->get('/reports/parties', 'ReportController@parties');
         $router->get('/reports/products', 'ReportController@products');
         
@@ -276,6 +278,7 @@ $router->get('/dispatch/history', 'WebController@dispatchHistory');
 $router->get('/dispatch', 'WebController@dispatchDashboard');
 $router->get('/visit-requests', 'WebController@visitRequests');
 $router->get('/reports', 'WebController@reports');
+$router->get('/reports/daily-dispatch', 'WebController@dailyDispatchReport');
 $router->get('/admin/users', 'WebController@users');
 $router->get('/admin/credit-approvals', 'WebController@creditApprovalsPage');
 $router->get('/admin/parties/import', 'WebController@partiesImport');

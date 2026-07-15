@@ -1144,6 +1144,13 @@
                         </a>
                     </li>
                     <?php endif; ?>
+                    <?php if (in_array($r, ['admin', 'view', 'order_processing', 'dispatch', 'entry'])): ?>
+                    <li class="nav-item">
+                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/reports/daily-dispatch') === 0 ? 'active' : '' ?>" href="/reports/daily-dispatch">
+                            <i class="bi bi-calendar-day"></i> Daily Dispatch Report
+                        </a>
+                    </li>
+                    <?php endif; ?>
                     <?php endif; ?>
                     <?php endif; ?>
 

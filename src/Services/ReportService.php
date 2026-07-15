@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Core\Database;
+use App\Support\DispatchSchema;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -435,6 +436,199 @@ class ReportService
     {
         $sql = "SELECT id, name FROM products WHERE is_active = 1 ORDER BY name";
         return $this->database->fetchAll($sql);
+    }
+
+    /**
+     * Daily dispatch report: summary, company breakdown, product breakdown, and line details.
+     *
+     * @return array{
+     *   summary: array<string, mixed>,
+     *   by_company: array<int, array<string, mixed>>,
+     *   by_product: array<int, array<string, mixed>>,
+     *   daily_breakdown: array<int, array<string, mixed>>,
+     *   details: array<int, array<string, mixed>>
+     * }
+     */
+    public function getDailyDispatchReport(array $filters): array
+    {
+        [$whereSql, $params] = $this->buildDailyDispatchWhere($filters);
+        $activeWhere = DispatchSchema::activeDispatchWhere('d');
+
+        $summarySql = "
+            SELECT
+                COUNT(*) AS dispatch_count,
+                COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
+                COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons,
+                COUNT(DISTINCT o.company_id) AS company_count,
+                COUNT(DISTINCT o.product_id) AS product_count,
+                COUNT(DISTINCT o.party_id) AS party_count
+            FROM dispatches d
+            JOIN orders o ON d.order_id = o.id
+            WHERE d.dispatch_date BETWEEN ? AND ?
+            AND {$activeWhere}
+            {$whereSql}
+        ";
+        $summary = $this->database->fetch($summarySql, $params) ?: [];
+
+        $byCompanySql = "
+            SELECT
+                c.id AS company_id,
+                c.name AS company_name,
+                COUNT(*) AS dispatch_count,
+                COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
+                COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons
+            FROM dispatches d
+            JOIN orders o ON d.order_id = o.id
+            JOIN companies c ON o.company_id = c.id
+            WHERE d.dispatch_date BETWEEN ? AND ?
+            AND {$activeWhere}
+            {$whereSql}
+            GROUP BY c.id, c.name
+            ORDER BY total_trucks DESC, c.name ASC
+        ";
+        $byCompany = $this->database->fetchAll($byCompanySql, $params);
+
+        $byProductSql = "
+            SELECT
+                p.id AS product_id,
+                p.name AS product_name,
+                COUNT(*) AS dispatch_count,
+                COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
+                COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons
+            FROM dispatches d
+            JOIN orders o ON d.order_id = o.id
+            JOIN products p ON o.product_id = p.id
+            WHERE d.dispatch_date BETWEEN ? AND ?
+            AND {$activeWhere}
+            {$whereSql}
+            GROUP BY p.id, p.name
+            ORDER BY total_trucks DESC, p.name ASC
+        ";
+        $byProduct = $this->database->fetchAll($byProductSql, $params);
+
+        $dailySql = "
+            SELECT
+                d.dispatch_date,
+                c.id AS company_id,
+                c.name AS company_name,
+                p.id AS product_id,
+                p.name AS product_name,
+                COUNT(*) AS dispatch_count,
+                COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
+                COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons
+            FROM dispatches d
+            JOIN orders o ON d.order_id = o.id
+            JOIN companies c ON o.company_id = c.id
+            JOIN products p ON o.product_id = p.id
+            WHERE d.dispatch_date BETWEEN ? AND ?
+            AND {$activeWhere}
+            {$whereSql}
+            GROUP BY d.dispatch_date, c.id, c.name, p.id, p.name
+            ORDER BY d.dispatch_date DESC, c.name ASC, p.name ASC
+        ";
+        $dailyBreakdown = $this->database->fetchAll($dailySql, $params);
+
+        $detailsSql = "
+            SELECT
+                d.id AS dispatch_id,
+                o.id AS order_id,
+                d.dispatch_date,
+                c.name AS company_name,
+                p.name AS product_name,
+                pt.name AS party_name,
+                o.order_no,
+                d.dispatch_qty_trucks,
+                d.loading_weight_tons,
+                d.product_rate,
+                d.busy_invoice_no,
+                d.rawana_no,
+                d.eway_bill_no,
+                COALESCE(d.status, 'active') AS status
+            FROM dispatches d
+            JOIN orders o ON d.order_id = o.id
+            JOIN companies c ON o.company_id = c.id
+            JOIN products p ON o.product_id = p.id
+            JOIN parties pt ON o.party_id = pt.id
+            WHERE d.dispatch_date BETWEEN ? AND ?
+            AND {$activeWhere}
+            {$whereSql}
+            ORDER BY d.dispatch_date DESC, c.name ASC, p.name ASC, d.id DESC
+        ";
+        $details = $this->database->fetchAll($detailsSql, $params);
+
+        return [
+            'summary' => [
+                'dispatch_count' => (int)($summary['dispatch_count'] ?? 0),
+                'total_trucks' => (int)($summary['total_trucks'] ?? 0),
+                'total_weight_tons' => round((float)($summary['total_weight_tons'] ?? 0), 3),
+                'company_count' => (int)($summary['company_count'] ?? 0),
+                'product_count' => (int)($summary['product_count'] ?? 0),
+                'party_count' => (int)($summary['party_count'] ?? 0),
+            ],
+            'by_company' => $byCompany,
+            'by_product' => $byProduct,
+            'daily_breakdown' => $dailyBreakdown,
+            'details' => $details,
+        ];
+    }
+
+    public function generateDailyDispatchExcel(array $data, array $filters): Xlsx
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Daily Dispatch');
+
+        $sheet->setCellValue('A1', 'Daily Dispatch Report');
+        $sheet->setCellValue('A2', 'Period: ' . $filters['start_date'] . ' to ' . $filters['end_date']);
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $row = 4;
+        $sheet->setCellValue('A' . $row, 'Date');
+        $sheet->setCellValue('B' . $row, 'Company');
+        $sheet->setCellValue('C' . $row, 'Product');
+        $sheet->setCellValue('D' . $row, 'Trucks');
+        $sheet->setCellValue('E' . $row, 'Weight (MT)');
+        $sheet->setCellValue('F' . $row, 'Dispatches');
+        $sheet->getStyle('A' . $row . ':F' . $row)->getFont()->setBold(true);
+        $row++;
+
+        foreach ($data['daily_breakdown'] as $line) {
+            $sheet->setCellValue('A' . $row, $line['dispatch_date'] ?? '');
+            $sheet->setCellValue('B' . $row, $line['company_name'] ?? '');
+            $sheet->setCellValue('C' . $row, $line['product_name'] ?? '');
+            $sheet->setCellValue('D' . $row, (int)($line['total_trucks'] ?? 0));
+            $sheet->setCellValue('E' . $row, round((float)($line['total_weight_tons'] ?? 0), 3));
+            $sheet->setCellValue('F' . $row, (int)($line['dispatch_count'] ?? 0));
+            $row++;
+        }
+
+        foreach (range('A', 'F') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        return new Xlsx($spreadsheet);
+    }
+
+    /** @return array{0: string, 1: array<int, mixed>} */
+    private function buildDailyDispatchWhere(array $filters): array
+    {
+        $sql = '';
+        $params = [
+            $filters['start_date'],
+            $filters['end_date'],
+        ];
+
+        if (!empty($filters['company_id'])) {
+            $sql .= ' AND o.company_id = ?';
+            $params[] = (int)$filters['company_id'];
+        }
+
+        if (!empty($filters['product_id'])) {
+            $sql .= ' AND o.product_id = ?';
+            $params[] = (int)$filters['product_id'];
+        }
+
+        return [$sql, $params];
     }
 }
 

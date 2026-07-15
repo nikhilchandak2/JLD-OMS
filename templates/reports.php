@@ -2,6 +2,8 @@
     <h1><i class="bi bi-graph-up"></i> Reports</h1>
 </div>
 
+<?php include __DIR__ . '/partials/reports-nav.php'; ?>
+
 <div id="error-container" class="error-message"></div>
 <div id="success-container" class="error-message"></div>
 

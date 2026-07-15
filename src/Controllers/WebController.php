@@ -201,6 +201,29 @@ class WebController
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
+
+    public function dailyDispatchReport(): void
+    {
+        $this->requireAuth();
+
+        $user = $this->authService->getCurrentUser();
+        if (!$this->authService->hasAnyRole(['admin', 'view', 'order_processing', 'dispatch', 'entry'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', [
+                'title' => 'Access Denied',
+                'message' => 'You do not have permission to view dispatch reports.'
+            ]);
+            return;
+        }
+
+        $this->renderTemplate('reports-daily-dispatch', [
+            'title' => 'Daily Dispatch Report',
+            'user' => $user,
+            'active_company' => CompanyContext::getActiveCompany(),
+            'can_view_all_companies' => $this->authService->hasRole('admin'),
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
     
     public function users(): void
     {
