@@ -1,17 +1,16 @@
 <?php include __DIR__ . '/partials/dispatch-nav.php'; ?>
 
-<!-- Page Header -->
 <div class="page-header">
-    <div class="d-flex justify-content-between align-items-start">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div>
             <h1 class="page-title">
                 <i class="bi bi-truck-flatbed me-2"></i>Dispatch Dashboard
             </h1>
-            <p class="page-subtitle">Orders pending dispatch — urgent orders first, oldest first</p>
+            <p class="page-subtitle">Orders pending dispatch — urgent first, oldest first</p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
             <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#busyUploadModal">
-                <i class="bi bi-upload me-1"></i> Upload Busy Invoice
+                <i class="bi bi-upload me-1"></i><span class="d-none d-sm-inline">Upload Busy Invoice</span><span class="d-inline d-sm-none">Upload</span>
             </button>
             <button class="btn btn-primary" onclick="loadDispatchQueue()">
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
@@ -99,7 +98,7 @@
 
 <!-- Dispatch Modal -->
 <div class="modal fade" id="dispatchModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Record Dispatch</h5>
@@ -188,7 +187,7 @@
 
 <!-- Busy Invoice Upload -->
 <div class="modal fade" id="busyUploadModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Upload Busy Sales Invoice</h5>
@@ -285,9 +284,12 @@ async function loadDispatchQueue() {
                     <span class="${overLimit ? 'text-danger fw-bold' : ''}">${formatMoney(o.party_outstanding)}</span>
                     ${overLimit ? '<div><small class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> Over credit limit</small></div>' : ''}
                 </td>
-                <td class="text-end">
-                    <button class="btn btn-sm btn-primary" onclick="openDispatchModal(${o.id})">
-                        <i class="bi bi-truck"></i> Dispatch
+                <td class="text-end text-nowrap">
+                    <a href="/orders/${o.id}" class="btn btn-sm btn-outline-secondary me-1" title="View order">
+                        <i class="bi bi-eye"></i><span class="d-none d-md-inline ms-1">View</span>
+                    </a>
+                    <button class="btn btn-sm btn-primary" onclick="openDispatchModal(${o.id})" title="Record dispatch">
+                        <i class="bi bi-truck"></i><span class="d-none d-md-inline ms-1">Dispatch</span>
                     </button>
                 </td>
             </tr>`;

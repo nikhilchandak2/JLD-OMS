@@ -55,6 +55,20 @@
     background: linear-gradient(135deg, rgba(43, 35, 94, 0.06), rgba(43, 35, 94, 0.02));
     border-bottom: 1px solid var(--jld-border);
 }
+@media (max-width: 767.98px) {
+    .order-detail-kpi .kpi-value {
+        font-size: 1.25rem;
+    }
+    .order-info-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem 1rem;
+    }
+    #dispatchesTable th,
+    #dispatchesTable td {
+        font-size: 0.78rem;
+        padding: 0.5rem 0.35rem;
+    }
+}
 </style>
 
 <div class="page-header">
@@ -251,7 +265,7 @@
 <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch'])): ?>
 <!-- Manual dispatch modal -->
 <div class="modal fade" id="dispatchModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-truck me-2"></i>Record Dispatch</h5>
@@ -310,7 +324,7 @@
 <?php if (!empty($can_edit_orders)): ?>
 <!-- Edit order modal -->
 <div class="modal fade" id="editOrderModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Edit Order</h5>
@@ -378,7 +392,7 @@
 <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch'])): ?>
 <!-- Update loading weight from kanta parchi -->
 <div class="modal fade" id="weightModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Enter Loading Weight</h5>
@@ -408,7 +422,7 @@
 
 <!-- Reject / transfer truck (party rejection workflow) -->
 <div class="modal fade" id="rejectTransferModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Reject / Transfer Truck</h5>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -547,54 +547,45 @@
             opacity: 1;
         }
         
-        /* Mobile menu toggle button */
+        /* Mobile menu toggle – lives in navbar on small screens */
+        .mobile-nav-toggle {
+            color: var(--jld-primary);
+            border: none;
+            background: transparent;
+            padding: 0.375rem 0.5rem;
+            min-width: 44px;
+            min-height: 44px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .mobile-nav-toggle:hover,
+        .mobile-nav-toggle:focus {
+            color: var(--jld-secondary);
+            background: rgba(43, 35, 94, 0.06);
+        }
+
         .mobile-menu-toggle {
             display: none;
-            background: none;
-            border: none;
-            color: var(--jld-primary);
-            font-size: 1.5rem;
-            padding: 0.5rem;
-            cursor: pointer;
-            margin-right: 1rem;
         }
         
         .mobile-toggle-fixed {
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            z-index: 1050;
-            background: var(--jld-white);
-            border: 1px solid var(--jld-border);
-            border-radius: 0.5rem;
-            box-shadow: var(--jld-shadow);
-            padding: 0.75rem;
-            min-width: 44px;
-            min-height: 44px;
+            display: none;
         }
         
         .user-menu-fixed {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            z-index: 1050;
-            background: var(--jld-white);
-            border: 1px solid var(--jld-border);
-            border-radius: 0.5rem;
-            box-shadow: var(--jld-shadow);
-            padding: 0.5rem 1rem;
+            display: none !important;
         }
-        
-        .user-menu-fixed .nav-link {
-            color: var(--jld-primary);
-            padding: 0;
+
+        .app-topbar .navbar-brand {
+            font-size: 1.1rem;
+            max-width: min(48vw, 14rem);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-        
-        @media (min-width: 992px) {
-            .mobile-toggle-fixed,
-            .user-menu-fixed {
-                display: none;
-            }
+
+        .sidebar-wrapper {
+            position: relative;
         }
         
         .sidebar-overlay {
@@ -629,9 +620,20 @@
         }
         
         /* Responsive adjustments */
-        @media (max-width: 991px) {
-            .mobile-menu-toggle.mobile-toggle-fixed {
-                display: block;
+        @media (max-width: 991.98px) {
+            .sidebar-wrapper {
+                flex: 0 0 0 !important;
+                width: 0 !important;
+                max-width: 0 !important;
+                padding: 0 !important;
+                overflow: visible;
+            }
+
+            .main-content,
+            .col-md-10.main-content {
+                flex: 0 0 100% !important;
+                max-width: 100% !important;
+                width: 100% !important;
             }
             
             .sidebar {
@@ -645,7 +647,9 @@
                 transition: transform 0.3s ease;
                 overflow-y: auto;
                 height: 100vh;
+                height: 100dvh;
                 -webkit-overflow-scrolling: touch;
+                padding-top: env(safe-area-inset-top, 0);
             }
             
             .sidebar.show {
@@ -660,13 +664,20 @@
             
             .main-content {
                 margin-left: 0 !important;
-                width: 100% !important;
                 padding: 0.75rem !important;
+                padding-top: 0.5rem !important;
             }
             
             .container-fluid {
-                padding-left: 0.75rem;
-                padding-right: 0.75rem;
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+
+            .app-topbar {
+                position: sticky;
+                top: 0;
+                z-index: 1030;
+                padding-top: env(safe-area-inset-top, 0);
             }
             
             .navbar-brand img {
@@ -688,6 +699,7 @@
             .table-responsive {
                 -webkit-overflow-scrolling: touch;
                 border-radius: 0.5rem;
+                margin-bottom: 0;
             }
             
             .table {
@@ -696,44 +708,85 @@
             
             .table th, .table td {
                 padding: 0.75rem 0.5rem;
+                white-space: normal;
+                vertical-align: top;
+            }
+
+            .table th.text-end,
+            .table td.text-end {
                 white-space: nowrap;
+            }
+
+            .nav-pills {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                gap: 0.25rem;
+                padding-bottom: 0.25rem;
+            }
+            .nav-pills::-webkit-scrollbar {
+                display: none;
+            }
+            .nav-pills .nav-link {
+                white-space: nowrap;
+                flex-shrink: 0;
             }
         }
         
-        @media (max-width: 768px) {
+        @media (max-width: 767.98px) {
             .main-content {
                 padding: 0.5rem !important;
             }
             
             .page-header {
+                margin-bottom: 1.25rem;
+                padding-bottom: 0.75rem;
+            }
+
+            .page-header > .d-flex,
+            .page-header .d-flex.justify-content-between {
                 flex-direction: column;
-                align-items: flex-start !important;
-                padding: 1rem 0.5rem;
+                align-items: stretch !important;
+                gap: 0.75rem;
             }
             
             .page-title {
-                font-size: 1.5rem;
-                margin-bottom: 0.5rem;
+                font-size: 1.35rem;
+                margin-bottom: 0.35rem;
+                line-height: 1.3;
             }
             
             .page-subtitle {
                 font-size: 0.875rem;
-                margin-bottom: 1rem;
+                margin-bottom: 0.5rem;
             }
             
-            .page-header .btn {
-                margin-top: 0.5rem;
+            .page-header .d-flex.flex-wrap.gap-2,
+            .page-header .d-flex.gap-2 {
                 width: 100%;
+            }
+
+            .page-header .d-flex.flex-wrap.gap-2 .btn,
+            .page-header .d-flex.gap-2 .btn {
+                flex: 1 1 calc(50% - 0.35rem);
+                width: auto;
                 min-height: 44px;
-                font-size: 1rem;
+                font-size: 0.9rem;
+                margin-top: 0;
+            }
+
+            .page-header .d-flex.flex-wrap.gap-2 .btn:only-child,
+            .page-header .d-flex.gap-2 .btn:only-child {
+                flex: 1 1 100%;
             }
             
             .navbar {
-                padding: 0.5rem 0.75rem;
+                padding: 0.35rem 0.5rem;
             }
             
             .navbar-brand {
-                font-size: 1.25rem;
+                font-size: 1rem;
             }
             
             .navbar-brand img {
@@ -752,7 +805,6 @@
             
             .table-responsive {
                 font-size: 0.8rem;
-                margin: 0 -0.75rem;
             }
             
             .table th, .table td {
@@ -785,16 +837,20 @@
             
             /* Better spacing */
             .mb-4 {
-                margin-bottom: 1.5rem !important;
+                margin-bottom: 1.25rem !important;
             }
             
             .mb-3 {
-                margin-bottom: 1rem !important;
+                margin-bottom: 0.875rem !important;
             }
             
             /* Modal optimizations */
             .modal-dialog {
                 margin: 0.5rem;
+            }
+
+            .modal-fullscreen-sm-down {
+                margin: 0;
             }
             
             .modal-content {
@@ -804,21 +860,31 @@
             .modal-header, .modal-body, .modal-footer {
                 padding: 1rem;
             }
+
+            .modal-footer {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            .modal-footer .btn {
+                flex: 1 1 auto;
+                min-width: calc(50% - 0.25rem);
+            }
         }
         
-        @media (max-width: 576px) {
+        @media (max-width: 575.98px) {
             .sidebar {
-                width: 100%;
-                max-width: 100%;
+                width: min(100%, 320px);
+                max-width: 92vw;
             }
             
-            .navbar-brand img {
-                height: 1.75rem;
-                max-height: 1.75rem;
+            .app-topbar .navbar-brand {
+                max-width: min(42vw, 10rem);
+                font-size: 0.95rem;
             }
             
             .page-title {
-                font-size: 1.25rem;
+                font-size: 1.2rem;
             }
             
             .page-subtitle {
@@ -839,7 +905,7 @@
             }
             
             .table th, .table td {
-                padding: 0.5rem 0.25rem;
+                padding: 0.5rem 0.3rem;
                 font-size: 0.75rem;
             }
             
@@ -848,15 +914,15 @@
                 font-size: 0.85rem;
             }
             
-            /* Stack columns on very small screens */
-            .row > [class*="col-"] {
-                margin-bottom: 1rem;
-            }
-            
             /* Better badge sizing */
             .badge {
                 font-size: 0.75rem;
                 padding: 0.375rem 0.5rem;
+            }
+
+            #summaryCards .col-6 {
+                padding-left: 0.35rem;
+                padding-right: 0.35rem;
             }
         }
         
@@ -907,7 +973,7 @@
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', function(event) {
             const sidebar = document.getElementById('sidebar');
-            const toggle = document.querySelector('.mobile-menu-toggle.mobile-toggle-fixed');
+            const toggle = document.querySelector('.mobile-nav-toggle');
             const overlay = document.getElementById('sidebarOverlay');
             
             if (window.innerWidth <= 991 && sidebar && toggle && overlay) {
@@ -935,8 +1001,11 @@
 <body>
     <?php if (isset($user)): ?>
     <!-- Top header: brand left, user right -->
-    <nav class="navbar navbar-expand-lg border-bottom" style="background: var(--jld-white) !important;">
-        <div class="container-fluid">
+    <nav class="navbar navbar-expand-lg border-bottom app-topbar" style="background: var(--jld-white) !important;">
+        <div class="container-fluid px-2 px-md-3">
+            <button class="mobile-nav-toggle d-lg-none" onclick="toggleSidebar()" type="button" aria-label="Open menu">
+                <i class="bi bi-list fs-4"></i>
+            </button>
             <?php
                     $r = $user['role'] ?? '';
                     $roleHomes = [
@@ -951,12 +1020,12 @@
                     ];
                     $brandHome = $roleHomes[$r] ?? '/orders';
                     ?>
-            <a class="navbar-brand d-flex align-items-center" href="<?= htmlspecialchars($brandHome) ?>"><?= htmlspecialchars($active_company['name'] ?? 'JLD Minerals') ?></a>
-            <div class="d-flex align-items-center ms-auto">
+            <a class="navbar-brand d-flex align-items-center me-auto text-truncate" href="<?= htmlspecialchars($brandHome) ?>"><?= htmlspecialchars($active_company['name'] ?? 'JLD Minerals') ?></a>
+            <div class="d-flex align-items-center flex-shrink-0 gap-1">
                 <?php if (!empty($companies_list)): ?>
-                <div class="nav-item dropdown me-2">
+                <div class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle text-primary fw-medium py-1 px-2" href="#" role="button" data-bs-toggle="dropdown" id="companySwitcherBtn" title="Switch company">
-                        <i class="bi bi-building me-1"></i><span class="d-none d-md-inline"><?= htmlspecialchars($active_company['name'] ?? 'Select company') ?></span>
+                        <i class="bi bi-building"></i><span class="d-none d-md-inline ms-1"><?= htmlspecialchars($active_company['name'] ?? 'Select company') ?></span>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" id="companySwitcherMenu">
                         <?php foreach ($companies_list as $co): ?>
@@ -976,8 +1045,8 @@
                 </div>
                 <?php endif; ?>
                 <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle text-primary fw-medium" href="#" role="button" data-bs-toggle="dropdown" id="headerUserMenu">
-                        <i class="bi bi-person-circle me-1"></i><?= htmlspecialchars($user['name']) ?>
+                    <a class="nav-link dropdown-toggle text-primary fw-medium py-1 px-2" href="#" role="button" data-bs-toggle="dropdown" id="headerUserMenu" aria-label="User menu">
+                        <i class="bi bi-person-circle"></i><span class="d-none d-sm-inline ms-1"><?= htmlspecialchars($user['name']) ?></span>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><span class="dropdown-item-text small">Role: <?= ucfirst($user['role']) ?></span></li>
@@ -988,32 +1057,13 @@
             </div>
         </div>
     </nav>
-    <!-- Mobile menu toggle (floating button) -->
-    <button class="mobile-menu-toggle mobile-toggle-fixed" onclick="toggleSidebar()" type="button" aria-label="Toggle menu">
-        <i class="bi bi-list"></i>
-    </button>
-    
-    <!-- User menu (floating button) -->
-    <div class="user-menu-fixed">
-        <div class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                <i class="bi bi-person-circle"></i> <?= htmlspecialchars($user['name']) ?>
-            </a>
-            <ul class="dropdown-menu dropdown-menu-end">
-                <li><span class="dropdown-item-text">Role: <?= ucfirst($user['role']) ?></span></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="#" onclick="logout()">
-                    <i class="bi bi-box-arrow-right"></i> Logout
-                </a></li>
-            </ul>
-        </div>
-    </div>
 
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
     <div class="container-fluid">
-        <div class="row">
+        <div class="row flex-nowrap g-0">
             <!-- Sidebar -->
-            <div class="col-md-2 sidebar p-3" id="sidebar">
+            <div class="col-md-2 sidebar-wrapper" id="sidebarWrapper">
+            <div class="sidebar p-3" id="sidebar">
                 <ul class="nav nav-pills flex-column">
                     <?php
                     $r = $user['role'] ?? '';
@@ -1226,6 +1276,7 @@
                     </li>
                     <?php endif; ?>
                 </ul>
+            </div>
             </div>
 
             <!-- Main Content -->

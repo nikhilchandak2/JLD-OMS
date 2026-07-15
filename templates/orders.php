@@ -1,6 +1,5 @@
-<!-- Page Header -->
 <div class="page-header">
-    <div class="d-flex justify-content-between align-items-start">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div>
             <h1 class="page-title">
                 <i class="bi bi-clipboard-check me-2"></i>Orders

@@ -86,7 +86,7 @@
 
 <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch'])): ?>
 <div class="modal fade" id="rejectTransferModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Reject / Transfer Truck</h5>
