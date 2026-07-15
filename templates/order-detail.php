@@ -514,11 +514,11 @@ function updateOrderDisplay(order) {
     document.getElementById('infoCompanyBadge').textContent = order.company_name || '—';
     toggleTransportDocFields(order.transport_doc_type || 'rawana');
 
-    const dispatchBtn = document.getElementById('openDispatchModalBtn');
-    if (dispatchBtn) {
+    const openDispatchModalBtn = document.getElementById('openDispatchModalBtn');
+    if (openDispatchModalBtn) {
         const pending = Number(order.pending_trucks) || 0;
         const canDispatch = pending > 0 && !['completed'].includes(order.status);
-        dispatchBtn.style.display = canDispatch ? '' : 'none';
+        openDispatchModalBtn.style.display = canDispatch ? '' : 'none';
     }
 
     const ordered = Number(order.order_qty_trucks) || 0;
@@ -563,7 +563,10 @@ function updateOrderDisplay(order) {
             : '';
     }
 
-    document.getElementById('availableQty').textContent = pending;
+    const availableQtyEl = document.getElementById('availableQty');
+    if (availableQtyEl) {
+        availableQtyEl.textContent = pending;
+    }
 
     const deleteBtn = document.getElementById('deleteOrderBtn');
     if (deleteBtn && canDeleteOrders) {
