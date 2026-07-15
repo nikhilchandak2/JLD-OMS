@@ -247,11 +247,12 @@ class OrderRepository
     {
         $sql = "
             UPDATE orders 
-            SET order_date = ?, product_id = ?, order_qty_trucks = ?, order_qty_mode = ?, order_weight_tons = ?, tons_per_truck = ?, party_id = ?, priority = ?
+            SET company_id = ?, order_date = ?, product_id = ?, order_qty_trucks = ?, order_qty_mode = ?, order_weight_tons = ?, tons_per_truck = ?, party_id = ?, priority = ?
             WHERE id = ?
         ";
         
         return $this->database->execute($sql, [
+            $order->companyId,
             $order->orderDate,
             $order->productId,
             $order->orderQtyTrucks,

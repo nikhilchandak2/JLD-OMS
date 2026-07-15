@@ -505,6 +505,20 @@ class OrderController
                 $updateData['party_id'] = (int)$input['party_id'];
             }
 
+            if (array_key_exists('company_id', $input)) {
+                if (!is_numeric($input['company_id']) || (int)$input['company_id'] <= 0) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Valid company ID is required']);
+                    return;
+                }
+                if ((int)$input['company_id'] !== (int)$order->companyId && (int)$order->totalDispatched > 0) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Cannot change company after trucks have been dispatched']);
+                    return;
+                }
+                $updateData['company_id'] = (int)$input['company_id'];
+            }
+
             if (array_key_exists('priority', $input)) {
                 $priority = strtolower(trim((string)$input['priority']));
                 if (!in_array($priority, self::ALLOWED_PRIORITIES, true)) {

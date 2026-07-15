@@ -221,8 +221,19 @@ class OrderService
         if (isset($data['party_id'])) {
             $this->validatePartyExists($data['party_id']);
         }
+
+        if (isset($data['company_id'])) {
+            $this->validateCompanyExists((int)$data['company_id']);
+            if ((int)$data['company_id'] !== (int)$order->companyId && (int)$order->totalDispatched > 0) {
+                throw new \Exception('Cannot change company after trucks have been dispatched.');
+            }
+        }
         
         // Update order fields
+        if (isset($data['company_id'])) {
+            $order->companyId = (int)$data['company_id'];
+        }
+
         if (isset($data['order_date'])) {
             $order->orderDate = $data['order_date'];
         }
@@ -307,6 +318,15 @@ class OrderService
         
         if (!$result) {
             throw new \Exception("Party not found or inactive");
+        }
+    }
+
+    private function validateCompanyExists(int $companyId): void
+    {
+        $result = $this->database->fetch("SELECT id FROM companies WHERE id = ? AND status = 'active'", [$companyId]);
+
+        if (!$result) {
+            throw new \Exception("Company not found or inactive");
         }
     }
 

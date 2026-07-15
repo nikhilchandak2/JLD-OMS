@@ -333,7 +333,12 @@
             <form id="editOrderForm">
                 <div class="modal-body">
                     <div class="row g-3">
-                        <div class="col-md-4">
+                        <div class="col-md-6">
+                            <label for="editCompanyId" class="form-label">Company</label>
+                            <select class="form-select" id="editCompanyId" required></select>
+                            <div class="form-text" id="editCompanyHint"></div>
+                        </div>
+                        <div class="col-md-6">
                             <label for="editOrderDate" class="form-label">Order Date</label>
                             <input type="date" class="form-control" id="editOrderDate" required>
                         </div>
@@ -491,6 +496,7 @@ const canDeleteOrders = <?= !empty($can_delete_orders) ? 'true' : 'false' ?>;
 const canForceDeleteOrders = <?= !empty($can_force_delete_orders) ? 'true' : 'false' ?>;
 let editFormParties = [];
 let editFormProducts = [];
+let editFormCompanies = [];
 
 async function loadOrderDetails() {
     const loading = document.getElementById('loading');
@@ -1113,13 +1119,15 @@ async function deleteCurrentOrder() {
 
 <?php if (!empty($can_edit_orders)): ?>
 async function loadEditFormOptions() {
-    if (editFormParties.length && editFormProducts.length) return;
-    const [partiesRes, productsRes] = await Promise.all([
+    if (editFormParties.length && editFormProducts.length && editFormCompanies.length) return;
+    const [partiesRes, productsRes, companiesRes] = await Promise.all([
         apiCall('/api/reports/parties'),
-        apiCall('/api/reports/products')
+        apiCall('/api/reports/products'),
+        apiCall('/api/companies')
     ]);
     editFormParties = partiesRes.data || [];
     editFormProducts = productsRes.data || [];
+    editFormCompanies = companiesRes.data || [];
 }
 
 function toggleEditQtyMode() {
@@ -1142,8 +1150,18 @@ async function openEditOrderModal() {
 
     const partySelect = document.getElementById('editPartyId');
     const productSelect = document.getElementById('editProductId');
+    const companySelect = document.getElementById('editCompanyId');
+    const companyHint = document.getElementById('editCompanyHint');
     partySelect.innerHTML = editFormParties.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
     productSelect.innerHTML = editFormProducts.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    companySelect.innerHTML = editFormCompanies.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+
+    const hasDispatches = (Number(currentOrder.total_dispatched) || 0) > 0;
+    companySelect.value = String(currentOrder.company_id);
+    companySelect.disabled = hasDispatches;
+    companyHint.textContent = hasDispatches
+        ? 'Company cannot be changed after trucks have been dispatched.'
+        : 'Changing company updates transport document rules (E-way bill vs Rawana).';
 
     document.getElementById('editOrderDate').value = currentOrder.order_date;
     document.getElementById('editPriority').value = currentOrder.priority || 'normal';
@@ -1184,13 +1202,24 @@ document.getElementById('editOrderForm').addEventListener('submit', async functi
             order_weight_tons: mode === 'weight' ? parseFloat(document.getElementById('editOrderWeight').value) : null
         };
 
-        await apiCall(`/api/orders/${orderId}`, {
+        const companySelect = document.getElementById('editCompanyId');
+        if (!companySelect.disabled) {
+            payload.company_id = parseInt(companySelect.value, 10);
+        }
+
+        const previousCompanyId = Number(currentOrder.company_id) || 0;
+        const response = await apiCall(`/api/orders/${orderId}`, {
             method: 'PUT',
             body: JSON.stringify(payload)
         });
 
         bootstrap.Modal.getInstance(document.getElementById('editOrderModal')).hide();
-        showSuccess('Order updated successfully.');
+        const newCompanyId = Number(response.data?.company_id) || previousCompanyId;
+        if (newCompanyId !== previousCompanyId) {
+            showSuccess('Order updated. Company changed — switch the active company in the header if this order is no longer visible.');
+        } else {
+            showSuccess('Order updated successfully.');
+        }
         await loadOrderDetails();
     } catch (error) {
         showError(error.message);
