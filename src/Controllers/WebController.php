@@ -158,6 +158,23 @@ class WebController
         ]);
     }
 
+    /** Rejected and transferred trucks — dedicated list with date filters. */
+    public function dispatchRejectTransfers(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing', 'entry'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Dispatch access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('dispatch-reject-transfers', [
+            'title' => 'Rejected & Transferred Trucks',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
     /**
      * Visit requests – marketing raises client visit requests, technical team executes them.
      */

@@ -39,4 +39,115 @@ class DispatchTransferRepository
 
         return (int)$this->database->lastInsertId();
     }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function findAll(array $filters = []): array
+    {
+        $sql = "
+            SELECT
+                dt.id,
+                dt.action_type,
+                dt.trucks_transferred,
+                dt.weight_tons,
+                dt.reason,
+                dt.created_at,
+                dt.source_dispatch_id,
+                dt.target_dispatch_id,
+                dt.source_order_id,
+                dt.target_order_id,
+                src_d.dispatch_date AS source_dispatch_date,
+                src_d.busy_invoice_no AS source_invoice_no,
+                src_d.status AS source_dispatch_status,
+                tgt_d.dispatch_date AS transfer_date,
+                tgt_d.busy_invoice_no AS target_invoice_no,
+                src_o.order_no AS source_order_no,
+                tgt_o.order_no AS target_order_no,
+                src_p.name AS source_party_name,
+                tgt_p.name AS target_party_name,
+                cn.busy_credit_note_no,
+                cn.amount AS credit_amount,
+                cn.note_date AS credit_note_date,
+                u.name AS created_by_name
+            FROM dispatch_transfers dt
+            JOIN dispatches src_d ON dt.source_dispatch_id = src_d.id
+            JOIN orders src_o ON dt.source_order_id = src_o.id
+            JOIN parties src_p ON dt.source_party_id = src_p.id
+            LEFT JOIN dispatches tgt_d ON dt.target_dispatch_id = tgt_d.id
+            LEFT JOIN orders tgt_o ON dt.target_order_id = tgt_o.id
+            LEFT JOIN parties tgt_p ON dt.target_party_id = tgt_p.id
+            LEFT JOIN credit_notes cn ON cn.dispatch_id = dt.source_dispatch_id
+            LEFT JOIN users u ON dt.created_by = u.id
+            WHERE 1=1
+        ";
+
+        $params = $this->applyFilters($sql, $filters);
+        $sql .= " ORDER BY COALESCE(tgt_d.dispatch_date, DATE(dt.created_at)) DESC, dt.id DESC";
+
+        if (isset($filters['limit'])) {
+            $sql .= " LIMIT ?";
+            $params[] = (int)$filters['limit'];
+            if (isset($filters['offset'])) {
+                $sql .= " OFFSET ?";
+                $params[] = (int)$filters['offset'];
+            }
+        }
+
+        return $this->database->fetchAll($sql, $params);
+    }
+
+    public function count(array $filters = []): int
+    {
+        $sql = "
+            SELECT COUNT(*) AS c
+            FROM dispatch_transfers dt
+            JOIN dispatches src_d ON dt.source_dispatch_id = src_d.id
+            JOIN orders src_o ON dt.source_order_id = src_o.id
+            LEFT JOIN dispatches tgt_d ON dt.target_dispatch_id = tgt_d.id
+            WHERE 1=1
+        ";
+
+        $params = $this->applyFilters($sql, $filters);
+        $row = $this->database->fetch($sql, $params);
+        return (int)($row['c'] ?? 0);
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array<int, mixed>
+     */
+    private function applyFilters(string &$sql, array $filters): array
+    {
+        $params = [];
+
+        if (!empty($filters['company_id'])) {
+            $sql .= " AND src_o.company_id = ?";
+            $params[] = (int)$filters['company_id'];
+        }
+
+        if (!empty($filters['action_type'])
+            && in_array($filters['action_type'], ['transfer', 'replacement', 'credit_note'], true)) {
+            $sql .= " AND dt.action_type = ?";
+            $params[] = $filters['action_type'];
+        }
+
+        if (!empty($filters['order_id'])) {
+            $sql .= " AND (dt.source_order_id = ? OR dt.target_order_id = ?)";
+            $params[] = (int)$filters['order_id'];
+            $params[] = (int)$filters['order_id'];
+        }
+
+        if (!empty($filters['start_date'])) {
+            $sql .= " AND DATE(COALESCE(tgt_d.dispatch_date, dt.created_at)) >= ?";
+            $params[] = $filters['start_date'];
+        }
+
+        if (!empty($filters['end_date'])) {
+            $sql .= " AND DATE(COALESCE(tgt_d.dispatch_date, dt.created_at)) <= ?";
+            $params[] = $filters['end_date'];
+        }
+
+        return $params;
+    }
 }

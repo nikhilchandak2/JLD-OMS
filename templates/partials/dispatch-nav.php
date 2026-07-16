@@ -1,7 +1,10 @@
 <?php
 $dispatchUri = $_SERVER['REQUEST_URI'] ?? '';
-$onQueue = strpos($dispatchUri, '/dispatch/history') === false && strpos($dispatchUri, '/dispatch') === 0;
+$onQueue = strpos($dispatchUri, '/dispatch/history') === false
+    && strpos($dispatchUri, '/dispatch/reject-transfers') === false
+    && strpos($dispatchUri, '/dispatch') === 0;
 $onHistory = strpos($dispatchUri, '/dispatch/history') === 0;
+$onRejectTransfers = strpos($dispatchUri, '/dispatch/reject-transfers') === 0;
 ?>
 <ul class="nav nav-pills mb-4">
     <li class="nav-item">
@@ -12,6 +15,11 @@ $onHistory = strpos($dispatchUri, '/dispatch/history') === 0;
     <li class="nav-item">
         <a class="nav-link <?= $onHistory ? 'active' : '' ?>" href="/dispatch/history">
             <i class="bi bi-clock-history me-1"></i> Dispatch History
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?= $onRejectTransfers ? 'active' : '' ?>" href="/dispatch/reject-transfers">
+            <i class="bi bi-arrow-left-right me-1"></i> Rejected / Transferred
         </a>
     </li>
 </ul>

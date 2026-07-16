@@ -92,9 +92,10 @@
                 <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Reject / Transfer Truck</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="rejectTransferForm">
+            <form id="rejectTransferForm" enctype="multipart/form-data">
                 <div class="modal-body">
                     <p class="text-muted small" id="rejectTransferInfo"></p>
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
                     <div class="alert alert-info py-2 small">
                         When a party rejects a truck, issue a <strong>credit note</strong> and either
                         <strong>transfer the truck</strong> to another party or
@@ -112,22 +113,45 @@
                         <label for="targetOrderId" class="form-label">Transfer to order <span class="text-danger">*</span></label>
                         <select class="form-select" id="targetOrderId" name="target_order_id"></select>
                     </div>
+                    <div class="mb-3" id="transferDateGroup">
+                        <label for="transferDate" class="form-label">Transfer date <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="transferDate" name="transfer_date" value="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div class="mb-3 border rounded p-3 bg-light" id="transferInvoiceGroup">
+                        <h6 class="mb-3"><i class="bi bi-file-earmark-text me-1"></i>New invoice for transferred truck</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="newInvoiceNo" class="form-label">Busy invoice no.</label>
+                                <input type="text" class="form-control" id="newInvoiceNo" name="new_invoice_no">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="transferInvoiceFile" class="form-label">Or upload invoice (PDF/CSV)</label>
+                                <input type="file" class="form-control" id="transferInvoiceFile" name="invoice_file" accept=".pdf,.csv,application/pdf,text/csv">
+                            </div>
+                        </div>
+                    </div>
                     <div class="mb-3">
                         <label for="rejectReason" class="form-label">Reason</label>
                         <textarea class="form-control" id="rejectReason" name="reason" rows="2"></textarea>
                     </div>
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="issueCreditNote" name="issue_credit_note" checked>
-                        <label class="form-check-label" for="issueCreditNote">Issue credit note to rejecting party</label>
-                    </div>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label for="creditNoteNo" class="form-label">Busy credit note no. (optional)</label>
-                            <input type="text" class="form-control" id="creditNoteNo" name="credit_note_no">
+                    <div class="border rounded p-3 mb-3" id="creditNoteSection">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="issueCreditNote" name="issue_credit_note" value="1" checked>
+                            <label class="form-check-label" for="issueCreditNote">Issue credit note to rejecting party</label>
                         </div>
-                        <div class="col-md-6">
-                            <label for="creditAmount" class="form-label">Credit amount (₹)</label>
-                            <input type="number" class="form-control" id="creditAmount" name="credit_amount" step="0.01" min="0.01">
+                        <div class="row g-3" id="creditNoteFields">
+                            <div class="col-md-4">
+                                <label for="creditNoteDate" class="form-label">Credit note date</label>
+                                <input type="date" class="form-control" id="creditNoteDate" name="credit_note_date" value="<?= date('Y-m-d') ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="creditNoteNo" class="form-label">Busy credit note no.</label>
+                                <input type="text" class="form-control" id="creditNoteNo" name="credit_note_no">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="creditAmount" class="form-label">Credit amount (₹)</label>
+                                <input type="number" class="form-control" id="creditAmount" name="credit_amount" step="0.01" min="0.01">
+                            </div>
                         </div>
                     </div>
                     <input type="hidden" id="rejectDispatchId">
@@ -273,6 +297,12 @@ async function openRejectTransferModal(dispatchId) {
     document.getElementById('creditAmount').value = autoAmount;
     document.getElementById('rejectReason').value = '';
     document.getElementById('issueCreditNote').checked = true;
+    document.getElementById('creditNoteNo').value = '';
+    document.getElementById('creditNoteDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('transferDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('newInvoiceNo').value = '';
+    const invoiceFile = document.getElementById('transferInvoiceFile');
+    if (invoiceFile) invoiceFile.value = '';
 
     const targetSelect = document.getElementById('targetOrderId');
     targetSelect.innerHTML = '<option value="">Loading orders…</option>';
@@ -296,11 +326,30 @@ async function openRejectTransferModal(dispatchId) {
 function toggleRejectTransferFields() {
     const action = document.getElementById('rejectAction').value;
     const showTarget = action === 'transfer';
+    const issueCredit = document.getElementById('issueCreditNote').checked;
+
     document.getElementById('targetOrderGroup').style.display = showTarget ? '' : 'none';
     document.getElementById('targetOrderId').required = showTarget;
+
+    const transferDateGroup = document.getElementById('transferDateGroup');
+    if (transferDateGroup) {
+        transferDateGroup.style.display = showTarget ? '' : 'none';
+        document.getElementById('transferDate').required = showTarget;
+    }
+
+    const transferInvoiceGroup = document.getElementById('transferInvoiceGroup');
+    if (transferInvoiceGroup) {
+        transferInvoiceGroup.style.display = showTarget ? '' : 'none';
+    }
+
+    const creditNoteFields = document.getElementById('creditNoteFields');
+    if (creditNoteFields) {
+        creditNoteFields.style.display = issueCredit ? '' : 'none';
+    }
 }
 
 document.getElementById('rejectAction').addEventListener('change', toggleRejectTransferFields);
+document.getElementById('issueCreditNote').addEventListener('change', toggleRejectTransferFields);
 
 document.getElementById('rejectTransferForm').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -317,25 +366,35 @@ document.getElementById('rejectTransferForm').addEventListener('submit', async f
     submitBtn.disabled = true;
     spinner.classList.remove('d-none');
 
-    const payload = {
-        action,
-        reason: document.getElementById('rejectReason').value.trim() || null,
-        issue_credit_note: document.getElementById('issueCreditNote').checked,
-        credit_note_no: document.getElementById('creditNoteNo').value.trim() || null,
-    };
-    const creditAmount = document.getElementById('creditAmount').value;
-    if (creditAmount) payload.credit_amount = parseFloat(creditAmount);
-    if (action === 'transfer') {
-        payload.target_order_id = parseInt(document.getElementById('targetOrderId').value, 10);
+    const formData = new FormData(this);
+    formData.set('issue_credit_note', document.getElementById('issueCreditNote').checked ? '1' : '0');
+    if (!document.getElementById('issueCreditNote').checked) {
+        formData.delete('credit_note_no');
+        formData.delete('credit_amount');
+        formData.delete('credit_note_date');
+    }
+    if (action !== 'transfer') {
+        formData.delete('transfer_date');
+        formData.delete('new_invoice_no');
+        formData.delete('invoice_file');
     }
 
     try {
-        const response = await apiCall(`/api/dispatches/${dispatchId}/reject-transfer`, {
+        const response = await fetch(`/api/dispatches/${dispatchId}/reject-transfer`, {
             method: 'POST',
-            body: JSON.stringify(payload)
+            body: formData,
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRF-Token': formData.get('csrf_token')
+            }
         });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Rejection failed');
+        }
+
         bootstrap.Modal.getInstance(document.getElementById('rejectTransferModal')).hide();
-        showSuccess(response.message || 'Rejection processed.');
+        showSuccess(data.message || 'Rejection processed.');
         await loadDispatchHistory();
     } catch (error) {
         showError(error.message);

@@ -8,6 +8,7 @@ use App\Repositories\DispatchRepository;
 use App\Repositories\PartyRepository;
 use App\Repositories\CrmReceivableEntryRepository;
 use App\Repositories\CreditApprovalRepository;
+use App\Repositories\CreditNoteRepository;
 use App\Repositories\ScheduledDeliveryRepository;
 use App\Models\Order;
 use App\Models\ScheduledDelivery;
@@ -23,6 +24,7 @@ class OrderService
     private CrmReceivableEntryRepository $receivableEntryRepository;
     private CreditApprovalRepository $creditApprovalRepository;
     private ScheduledDeliveryRepository $scheduledDeliveryRepository;
+    private CreditNoteRepository $creditNoteRepository;
     
     public function __construct()
     {
@@ -33,6 +35,7 @@ class OrderService
         $this->receivableEntryRepository = new CrmReceivableEntryRepository();
         $this->creditApprovalRepository = new CreditApprovalRepository();
         $this->scheduledDeliveryRepository = new ScheduledDeliveryRepository();
+        $this->creditNoteRepository = new CreditNoteRepository();
     }
     
     public function getOrders(array $filters = []): array
@@ -46,6 +49,7 @@ class OrderService
         
         if ($order) {
             $order->dispatches = $this->dispatchRepository->findByOrderId($order->id);
+            $order->creditNotes = $this->creditNoteRepository->findByOrderId($order->id);
             $this->enrichOrderWeightTotals($order);
         }
         

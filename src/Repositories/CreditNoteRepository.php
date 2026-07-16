@@ -45,4 +45,16 @@ class CreditNoteRepository
         $sql = "SELECT * FROM credit_notes WHERE dispatch_id = ? ORDER BY id DESC";
         return $this->database->fetchAll($sql, [$dispatchId]);
     }
+
+    public function findByOrderId(int $orderId): array
+    {
+        $sql = "
+            SELECT cn.*, p.name AS party_name
+            FROM credit_notes cn
+            JOIN parties p ON cn.party_id = p.id
+            WHERE cn.order_id = ?
+            ORDER BY cn.id DESC
+        ";
+        return $this->database->fetchAll($sql, [$orderId]);
+    }
 }

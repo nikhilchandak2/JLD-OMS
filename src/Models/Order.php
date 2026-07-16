@@ -39,6 +39,7 @@ class Order
     public float $totalDispatchedWeight = 0;
     public float $pendingWeightTons = 0;
     public array $dispatches = [];
+    public array $creditNotes = [];
     
     public function __construct(array $data = [])
     {
@@ -129,7 +130,8 @@ class Order
             'pending_weight_tons' => $this->pendingWeightTons,
             'dispatches' => array_map(function($dispatch) {
                 return is_object($dispatch) ? $dispatch->toArray() : $dispatch;
-            }, $this->dispatches ?? [])
+            }, $this->dispatches ?? []),
+            'credit_notes' => $this->creditNotes ?? [],
         ];
     }
     

@@ -383,6 +383,55 @@ class DispatchController
         }
     }
 
+    /** GET /api/dispatch-transfers — rejected / transferred truck records. */
+    public function transferRecords(): void
+    {
+        header('Content-Type: application/json');
+
+        if (!$this->requireDispatchReadAccess()) {
+            return;
+        }
+
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+        $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+        $limit = max(1, min($limit, 200));
+        $offset = max(0, $offset);
+
+        $actionType = isset($_GET['action_type']) ? trim((string)$_GET['action_type']) : null;
+        if ($actionType !== null && $actionType !== ''
+            && !in_array($actionType, ['transfer', 'replacement', 'credit_note'], true)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid action_type filter']);
+            return;
+        }
+
+        $filters = CompanyContext::mergeFilter([
+            'order_id' => isset($_GET['order_id']) ? max(0, (int)$_GET['order_id']) : null,
+            'start_date' => $_GET['start_date'] ?? null,
+            'end_date' => $_GET['end_date'] ?? null,
+            'action_type' => $actionType !== '' ? $actionType : null,
+            'limit' => $limit,
+            'offset' => $offset,
+        ]);
+
+        try {
+            $result = $this->dispatchTransferService->listTransferRecords($filters);
+            echo json_encode([
+                'success' => true,
+                'data' => $result['rows'],
+                'pagination' => [
+                    'total' => $result['total'],
+                    'limit' => $limit,
+                    'offset' => $offset,
+                    'has_more' => ($offset + $limit) < $result['total'],
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
     /** GET /api/dispatches/{id}/transfer-targets — pending orders for reject-transfer workflow. */
     public function transferTargets(int $id): void
     {
@@ -427,15 +476,21 @@ class DispatchController
             return;
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $input = $this->parseRejectTransferInput();
         if (empty($input['action'])) {
             http_response_code(400);
             echo json_encode(['error' => 'action is required (transfer, credit_note, or replacement)']);
             return;
         }
 
+        $invoiceFile = null;
+        if (!empty($_FILES['invoice_file'])
+            && ($_FILES['invoice_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            $invoiceFile = $_FILES['invoice_file'];
+        }
+
         try {
-            $result = $this->dispatchTransferService->handleRejection($id, $input, (int)$user['id']);
+            $result = $this->dispatchTransferService->handleRejection($id, $input, (int)$user['id'], $invoiceFile);
             echo json_encode([
                 'success' => true,
                 'message' => $result['message'] ?? 'Dispatch rejection processed',
@@ -447,6 +502,21 @@ class DispatchController
         }
     }
     
+    private function parseRejectTransferInput(): array
+    {
+        $contentType = strtolower((string)($_SERVER['CONTENT_TYPE'] ?? ''));
+        if (str_contains($contentType, 'application/json')) {
+            $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        } else {
+            $input = $_POST;
+            if (isset($input['issue_credit_note'])) {
+                $input['issue_credit_note'] = filter_var($input['issue_credit_note'], FILTER_VALIDATE_BOOLEAN);
+            }
+        }
+
+        return is_array($input) ? $input : [];
+    }
+
     private function isValidDate(string $date): bool
     {
         $d = \DateTime::createFromFormat('Y-m-d', $date);

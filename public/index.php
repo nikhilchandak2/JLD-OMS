@@ -176,6 +176,7 @@ $router->group('/api', function($router) {
         $router->get('/orders/{id}/scheduled-deliveries', 'OrderController@getScheduledDeliveries');
         
         // Dispatches
+        $router->get('/dispatch-transfers', 'DispatchController@transferRecords');
         $router->get('/dispatches/{id}/eway-bill-file', 'DispatchController@downloadEwayBillFile');
         $router->get('/dispatches/{id}/transfer-targets', 'DispatchController@transferTargets');
         $router->post('/dispatches/{id}/reject-transfer', 'DispatchController@rejectTransfer');
@@ -275,6 +276,7 @@ $router->get('/orders/analytics', 'WebController@ordersAnalytics');
 $router->get('/orders/new', 'WebController@newOrder');
 $router->get('/orders/{id}', 'WebController@orderDetail');
 $router->get('/dispatch/history', 'WebController@dispatchHistory');
+$router->get('/dispatch/reject-transfers', 'WebController@dispatchRejectTransfers');
 $router->get('/dispatch', 'WebController@dispatchDashboard');
 $router->get('/visit-requests', 'WebController@visitRequests');
 $router->get('/reports', 'WebController@reports');
