@@ -69,23 +69,37 @@
         padding: 0.5rem 0.35rem;
     }
 }
-#editOrderModal .modal-content {
+#editOrderModal .modal-content,
+#rejectTransferModal .modal-content {
     display: flex;
     flex-direction: column;
     max-height: 100%;
 }
-#editOrderModal #editOrderForm {
+@media (min-width: 576px) {
+    #rejectTransferModal .modal-dialog:not(.modal-fullscreen-sm-down) {
+        max-height: calc(100vh - 3.5rem);
+    }
+}
+#editOrderModal .modal-header,
+#rejectTransferModal .modal-header {
+    flex-shrink: 0;
+}
+#editOrderModal #editOrderForm,
+#rejectTransferModal #rejectTransferForm {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
 }
-#editOrderModal .modal-body {
+#editOrderModal .modal-body,
+#rejectTransferModal .modal-body {
     overflow-y: auto;
     flex: 1 1 auto;
+    -webkit-overflow-scrolling: touch;
 }
-#editOrderModal .modal-footer {
+#editOrderModal .modal-footer,
+#rejectTransferModal .modal-footer {
     flex-shrink: 0;
     position: sticky;
     bottom: 0;
@@ -499,7 +513,7 @@
 
 <!-- Reject / transfer truck (party rejection workflow) -->
 <div class="modal fade" id="rejectTransferModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Reject / Transfer Truck</h5>

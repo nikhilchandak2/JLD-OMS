@@ -1,5 +1,41 @@
 <?php include __DIR__ . '/partials/dispatch-nav.php'; ?>
 
+<style>
+#rejectTransferModal .modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
+}
+@media (min-width: 576px) {
+    #rejectTransferModal .modal-dialog:not(.modal-fullscreen-sm-down) {
+        max-height: calc(100vh - 3.5rem);
+    }
+}
+#rejectTransferModal .modal-header {
+    flex-shrink: 0;
+}
+#rejectTransferModal #rejectTransferForm {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+#rejectTransferModal .modal-body {
+    overflow-y: auto;
+    flex: 1 1 auto;
+    -webkit-overflow-scrolling: touch;
+}
+#rejectTransferModal .modal-footer {
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: var(--bs-modal-bg, #fff);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+}
+</style>
+
 <div class="page-header">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div>
@@ -86,7 +122,7 @@
 
 <?php if (in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch'])): ?>
 <div class="modal fade" id="rejectTransferModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Reject / Transfer Truck</h5>
