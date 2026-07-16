@@ -217,6 +217,20 @@ class OrderController
                 $errors[] = 'Scheduled dispatch date cannot be before the order date';
             }
         }
+
+        if ($isRecurring && $hasScheduledDispatch) {
+            $errors[] = 'Choose either recurring delivery or scheduled dispatch, not both';
+        }
+
+        $billToOtherParty = filter_var($input['bill_to_other_party'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        if ($billToOtherParty) {
+            $billingPartyId = isset($input['billing_party_id']) ? (int)$input['billing_party_id'] : 0;
+            if ($billingPartyId <= 0) {
+                $errors[] = 'Billing party is required when bill to another party is enabled';
+            } elseif (!empty($input['party_id']) && $billingPartyId === (int)$input['party_id']) {
+                $errors[] = 'Billing party must be different from the delivery party';
+            }
+        }
         
         if (!empty($errors)) {
             http_response_code(400);
@@ -243,6 +257,10 @@ class OrderController
                 'order_weight_tons' => isset($input['order_weight_tons']) ? (float)$input['order_weight_tons'] : null,
                 'tons_per_truck' => isset($input['tons_per_truck']) ? (float)$input['tons_per_truck'] : 40,
                 'party_id' => (int)$input['party_id'],
+                'bill_to_other_party' => $billToOtherParty,
+                'billing_party_id' => $billToOtherParty && !empty($input['billing_party_id'])
+                    ? (int)$input['billing_party_id']
+                    : null,
                 'priority' => $priority,
                 'scheduled_dispatch_date' => $hasScheduledDispatch
                     ? trim((string)($input['scheduled_dispatch_date'] ?? ''))

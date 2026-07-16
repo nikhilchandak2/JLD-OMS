@@ -282,6 +282,7 @@ class ReportController
         $filters = [
             'start_date' => (string)$startDate,
             'end_date' => (string)$endDate,
+            'party_id' => !empty($input['party_id']) ? (int)$input['party_id'] : null,
             'product_id' => !empty($input['product_id']) ? (int)$input['product_id'] : null,
         ];
 

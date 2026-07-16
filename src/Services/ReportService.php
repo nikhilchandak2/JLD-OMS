@@ -439,11 +439,11 @@ class ReportService
     }
 
     /**
-     * Daily dispatch report: summary, company breakdown, product breakdown, and line details.
+     * Daily dispatch report: summary, party breakdown, product breakdown, and line details.
      *
      * @return array{
      *   summary: array<string, mixed>,
-     *   by_company: array<int, array<string, mixed>>,
+     *   by_party: array<int, array<string, mixed>>,
      *   by_product: array<int, array<string, mixed>>,
      *   daily_breakdown: array<int, array<string, mixed>>,
      *   details: array<int, array<string, mixed>>
@@ -459,7 +459,6 @@ class ReportService
                 COUNT(*) AS dispatch_count,
                 COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
                 COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons,
-                COUNT(DISTINCT o.company_id) AS company_count,
                 COUNT(DISTINCT o.product_id) AS product_count,
                 COUNT(DISTINCT o.party_id) AS party_count
             FROM dispatches d
@@ -470,23 +469,23 @@ class ReportService
         ";
         $summary = $this->database->fetch($summarySql, $params) ?: [];
 
-        $byCompanySql = "
+        $byPartySql = "
             SELECT
-                c.id AS company_id,
-                c.name AS company_name,
+                pt.id AS party_id,
+                pt.name AS party_name,
                 COUNT(*) AS dispatch_count,
                 COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
                 COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
-            JOIN companies c ON o.company_id = c.id
+            JOIN parties pt ON o.party_id = pt.id
             WHERE d.dispatch_date BETWEEN ? AND ?
             AND {$activeWhere}
             {$whereSql}
-            GROUP BY c.id, c.name
-            ORDER BY total_trucks DESC, c.name ASC
+            GROUP BY pt.id, pt.name
+            ORDER BY total_trucks DESC, pt.name ASC
         ";
-        $byCompany = $this->database->fetchAll($byCompanySql, $params);
+        $byParty = $this->database->fetchAll($byPartySql, $params);
 
         $byProductSql = "
             SELECT
@@ -509,8 +508,8 @@ class ReportService
         $dailySql = "
             SELECT
                 d.dispatch_date,
-                c.id AS company_id,
-                c.name AS company_name,
+                pt.id AS party_id,
+                pt.name AS party_name,
                 p.id AS product_id,
                 p.name AS product_name,
                 COUNT(*) AS dispatch_count,
@@ -518,13 +517,13 @@ class ReportService
                 COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
-            JOIN companies c ON o.company_id = c.id
+            JOIN parties pt ON o.party_id = pt.id
             JOIN products p ON o.product_id = p.id
             WHERE d.dispatch_date BETWEEN ? AND ?
             AND {$activeWhere}
             {$whereSql}
-            GROUP BY d.dispatch_date, c.id, c.name, p.id, p.name
-            ORDER BY d.dispatch_date DESC, c.name ASC, p.name ASC
+            GROUP BY d.dispatch_date, pt.id, pt.name, p.id, p.name
+            ORDER BY d.dispatch_date DESC, pt.name ASC, p.name ASC
         ";
         $dailyBreakdown = $this->database->fetchAll($dailySql, $params);
 
@@ -552,7 +551,7 @@ class ReportService
             WHERE d.dispatch_date BETWEEN ? AND ?
             AND {$activeWhere}
             {$whereSql}
-            ORDER BY d.dispatch_date DESC, c.name ASC, p.name ASC, d.id DESC
+            ORDER BY d.dispatch_date DESC, pt.name ASC, p.name ASC, d.id DESC
         ";
         $details = $this->database->fetchAll($detailsSql, $params);
 
@@ -561,11 +560,10 @@ class ReportService
                 'dispatch_count' => (int)($summary['dispatch_count'] ?? 0),
                 'total_trucks' => (int)($summary['total_trucks'] ?? 0),
                 'total_weight_tons' => round((float)($summary['total_weight_tons'] ?? 0), 3),
-                'company_count' => (int)($summary['company_count'] ?? 0),
                 'product_count' => (int)($summary['product_count'] ?? 0),
                 'party_count' => (int)($summary['party_count'] ?? 0),
             ],
-            'by_company' => $byCompany,
+            'by_party' => $byParty,
             'by_product' => $byProduct,
             'daily_breakdown' => $dailyBreakdown,
             'details' => $details,
@@ -584,7 +582,7 @@ class ReportService
 
         $row = 4;
         $sheet->setCellValue('A' . $row, 'Date');
-        $sheet->setCellValue('B' . $row, 'Company');
+        $sheet->setCellValue('B' . $row, 'Party');
         $sheet->setCellValue('C' . $row, 'Product');
         $sheet->setCellValue('D' . $row, 'Trucks');
         $sheet->setCellValue('E' . $row, 'Weight (MT)');
@@ -594,7 +592,7 @@ class ReportService
 
         foreach ($data['daily_breakdown'] as $line) {
             $sheet->setCellValue('A' . $row, $line['dispatch_date'] ?? '');
-            $sheet->setCellValue('B' . $row, $line['company_name'] ?? '');
+            $sheet->setCellValue('B' . $row, $line['party_name'] ?? '');
             $sheet->setCellValue('C' . $row, $line['product_name'] ?? '');
             $sheet->setCellValue('D' . $row, (int)($line['total_trucks'] ?? 0));
             $sheet->setCellValue('E' . $row, round((float)($line['total_weight_tons'] ?? 0), 3));
@@ -621,6 +619,11 @@ class ReportService
         if (!empty($filters['company_id'])) {
             $sql .= ' AND o.company_id = ?';
             $params[] = (int)$filters['company_id'];
+        }
+
+        if (!empty($filters['party_id'])) {
+            $sql .= ' AND o.party_id = ?';
+            $params[] = (int)$filters['party_id'];
         }
 
         if (!empty($filters['product_id'])) {

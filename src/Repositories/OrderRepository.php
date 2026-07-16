@@ -30,6 +30,7 @@ class OrderRepository
             JOIN companies c ON o.company_id = c.id
             JOIN products p ON o.product_id = p.id
             JOIN parties pt ON o.party_id = pt.id
+            LEFT JOIN parties bp ON o.billing_party_id = bp.id
             LEFT JOIN users u ON o.created_by = u.id
             LEFT JOIN (
                 SELECT order_id,
@@ -161,6 +162,7 @@ class OrderRepository
                    {$transportDoc},
                    p.name as product_name,
                    pt.name as party_name,
+                   bp.name as billing_party_name,
                    u.name as created_by_name,
                    COALESCE(d.total_dispatched, 0) as total_dispatched,
                    COALESCE(d.total_dispatched_weight, 0) as total_dispatched_weight
@@ -168,6 +170,7 @@ class OrderRepository
             JOIN companies c ON o.company_id = c.id
             JOIN products p ON o.product_id = p.id
             JOIN parties pt ON o.party_id = pt.id
+            LEFT JOIN parties bp ON o.billing_party_id = bp.id
             LEFT JOIN users u ON o.created_by = u.id
             LEFT JOIN (
                 SELECT order_id,
@@ -192,11 +195,13 @@ class OrderRepository
             SELECT o.*, 
                    p.name as product_name,
                    pt.name as party_name,
+                   bp.name as billing_party_name,
                    u.name as created_by_name,
                    COALESCE(d.total_dispatched, 0) as total_dispatched
             FROM orders o
             JOIN products p ON o.product_id = p.id
             JOIN parties pt ON o.party_id = pt.id
+            LEFT JOIN parties bp ON o.billing_party_id = bp.id
             LEFT JOIN users u ON o.created_by = u.id
             LEFT JOIN (
                 SELECT order_id,
@@ -217,8 +222,8 @@ class OrderRepository
     public function create(Order $order): int
     {
         $sql = "
-            INSERT INTO orders (company_id, order_no, order_date, scheduled_dispatch_date, product_id, order_qty_trucks, order_qty_mode, order_weight_tons, tons_per_truck, party_id, priority, is_recurring, delivery_frequency_days, trucks_per_delivery, total_deliveries, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO orders (company_id, order_no, order_date, scheduled_dispatch_date, product_id, order_qty_trucks, order_qty_mode, order_weight_tons, tons_per_truck, party_id, bill_to_other_party, billing_party_id, priority, is_recurring, delivery_frequency_days, trucks_per_delivery, total_deliveries, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ";
         
         $this->database->execute($sql, [
@@ -232,6 +237,8 @@ class OrderRepository
             $order->orderWeightTons,
             $order->tonsPerTruck,
             $order->partyId,
+            $order->billToOtherParty ? 1 : 0,
+            $order->billingPartyId,
             $order->priority,
             $order->isRecurring ? 1 : 0,
             $order->deliveryFrequencyDays,

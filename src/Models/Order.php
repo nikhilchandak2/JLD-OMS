@@ -19,6 +19,9 @@ class Order
     public float $tonsPerTruck = 40.0;
     public int $partyId = 0;
     public string $partyName = '';
+    public bool $billToOtherParty = false;
+    public ?int $billingPartyId = null;
+    public string $billingPartyName = '';
     public string $status = 'pending';
     public string $priority = 'normal';
     public bool $isRecurring = false;
@@ -65,6 +68,11 @@ class Order
             : 40.0;
         $this->partyId = $data['party_id'] ?? 0;
         $this->partyName = $data['party_name'] ?? '';
+        $this->billToOtherParty = (bool)($data['bill_to_other_party'] ?? false);
+        $this->billingPartyId = isset($data['billing_party_id']) && $data['billing_party_id'] !== '' && $data['billing_party_id'] !== null
+            ? (int)$data['billing_party_id']
+            : null;
+        $this->billingPartyName = $data['billing_party_name'] ?? '';
         $this->status = $data['status'] ?? 'pending';
         $this->priority = $data['priority'] ?? 'normal';
         $this->isRecurring = (bool)($data['is_recurring'] ?? false);
@@ -102,6 +110,9 @@ class Order
             'tons_per_truck' => $this->tonsPerTruck,
             'party_id' => $this->partyId ?? 0,
             'party_name' => $this->partyName ?? '',
+            'bill_to_other_party' => $this->billToOtherParty,
+            'billing_party_id' => $this->billingPartyId,
+            'billing_party_name' => $this->billingPartyName,
             'status' => $this->status ?? 'pending',
             'priority' => $this->priority ?? 'normal',
             'is_recurring' => $this->isRecurring,

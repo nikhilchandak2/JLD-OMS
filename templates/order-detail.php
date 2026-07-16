@@ -198,6 +198,10 @@
                             <label>Party</label>
                             <div class="value" id="partyName">—</div>
                         </div>
+                        <div class="order-info-item" id="billingPartyItem" style="display: none;">
+                            <label>Billing Party</label>
+                            <div class="value text-info fw-semibold" id="billingPartyName">—</div>
+                        </div>
                         <div class="order-info-item">
                             <label>Product</label>
                             <div class="value" id="productName">—</div>
@@ -550,6 +554,14 @@ function updateOrderDisplay(order) {
         schedVal.textContent = '—';
     }
     document.getElementById('partyName').textContent = order.party_name;
+    const billingItem = document.getElementById('billingPartyItem');
+    if (order.bill_to_other_party && order.billing_party_name) {
+        billingItem.style.display = '';
+        document.getElementById('billingPartyName').textContent = order.billing_party_name;
+    } else {
+        billingItem.style.display = 'none';
+        document.getElementById('billingPartyName').textContent = '—';
+    }
     document.getElementById('productName').textContent = order.product_name;
     document.getElementById('infoCompanyBadge').textContent = order.company_name || '—';
     toggleTransportDocFields(order.transport_doc_type || 'rawana');

@@ -135,6 +135,23 @@
                             </div>
                         </div>
                     </div>
+                    <div class="mt-3 pt-3 border-top">
+                        <div class="recurring-toggle-card" id="billingToggleCard">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="billToOtherParty" name="bill_to_other_party">
+                                <label class="form-check-label" for="billToOtherParty">
+                                    <strong>Bill to another party</strong>
+                                    <span class="text-muted d-block small mt-1">Invoice will be raised in a different party's name (delivery party stays the same)</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mt-3" id="billingPartyOptions" style="display: none;">
+                            <label for="billingPartyId" class="form-label">Billing party <span class="text-danger">*</span></label>
+                            <select class="form-select searchable-select" id="billingPartyId" name="billing_party_id">
+                                <option value="">Select billing party…</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -198,59 +215,50 @@
                 </div>
             </div>
 
-            <!-- Scheduled dispatch date -->
+            <!-- Delivery schedule -->
             <div class="card new-order-section mb-4">
-                <div class="card-body p-0">
-                    <div class="recurring-toggle-card m-3" id="scheduleDispatchToggleCard">
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="hasScheduledDispatch" name="has_scheduled_dispatch">
-                            <label class="form-check-label" for="hasScheduledDispatch">
-                                <strong>Schedule dispatch date</strong>
-                                <span class="text-muted d-block small mt-1">Set a planned date for the first dispatch (optional)</span>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="px-3 pb-3" id="scheduleDispatchOptions" style="display: none;">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="scheduledDispatchDate" class="form-label">Dispatch date</label>
-                                <input type="date" class="form-control" id="scheduledDispatchDate" name="scheduled_dispatch_date">
-                            </div>
-                        </div>
-                    </div>
+                <div class="card-header py-3">
+                    <i class="bi bi-calendar3 me-2"></i>Delivery Schedule
                 </div>
-            </div>
+                <div class="card-body">
+                    <label class="form-label d-block mb-2">Delivery type</label>
+                    <div class="btn-group flex-wrap mb-3" role="group" aria-label="Delivery type">
+                        <input type="radio" class="btn-check" name="delivery_type" id="deliveryTypeNone" value="none" checked>
+                        <label class="btn btn-outline-secondary" for="deliveryTypeNone">As needed</label>
+                        <input type="radio" class="btn-check" name="delivery_type" id="deliveryTypeScheduled" value="scheduled">
+                        <label class="btn btn-outline-primary" for="deliveryTypeScheduled"><i class="bi bi-calendar-event me-1"></i> Scheduled</label>
+                        <input type="radio" class="btn-check" name="delivery_type" id="deliveryTypeRecurring" value="recurring">
+                        <label class="btn btn-outline-primary" for="deliveryTypeRecurring"><i class="bi bi-arrow-repeat me-1"></i> Recurring</label>
+                    </div>
 
-            <!-- Recurring -->
-            <div class="card new-order-section mb-4">
-                <div class="card-body p-0">
-                    <div class="recurring-toggle-card m-3" id="recurringToggleCard">
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="isRecurring" name="is_recurring">
-                            <label class="form-check-label" for="isRecurring">
-                                <strong>Recurring delivery</strong>
-                                <span class="text-muted d-block small mt-1">Split this order into scheduled deliveries over time</span>
-                            </label>
+                    <div id="scheduleDispatchOptions" style="display: none;">
+                        <div class="recurring-toggle-card active mb-0">
+                            <label for="scheduledDispatchDate" class="form-label">Scheduled dispatch date <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="scheduledDispatchDate" name="scheduled_dispatch_date">
+                            <div class="form-text">Planned date for the first dispatch</div>
                         </div>
                     </div>
-                    <div class="px-3 pb-3" id="recurringOptions" style="display: none;">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label for="trucksPerDelivery" class="form-label">Trucks per delivery</label>
-                                <input type="number" class="form-control" id="trucksPerDelivery" name="trucks_per_delivery" min="1" placeholder="e.g. 2">
+
+                    <div id="recurringOptions" style="display: none;">
+                        <div class="recurring-toggle-card active">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label for="trucksPerDelivery" class="form-label">Trucks per delivery</label>
+                                    <input type="number" class="form-control" id="trucksPerDelivery" name="trucks_per_delivery" min="1" placeholder="e.g. 2">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="deliveryFrequency" class="form-label">Frequency (days)</label>
+                                    <input type="number" class="form-control" id="deliveryFrequency" name="delivery_frequency_days" min="1" placeholder="e.g. 7">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="totalDeliveries" class="form-label">Total deliveries</label>
+                                    <input type="number" class="form-control bg-light" id="totalDeliveries" name="total_deliveries" readonly>
+                                </div>
                             </div>
-                            <div class="col-md-4">
-                                <label for="deliveryFrequency" class="form-label">Frequency (days)</label>
-                                <input type="number" class="form-control" id="deliveryFrequency" name="delivery_frequency_days" min="1" placeholder="e.g. 7">
+                            <div class="alert alert-info mt-3 mb-0" id="deliveryPreview" style="display: none;">
+                                <strong class="d-block mb-2"><i class="bi bi-calendar-week me-1"></i> Schedule preview</strong>
+                                <div id="schedulePreview"></div>
                             </div>
-                            <div class="col-md-4">
-                                <label for="totalDeliveries" class="form-label">Total deliveries</label>
-                                <input type="number" class="form-control bg-light" id="totalDeliveries" name="total_deliveries" readonly>
-                            </div>
-                        </div>
-                        <div class="alert alert-info mt-3 mb-0" id="deliveryPreview" style="display: none;">
-                            <strong class="d-block mb-2"><i class="bi bi-calendar-week me-1"></i> Schedule preview</strong>
-                            <div id="schedulePreview"></div>
                         </div>
                     </div>
                 </div>
@@ -289,12 +297,20 @@
                         <span class="summary-value" id="summaryPriority">Normal</span>
                     </div>
                     <div class="summary-row">
-                        <span class="summary-label">Recurring</span>
-                        <span class="summary-value" id="summaryRecurring">No</span>
+                        <span class="summary-label">Billing</span>
+                        <span class="summary-value" id="summaryBilling">Same as party</span>
                     </div>
                     <div class="summary-row">
+                        <span class="summary-label">Delivery</span>
+                        <span class="summary-value" id="summaryDeliveryType">As needed</span>
+                    </div>
+                    <div class="summary-row" id="summaryScheduledRow" style="display: none;">
                         <span class="summary-label">Scheduled dispatch</span>
-                        <span class="summary-value" id="summaryScheduledDispatch">No</span>
+                        <span class="summary-value" id="summaryScheduledDispatch">—</span>
+                    </div>
+                    <div class="summary-row" id="summaryRecurringRow" style="display: none;">
+                        <span class="summary-label">Recurring</span>
+                        <span class="summary-value" id="summaryRecurring">—</span>
                     </div>
 
                     <div class="d-grid gap-2 mt-4">
@@ -433,17 +449,17 @@ function clearNewOrderForm() {
     form.reset();
     document.getElementById('orderDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('tonsPerTruck').value = '40';
+    document.getElementById('deliveryTypeNone').checked = true;
     document.getElementById('creditStatusPanel').style.display = 'none';
     document.getElementById('creditStatusPanel').innerHTML = '';
-    document.getElementById('recurringOptions').style.display = 'none';
-    document.getElementById('recurringToggleCard')?.classList.remove('active');
-    document.getElementById('scheduleDispatchOptions').style.display = 'none';
-    document.getElementById('scheduleDispatchToggleCard')?.classList.remove('active');
-    document.getElementById('deliveryPreview').style.display = 'none';
+    document.getElementById('billingPartyOptions').style.display = 'none';
+    document.getElementById('billingToggleCard')?.classList.remove('active');
     document.getElementById('submitBtn').disabled = false;
+    syncDeliveryTypeUI();
     if (typeof $.fn.select2 !== 'undefined') {
         $('#partyId').val('').trigger('change');
         $('#productId').val('').trigger('change');
+        $('#billingPartyId').val('').trigger('change');
     }
     toggleQtyMode();
     updateQtyPreview();
@@ -483,18 +499,39 @@ function updateOrderSummary() {
             ? '<span class="badge bg-danger">Urgent</span>'
             : '<span class="badge bg-secondary">Normal</span>';
 
-    const isRecurring = document.getElementById('isRecurring').checked;
-    document.getElementById('summaryRecurring').textContent = isRecurring ? 'Yes' : 'No';
+    const billToOther = document.getElementById('billToOtherParty').checked;
+    const billingSelect = document.getElementById('billingPartyId');
+    const billingText = billingSelect.selectedOptions[0]?.textContent?.trim() || '';
+    document.getElementById('summaryBilling').textContent = billToOther && billingSelect.value
+        ? billingText
+        : 'Same as party';
 
-    const hasScheduled = document.getElementById('hasScheduledDispatch').checked;
-    const schedDate = document.getElementById('scheduledDispatchDate').value;
-    if (hasScheduled && schedDate) {
-        const sd = new Date(schedDate + 'T12:00:00');
-        document.getElementById('summaryScheduledDispatch').textContent = sd.toLocaleDateString('en-IN', {
-            day: 'numeric', month: 'short', year: 'numeric'
-        });
+    const deliveryType = document.querySelector('input[name="delivery_type"]:checked')?.value || 'none';
+    const summaryDelivery = document.getElementById('summaryDeliveryType');
+    const summaryScheduledRow = document.getElementById('summaryScheduledRow');
+    const summaryRecurringRow = document.getElementById('summaryRecurringRow');
+
+    summaryScheduledRow.style.display = 'none';
+    summaryRecurringRow.style.display = 'none';
+
+    if (deliveryType === 'scheduled') {
+        summaryDelivery.textContent = 'Scheduled';
+        summaryScheduledRow.style.display = '';
+        const schedDate = document.getElementById('scheduledDispatchDate').value;
+        document.getElementById('summaryScheduledDispatch').textContent = schedDate
+            ? new Date(schedDate + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : '—';
+    } else if (deliveryType === 'recurring') {
+        summaryDelivery.textContent = 'Recurring';
+        summaryRecurringRow.style.display = '';
+        const totalDeliveries = document.getElementById('totalDeliveries').value;
+        const trucksPerDelivery = document.getElementById('trucksPerDelivery').value;
+        const frequency = document.getElementById('deliveryFrequency').value;
+        document.getElementById('summaryRecurring').textContent = totalDeliveries
+            ? `${totalDeliveries} deliveries · ${trucksPerDelivery || '?'} trucks every ${frequency || '?'} days`
+            : '—';
     } else {
-        document.getElementById('summaryScheduledDispatch').textContent = hasScheduled ? '—' : 'No';
+        summaryDelivery.textContent = 'As needed';
     }
 }
 
@@ -631,6 +668,15 @@ async function loadFormData() {
             option.value = String(party.id ?? '');
             option.textContent = String(party.name ?? '');
             partySelect.appendChild(option);
+        });
+
+        const billingSelect = document.getElementById('billingPartyId');
+        billingSelect.innerHTML = '<option value="">Select billing party…</option>';
+        partiesResponse.data.forEach((party) => {
+            const option = document.createElement('option');
+            option.value = String(party.id ?? '');
+            option.textContent = String(party.name ?? '');
+            billingSelect.appendChild(option);
         });
         
         // Load products
@@ -789,6 +835,8 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
     
     try {
         const qtyMode = formData.get('order_qty_mode') || 'trucks';
+        const deliveryType = formData.get('delivery_type') || 'none';
+        const billToOtherParty = formData.has('bill_to_other_party');
         const orderData = {
             company_id: parseInt(formData.get('company_id')),
             order_date: formData.get('order_date'),
@@ -798,13 +846,23 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
             order_weight_tons: qtyMode === 'weight' ? parseFloat(formData.get('order_weight_tons')) : null,
             tons_per_truck: parseFloat(formData.get('tons_per_truck')) || 40,
             party_id: parseInt(formData.get('party_id')),
+            bill_to_other_party: billToOtherParty,
+            billing_party_id: billToOtherParty && formData.get('billing_party_id')
+                ? parseInt(formData.get('billing_party_id'))
+                : null,
             priority: formData.get('priority'),
-            has_scheduled_dispatch: formData.has('has_scheduled_dispatch'),
-            scheduled_dispatch_date: formData.get('scheduled_dispatch_date') || null,
-            is_recurring: formData.has('is_recurring'),
-            trucks_per_delivery: formData.get('trucks_per_delivery') ? parseInt(formData.get('trucks_per_delivery')) : null,
-            delivery_frequency_days: formData.get('delivery_frequency_days') ? parseInt(formData.get('delivery_frequency_days')) : null,
-            total_deliveries: formData.get('total_deliveries') ? parseInt(formData.get('total_deliveries')) : null
+            has_scheduled_dispatch: deliveryType === 'scheduled',
+            scheduled_dispatch_date: deliveryType === 'scheduled' ? (formData.get('scheduled_dispatch_date') || null) : null,
+            is_recurring: deliveryType === 'recurring',
+            trucks_per_delivery: deliveryType === 'recurring' && formData.get('trucks_per_delivery')
+                ? parseInt(formData.get('trucks_per_delivery'))
+                : null,
+            delivery_frequency_days: deliveryType === 'recurring' && formData.get('delivery_frequency_days')
+                ? parseInt(formData.get('delivery_frequency_days'))
+                : null,
+            total_deliveries: deliveryType === 'recurring' && formData.get('total_deliveries')
+                ? parseInt(formData.get('total_deliveries'))
+                : null
         };
         
         const response = await fetch('/api/orders', {
@@ -841,35 +899,69 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
     }
 });
 
-// Handle scheduled dispatch toggle
-document.getElementById('hasScheduledDispatch').addEventListener('change', function() {
-    const options = document.getElementById('scheduleDispatchOptions');
-    const card = document.getElementById('scheduleDispatchToggleCard');
+function syncDeliveryTypeUI() {
+    const deliveryType = document.querySelector('input[name="delivery_type"]:checked')?.value || 'none';
+    const scheduleOptions = document.getElementById('scheduleDispatchOptions');
+    const recurringOptions = document.getElementById('recurringOptions');
     const dateInput = document.getElementById('scheduledDispatchDate');
+    const trucksPerDelivery = document.getElementById('trucksPerDelivery');
+    const deliveryFrequency = document.getElementById('deliveryFrequency');
+    const totalDeliveries = document.getElementById('totalDeliveries');
     const orderDate = document.getElementById('orderDate').value;
+
+    scheduleOptions.style.display = deliveryType === 'scheduled' ? 'block' : 'none';
+    recurringOptions.style.display = deliveryType === 'recurring' ? 'block' : 'none';
+
+    dateInput.required = deliveryType === 'scheduled';
+    trucksPerDelivery.required = deliveryType === 'recurring';
+    deliveryFrequency.required = deliveryType === 'recurring';
+    totalDeliveries.required = deliveryType === 'recurring';
+
+    if (deliveryType === 'scheduled') {
+        if (!dateInput.value && orderDate) {
+            dateInput.value = orderDate;
+        }
+        dateInput.min = orderDate || '';
+    } else {
+        dateInput.value = '';
+    }
+
+    if (deliveryType !== 'recurring') {
+        document.getElementById('deliveryPreview').style.display = 'none';
+        totalDeliveries.value = '';
+    } else {
+        updateDeliveryPreview();
+    }
+
+    updateOrderSummary();
+}
+
+document.querySelectorAll('input[name="delivery_type"]').forEach(radio => {
+    radio.addEventListener('change', syncDeliveryTypeUI);
+});
+
+document.getElementById('billToOtherParty').addEventListener('change', function() {
+    const options = document.getElementById('billingPartyOptions');
+    const card = document.getElementById('billingToggleCard');
+    const billingSelect = document.getElementById('billingPartyId');
 
     if (this.checked) {
         options.style.display = 'block';
         card?.classList.add('active');
-        dateInput.required = true;
-        if (!dateInput.value && orderDate) {
-            dateInput.value = orderDate;
-            dateInput.min = orderDate;
-        }
-        // Mutually exclusive with recurring delivery
-        const recurring = document.getElementById('isRecurring');
-        if (recurring.checked) {
-            recurring.checked = false;
-            recurring.dispatchEvent(new Event('change'));
-        }
+        billingSelect.required = true;
     } else {
         options.style.display = 'none';
         card?.classList.remove('active');
-        dateInput.required = false;
-        dateInput.value = '';
+        billingSelect.required = false;
+        billingSelect.value = '';
+        if (typeof $.fn.select2 !== 'undefined') {
+            $('#billingPartyId').trigger('change');
+        }
     }
     updateOrderSummary();
 });
+
+document.getElementById('billingPartyId').addEventListener('change', updateOrderSummary);
 
 document.getElementById('scheduledDispatchDate').addEventListener('change', updateOrderSummary);
 
@@ -878,37 +970,6 @@ document.getElementById('orderDate').addEventListener('change', function() {
     sched.min = this.value;
     if (sched.value && sched.value < this.value) {
         sched.value = this.value;
-    }
-    updateOrderSummary();
-});
-
-// Handle recurring delivery checkbox
-document.getElementById('isRecurring').addEventListener('change', function() {
-    const recurringOptions = document.getElementById('recurringOptions');
-    const recurringCard = document.getElementById('recurringToggleCard');
-    const trucksPerDelivery = document.getElementById('trucksPerDelivery');
-    const deliveryFrequency = document.getElementById('deliveryFrequency');
-    const totalDeliveries = document.getElementById('totalDeliveries');
-    
-    if (this.checked) {
-        recurringOptions.style.display = 'block';
-        recurringCard?.classList.add('active');
-        trucksPerDelivery.required = true;
-        deliveryFrequency.required = true;
-        totalDeliveries.required = true;
-        // Mutually exclusive with scheduled dispatch
-        const schedToggle = document.getElementById('hasScheduledDispatch');
-        if (schedToggle.checked) {
-            schedToggle.checked = false;
-            schedToggle.dispatchEvent(new Event('change'));
-        }
-    } else {
-        recurringOptions.style.display = 'none';
-        recurringCard?.classList.remove('active');
-        trucksPerDelivery.required = false;
-        deliveryFrequency.required = false;
-        totalDeliveries.required = false;
-        document.getElementById('deliveryPreview').style.display = 'none';
     }
     updateOrderSummary();
 });
@@ -1028,6 +1089,7 @@ function updateQtyPreview() {
 document.addEventListener('DOMContentLoaded', function() {
     toggleQtyMode();
     updateQtyPreview();
+    syncDeliveryTypeUI();
     loadFormData();
 
     // Credit gate check on party selection (jQuery event covers Select2 too)

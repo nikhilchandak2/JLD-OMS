@@ -156,6 +156,10 @@ class OrderService
         $order->tonsPerTruck = $qty['tons_per_truck'];
 
         $order->partyId = $data['party_id'];
+        $order->billToOtherParty = (bool)($data['bill_to_other_party'] ?? false);
+        $order->billingPartyId = $order->billToOtherParty && !empty($data['billing_party_id'])
+            ? (int)$data['billing_party_id']
+            : null;
         $order->priority = $data['priority'] ?? 'normal';
         $order->scheduledDispatchDate = !empty($data['scheduled_dispatch_date'])
             ? (string)$data['scheduled_dispatch_date']

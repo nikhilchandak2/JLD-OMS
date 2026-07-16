@@ -50,7 +50,7 @@ class BusyIntegrationService
             if (!$order) {
                 $party = $this->findPartyByName($mapped['party_name']);
                 $pendingCount = $party
-                    ? count($this->findPendingOrdersForParty((int)$party->id, $companyId, (int)$mapped['quantity']))
+                    ? count($this->findPendingOrdersForInvoiceParty((int)$party->id, $companyId, (int)$mapped['quantity']))
                     : 0;
                 $hint = $pendingCount > 1
                     ? ' This party has multiple pending orders — include Order No in the invoice or ensure the product name matches.'
@@ -233,6 +233,12 @@ class BusyIntegrationService
         if (!empty($data['order_no'])) {
             $order = $this->orderRepository->findByOrderNo($data['order_no']);
             if ($order && (int)$order->companyId === $companyId) {
+                if (!$this->invoicePartyMatchesOrder($order, $data['party_name'])) {
+                    throw new \RuntimeException(
+                        'Invoice billed-to party "' . $data['party_name'] . '" does not match order ' .
+                        $order->orderNo . ' (expected "' . $this->expectedInvoicePartyName($order) . '")'
+                    );
+                }
                 return $order;
             }
         }
@@ -244,7 +250,7 @@ class BusyIntegrationService
 
         $product = $this->findProductByName($data['product_name']);
         if ($product) {
-            $order = $this->findPendingOrderForPartyProduct(
+            $order = $this->findPendingOrderForInvoicePartyProduct(
                 (int)$party->id,
                 (int)$product->id,
                 $companyId,
@@ -255,7 +261,7 @@ class BusyIntegrationService
             }
         }
 
-        $pendingOrders = $this->findPendingOrdersForParty((int)$party->id, $companyId, (int)$data['quantity']);
+        $pendingOrders = $this->findPendingOrdersForInvoiceParty((int)$party->id, $companyId, (int)$data['quantity']);
         if (empty($pendingOrders)) {
             return null;
         }
@@ -271,6 +277,96 @@ class BusyIntegrationService
         }
 
         return null;
+    }
+
+    /**
+     * @return Order[]
+     */
+    private function findPendingOrdersForInvoiceParty(int $partyId, int $companyId, int $quantity): array
+    {
+        $sql = "
+            SELECT o.id
+            FROM orders o
+            LEFT JOIN (
+                SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
+                FROM dispatches
+                GROUP BY order_id
+            ) d ON d.order_id = o.id
+            WHERE o.company_id = ?
+              AND o.status IN ('pending', 'partial')
+              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
+              AND (
+                  (COALESCE(o.bill_to_other_party, 0) = 0 AND o.party_id = ?)
+                  OR (COALESCE(o.bill_to_other_party, 0) = 1 AND o.billing_party_id = ?)
+              )
+            ORDER BY
+                CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
+                o.order_date ASC,
+                o.id ASC
+        ";
+
+        $rows = $this->database->fetchAll($sql, [$companyId, $quantity, $partyId, $partyId]);
+        $orders = [];
+        foreach ($rows as $row) {
+            $order = $this->orderRepository->findById((int)$row['id']);
+            if ($order) {
+                $orders[] = $order;
+            }
+        }
+
+        return $orders;
+    }
+
+    private function findPendingOrderForInvoicePartyProduct(int $partyId, int $productId, int $companyId, int $quantity): ?Order
+    {
+        $sql = "
+            SELECT o.id
+            FROM orders o
+            LEFT JOIN (
+                SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
+                FROM dispatches
+                GROUP BY order_id
+            ) d ON d.order_id = o.id
+            WHERE o.product_id = ?
+              AND o.company_id = ?
+              AND o.status IN ('pending', 'partial')
+              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
+              AND (
+                  (COALESCE(o.bill_to_other_party, 0) = 0 AND o.party_id = ?)
+                  OR (COALESCE(o.bill_to_other_party, 0) = 1 AND o.billing_party_id = ?)
+              )
+            ORDER BY
+                CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
+                o.order_date ASC,
+                o.id ASC
+            LIMIT 1
+        ";
+
+        $row = $this->database->fetch($sql, [$productId, $companyId, $quantity, $partyId, $partyId]);
+        return $row ? $this->orderRepository->findById((int)$row['id']) : null;
+    }
+
+    private function invoicePartyMatchesOrder(Order $order, string $invoicePartyName): bool
+    {
+        $invoiceParty = $this->findPartyByName($invoicePartyName);
+        if (!$invoiceParty) {
+            return false;
+        }
+
+        if ($order->billToOtherParty && $order->billingPartyId) {
+            return (int)$order->billingPartyId === (int)$invoiceParty->id;
+        }
+
+        return (int)$order->partyId === (int)$invoiceParty->id;
+    }
+
+    private function expectedInvoicePartyName(Order $order): string
+    {
+        if ($order->billToOtherParty && $order->billingPartyName !== '') {
+            return $order->billingPartyName;
+        }
+
+        return $order->partyName;
     }
 
     /**
@@ -398,6 +494,13 @@ class BusyIntegrationService
      */
     private function upsertDispatchFromInvoice(Order $order, array $data, ?int $processedByUserId): array
     {
+        if (!$this->invoicePartyMatchesOrder($order, $data['party_name'])) {
+            throw new \RuntimeException(
+                'Invoice billed-to party "' . $data['party_name'] . '" does not match order ' .
+                $order->orderNo . ' (expected "' . $this->expectedInvoicePartyName($order) . '")'
+            );
+        }
+
         $existing = $this->dispatchRepository->findByBusyInvoiceNo($data['invoice_no']);
         $userId = $processedByUserId ?? 1;
 

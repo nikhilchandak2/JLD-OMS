@@ -6,7 +6,7 @@
             <h1 class="page-title">
                 <i class="bi bi-calendar-day me-2"></i>Daily Dispatch Report
             </h1>
-            <p class="page-subtitle">Company-wise and product-wise dispatch summary</p>
+            <p class="page-subtitle">Party-wise and product-wise dispatch summary</p>
         </div>
         <button class="btn btn-outline-success" onclick="exportDailyDispatchReport()">
             <i class="bi bi-file-earmark-excel me-1"></i> Export Excel
@@ -33,18 +33,24 @@
                 <label for="filterEndDate" class="form-label">To</label>
                 <input type="date" class="form-control" id="filterEndDate" value="<?= date('Y-m-d') ?>">
             </div>
-            <div class="col-md-3">
-                <label for="filterCompany" class="form-label">Company</label>
-                <select class="form-select" id="filterCompany">
-                    <?php if (!empty($can_view_all_companies)): ?>
-                    <option value="all">All companies</option>
-                    <?php endif; ?>
+            <div class="col-md-2">
+                <label for="filterParty" class="form-label">Party</label>
+                <select class="form-select" id="filterParty">
+                    <option value="">All parties</option>
                 </select>
             </div>
             <div class="col-md-2">
                 <label for="filterProduct" class="form-label">Product</label>
                 <select class="form-select" id="filterProduct">
                     <option value="">All products</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="filterCompany" class="form-label">Company scope</label>
+                <select class="form-select" id="filterCompany">
+                    <?php if (!empty($can_view_all_companies)): ?>
+                    <option value="all">All companies</option>
+                    <?php endif; ?>
                 </select>
             </div>
             <div class="col-12 col-md-auto">
@@ -67,13 +73,13 @@
     <div class="row g-4 mb-4">
         <div class="col-lg-6">
             <div class="card h-100">
-                <div class="card-header"><i class="bi bi-building me-2"></i>By Company</div>
+                <div class="card-header"><i class="bi bi-people me-2"></i>By Party</div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0" id="companyTable">
+                        <table class="table table-hover mb-0" id="partyTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Company</th>
+                                    <th>Party</th>
                                     <th class="text-end">Trucks</th>
                                     <th class="text-end">Weight (MT)</th>
                                     <th class="text-end">Dispatches</th>
@@ -108,14 +114,14 @@
     </div>
 
     <div class="card mb-4">
-        <div class="card-header"><i class="bi bi-grid-3x3-gap me-2"></i>Daily Breakdown (Date × Company × Product)</div>
+        <div class="card-header"><i class="bi bi-grid-3x3-gap me-2"></i>Daily Breakdown (Date × Party × Product)</div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-striped mb-0" id="dailyTable">
                     <thead class="table-light">
                         <tr>
                             <th>Date</th>
-                            <th>Company</th>
+                            <th>Party</th>
                             <th>Product</th>
                             <th class="text-end">Trucks</th>
                             <th class="text-end">Weight (MT)</th>
@@ -139,9 +145,9 @@
                     <thead class="table-light">
                         <tr>
                             <th>Date</th>
-                            <th>Company</th>
-                            <th>Product</th>
                             <th>Party</th>
+                            <th>Product</th>
+                            <th>Company</th>
                             <th>Order</th>
                             <th class="text-end">Trucks</th>
                             <th class="text-end">Weight</th>
@@ -175,6 +181,7 @@ function getReportFilters() {
     const startDate = document.getElementById('filterStartDate').value || singleDate;
     const endDate = document.getElementById('filterEndDate').value || singleDate;
     const company = document.getElementById('filterCompany').value;
+    const party = document.getElementById('filterParty').value;
     const product = document.getElementById('filterProduct').value;
 
     const params = new URLSearchParams({
@@ -182,6 +189,7 @@ function getReportFilters() {
         end_date: endDate
     });
     if (company) params.append('company_id', company);
+    if (party) params.append('party_id', party);
     if (product) params.append('product_id', product);
     return params;
 }
@@ -199,8 +207,9 @@ function syncDateFilters(fromSingle) {
 }
 
 async function loadFilterOptions() {
-    const [companiesRes, productsRes] = await Promise.all([
+    const [companiesRes, partiesRes, productsRes] = await Promise.all([
         apiCall('/api/companies'),
+        apiCall('/api/reports/parties'),
         apiCall('/api/reports/products')
     ]);
 
@@ -217,6 +226,12 @@ async function loadFilterOptions() {
     if (defaultCompanyId > 0) {
         companySelect.value = String(defaultCompanyId);
     }
+
+    const partySelect = document.getElementById('filterParty');
+    partySelect.innerHTML = '<option value="">All parties</option>';
+    (partiesRes.data || []).forEach(p => {
+        partySelect.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
+    });
 
     const productSelect = document.getElementById('filterProduct');
     productSelect.innerHTML = '<option value="">All products</option>';
@@ -243,28 +258,22 @@ function updateSummary(summary) {
                 <div class="small text-muted">Trucks</div>
             </div></div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-md-4 col-xl-3">
             <div class="card text-center h-100"><div class="card-body py-3">
                 <div class="fs-4 fw-bold text-info">${formatWeight(summary.total_weight_tons)}</div>
                 <div class="small text-muted">Weight (MT)</div>
             </div></div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card text-center h-100"><div class="card-body py-3">
-                <div class="fs-4 fw-bold">${formatNumber(summary.company_count)}</div>
-                <div class="small text-muted">Companies</div>
-            </div></div>
-        </div>
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card text-center h-100"><div class="card-body py-3">
-                <div class="fs-4 fw-bold">${formatNumber(summary.product_count)}</div>
-                <div class="small text-muted">Products</div>
-            </div></div>
-        </div>
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-md-4 col-xl-3">
             <div class="card text-center h-100"><div class="card-body py-3">
                 <div class="fs-4 fw-bold">${formatNumber(summary.party_count)}</div>
                 <div class="small text-muted">Parties</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card text-center h-100"><div class="card-body py-3">
+                <div class="fs-4 fw-bold">${formatNumber(summary.product_count)}</div>
+                <div class="small text-muted">Products</div>
             </div></div>
         </div>`;
 }
@@ -296,7 +305,7 @@ async function loadDailyDispatchReport() {
         const data = response.data;
 
         updateSummary(data.summary || {});
-        updateBreakdownTable(document.querySelector('#companyTable tbody'), data.by_company || [], 'company_name');
+        updateBreakdownTable(document.querySelector('#partyTable tbody'), data.by_party || [], 'party_name');
         updateBreakdownTable(document.querySelector('#productTable tbody'), data.by_product || [], 'product_name');
 
         const dailyBody = document.querySelector('#dailyTable tbody');
@@ -306,7 +315,7 @@ async function loadDailyDispatchReport() {
             dailyBody.innerHTML = data.daily_breakdown.map(r => `
                 <tr>
                     <td>${formatDate(r.dispatch_date)}</td>
-                    <td>${escapeHtml(r.company_name)}</td>
+                    <td>${escapeHtml(r.party_name)}</td>
                     <td>${escapeHtml(r.product_name)}</td>
                     <td class="text-end fw-semibold">${formatNumber(r.total_trucks)}</td>
                     <td class="text-end">${formatWeight(r.total_weight_tons)}</td>
@@ -324,9 +333,9 @@ async function loadDailyDispatchReport() {
             detailsBody.innerHTML = details.map(d => `
                 <tr>
                     <td>${formatDate(d.dispatch_date)}</td>
-                    <td>${escapeHtml(d.company_name)}</td>
-                    <td>${escapeHtml(d.product_name)}</td>
                     <td>${escapeHtml(d.party_name)}</td>
+                    <td>${escapeHtml(d.product_name)}</td>
+                    <td>${escapeHtml(d.company_name)}</td>
                     <td><a href="/orders/${d.order_id}">${escapeHtml(d.order_no)}</a></td>
                     <td class="text-end">${formatNumber(d.dispatch_qty_trucks)}</td>
                     <td class="text-end">${formatWeight(d.loading_weight_tons)}</td>
