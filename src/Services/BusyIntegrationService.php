@@ -10,6 +10,7 @@ use App\Repositories\ProductRepository;
 use App\Repositories\CompanyRepository;
 use App\Repositories\DispatchRepository;
 use App\Support\CompanyContext;
+use App\Support\OrderSchema;
 
 class BusyIntegrationService
 {
@@ -284,6 +285,8 @@ class BusyIntegrationService
      */
     private function findPendingOrdersForInvoiceParty(int $partyId, int $companyId, int $quantity): array
     {
+        $partyMatch = OrderSchema::invoicePartyMatchWhere('o');
+        $partyParams = OrderSchema::invoicePartyMatchParams($partyId);
         $sql = "
             SELECT o.id
             FROM orders o
@@ -295,17 +298,14 @@ class BusyIntegrationService
             WHERE o.company_id = ?
               AND o.status IN ('pending', 'partial')
               AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
-              AND (
-                  (COALESCE(o.bill_to_other_party, 0) = 0 AND o.party_id = ?)
-                  OR (COALESCE(o.bill_to_other_party, 0) = 1 AND o.billing_party_id = ?)
-              )
+              AND {$partyMatch}
             ORDER BY
                 CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
                 o.order_date ASC,
                 o.id ASC
         ";
 
-        $rows = $this->database->fetchAll($sql, [$companyId, $quantity, $partyId, $partyId]);
+        $rows = $this->database->fetchAll($sql, array_merge([$companyId, $quantity], $partyParams));
         $orders = [];
         foreach ($rows as $row) {
             $order = $this->orderRepository->findById((int)$row['id']);
@@ -319,6 +319,8 @@ class BusyIntegrationService
 
     private function findPendingOrderForInvoicePartyProduct(int $partyId, int $productId, int $companyId, int $quantity): ?Order
     {
+        $partyMatch = OrderSchema::invoicePartyMatchWhere('o');
+        $partyParams = OrderSchema::invoicePartyMatchParams($partyId);
         $sql = "
             SELECT o.id
             FROM orders o
@@ -331,10 +333,7 @@ class BusyIntegrationService
               AND o.company_id = ?
               AND o.status IN ('pending', 'partial')
               AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
-              AND (
-                  (COALESCE(o.bill_to_other_party, 0) = 0 AND o.party_id = ?)
-                  OR (COALESCE(o.bill_to_other_party, 0) = 1 AND o.billing_party_id = ?)
-              )
+              AND {$partyMatch}
             ORDER BY
                 CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
                 o.order_date ASC,
@@ -342,7 +341,7 @@ class BusyIntegrationService
             LIMIT 1
         ";
 
-        $row = $this->database->fetch($sql, [$productId, $companyId, $quantity, $partyId, $partyId]);
+        $row = $this->database->fetch($sql, array_merge([$productId, $companyId, $quantity], $partyParams));
         return $row ? $this->orderRepository->findById((int)$row['id']) : null;
     }
 
@@ -353,7 +352,7 @@ class BusyIntegrationService
             return false;
         }
 
-        if ($order->billToOtherParty && $order->billingPartyId) {
+        if (OrderSchema::hasBillingPartyColumns() && $order->billToOtherParty && $order->billingPartyId) {
             return (int)$order->billingPartyId === (int)$invoiceParty->id;
         }
 
@@ -362,7 +361,7 @@ class BusyIntegrationService
 
     private function expectedInvoicePartyName(Order $order): string
     {
-        if ($order->billToOtherParty && $order->billingPartyName !== '') {
+        if (OrderSchema::hasBillingPartyColumns() && $order->billToOtherParty && $order->billingPartyName !== '') {
             return $order->billingPartyName;
         }
 
