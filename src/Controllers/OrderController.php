@@ -556,6 +556,29 @@ class OrderController
             if (array_key_exists('tons_per_truck', $input)) {
                 $updateData['tons_per_truck'] = (float)$input['tons_per_truck'];
             }
+
+            if (array_key_exists('bill_to_other_party', $input)) {
+                $billToOtherParty = filter_var($input['bill_to_other_party'], FILTER_VALIDATE_BOOLEAN);
+                $partyIdForBilling = (int)($updateData['party_id'] ?? $order->partyId);
+                if ($billToOtherParty) {
+                    $billingPartyId = isset($input['billing_party_id']) ? (int)$input['billing_party_id'] : 0;
+                    if ($billingPartyId <= 0) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Billing party is required when bill to another party is enabled']);
+                        return;
+                    }
+                    if ($billingPartyId === $partyIdForBilling) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Billing party must be different from the delivery party']);
+                        return;
+                    }
+                    $updateData['bill_to_other_party'] = true;
+                    $updateData['billing_party_id'] = $billingPartyId;
+                } else {
+                    $updateData['bill_to_other_party'] = false;
+                    $updateData['billing_party_id'] = null;
+                }
+            }
             
             if (empty($updateData)) {
                 http_response_code(400);

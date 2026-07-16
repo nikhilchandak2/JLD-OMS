@@ -282,6 +282,29 @@ class OrderRepository
     
     public function update(Order $order): bool
     {
+        if (OrderSchema::hasBillingPartyColumns()) {
+            $sql = "
+                UPDATE orders 
+                SET company_id = ?, order_date = ?, product_id = ?, order_qty_trucks = ?, order_qty_mode = ?, order_weight_tons = ?, tons_per_truck = ?, party_id = ?, bill_to_other_party = ?, billing_party_id = ?, priority = ?
+                WHERE id = ?
+            ";
+
+            return $this->database->execute($sql, [
+                $order->companyId,
+                $order->orderDate,
+                $order->productId,
+                $order->orderQtyTrucks,
+                $order->orderQtyMode,
+                $order->orderWeightTons,
+                $order->tonsPerTruck,
+                $order->partyId,
+                $order->billToOtherParty ? 1 : 0,
+                $order->billingPartyId,
+                $order->priority,
+                $order->id
+            ]);
+        }
+
         $sql = "
             UPDATE orders 
             SET company_id = ?, order_date = ?, product_id = ?, order_qty_trucks = ?, order_qty_mode = ?, order_weight_tons = ?, tons_per_truck = ?, party_id = ?, priority = ?

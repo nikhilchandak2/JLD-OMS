@@ -366,6 +366,21 @@
                             <select class="form-select" id="editProductId" required></select>
                         </div>
                         <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="editBillToOtherParty" name="bill_to_other_party">
+                                <label class="form-check-label" for="editBillToOtherParty">
+                                    <strong>Bill to another party</strong>
+                                    <span class="text-muted d-block small">Invoice raised in a different party's name</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6" id="editBillingPartyGroup" style="display: none;">
+                            <label for="editBillingPartyId" class="form-label">Billing party <span class="text-danger">*</span></label>
+                            <select class="form-select" id="editBillingPartyId" name="billing_party_id">
+                                <option value="">Select billing party…</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
                             <label class="form-label">Quantity</label>
                             <div class="btn-group mb-2" role="group">
                                 <input type="radio" class="btn-check" name="edit_qty_mode" id="editQtyModeTrucks" value="trucks" checked>
@@ -1156,6 +1171,17 @@ function updateEditQtyHint() {
     if (qtyInput) qtyInput.min = Math.max(1, Number(currentOrder.total_dispatched) || 1);
 }
 
+function toggleEditBillingParty() {
+    const enabled = document.getElementById('editBillToOtherParty').checked;
+    const group = document.getElementById('editBillingPartyGroup');
+    const billingSelect = document.getElementById('editBillingPartyId');
+    group.style.display = enabled ? 'block' : 'none';
+    billingSelect.required = enabled;
+    if (!enabled) {
+        billingSelect.value = '';
+    }
+}
+
 async function openEditOrderModal() {
     if (!currentOrder) return;
     await loadEditFormOptions();
@@ -1167,6 +1193,10 @@ async function openEditOrderModal() {
     partySelect.innerHTML = editFormParties.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
     productSelect.innerHTML = editFormProducts.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
     companySelect.innerHTML = editFormCompanies.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+
+    const billingSelect = document.getElementById('editBillingPartyId');
+    billingSelect.innerHTML = '<option value="">Select billing party…</option>' +
+        editFormParties.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
 
     const hasDispatches = (Number(currentOrder.total_dispatched) || 0) > 0;
     companySelect.value = String(currentOrder.company_id);
@@ -1181,6 +1211,11 @@ async function openEditOrderModal() {
     partySelect.value = String(currentOrder.party_id);
     productSelect.value = String(currentOrder.product_id);
 
+    const billToOther = !!currentOrder.bill_to_other_party;
+    document.getElementById('editBillToOtherParty').checked = billToOther;
+    billingSelect.value = currentOrder.billing_party_id ? String(currentOrder.billing_party_id) : '';
+    toggleEditBillingParty();
+
     const mode = currentOrder.order_qty_mode === 'weight' ? 'weight' : 'trucks';
     document.getElementById(mode === 'weight' ? 'editQtyModeWeight' : 'editQtyModeTrucks').checked = true;
     document.getElementById('editOrderQty').value = currentOrder.order_qty_trucks;
@@ -1192,6 +1227,7 @@ async function openEditOrderModal() {
 }
 
 document.querySelectorAll('input[name="edit_qty_mode"]').forEach(r => r.addEventListener('change', toggleEditQtyMode));
+document.getElementById('editBillToOtherParty').addEventListener('change', toggleEditBillingParty);
 
 document.getElementById('editOrderForm').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -1203,6 +1239,16 @@ document.getElementById('editOrderForm').addEventListener('submit', async functi
     spinner.classList.remove('d-none');
 
     try {
+        const billToOther = document.getElementById('editBillToOtherParty').checked;
+        const partyId = parseInt(document.getElementById('editPartyId').value);
+        const billingPartyId = billToOther ? parseInt(document.getElementById('editBillingPartyId').value) : null;
+        if (billToOther && (!billingPartyId || billingPartyId <= 0)) {
+            throw new Error('Select a billing party');
+        }
+        if (billToOther && billingPartyId === partyId) {
+            throw new Error('Billing party must be different from the delivery party');
+        }
+
         const payload = {
             order_date: document.getElementById('editOrderDate').value,
             party_id: parseInt(document.getElementById('editPartyId').value),
@@ -1211,7 +1257,9 @@ document.getElementById('editOrderForm').addEventListener('submit', async functi
             order_qty_mode: mode,
             tons_per_truck: parseFloat(document.getElementById('editTonsPerTruck').value) || 40,
             order_qty_trucks: mode === 'trucks' ? parseInt(document.getElementById('editOrderQty').value) : null,
-            order_weight_tons: mode === 'weight' ? parseFloat(document.getElementById('editOrderWeight').value) : null
+            order_weight_tons: mode === 'weight' ? parseFloat(document.getElementById('editOrderWeight').value) : null,
+            bill_to_other_party: billToOther,
+            billing_party_id: billToOther ? billingPartyId : null
         };
 
         const companySelect = document.getElementById('editCompanyId');

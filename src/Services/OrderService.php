@@ -226,6 +226,10 @@ class OrderService
             $this->validatePartyExists($data['party_id']);
         }
 
+        if (!empty($data['billing_party_id'])) {
+            $this->validatePartyExists((int)$data['billing_party_id']);
+        }
+
         if (isset($data['company_id'])) {
             $this->validateCompanyExists((int)$data['company_id']);
             if ((int)$data['company_id'] !== (int)$order->companyId && (int)$order->totalDispatched > 0) {
@@ -248,6 +252,13 @@ class OrderService
         
         if (isset($data['party_id'])) {
             $order->partyId = $data['party_id'];
+        }
+
+        if (array_key_exists('bill_to_other_party', $data)) {
+            $order->billToOtherParty = (bool)$data['bill_to_other_party'];
+            $order->billingPartyId = $order->billToOtherParty && !empty($data['billing_party_id'])
+                ? (int)$data['billing_party_id']
+                : null;
         }
 
         if (isset($data['priority'])) {
