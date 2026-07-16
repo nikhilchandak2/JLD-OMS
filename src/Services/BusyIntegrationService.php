@@ -53,12 +53,15 @@ class BusyIntegrationService
                 $pendingCount = $party
                     ? count($this->findPendingOrdersForInvoiceParty((int)$party->id, $companyId, (int)$mapped['quantity']))
                     : 0;
+                $billingHint = OrderSchema::hasBillingPartyColumns()
+                    ? ' If the order uses bill-to-another-party, ensure the invoice Billed-to name matches the billing party on the order.'
+                    : '';
                 $hint = $pendingCount > 1
                     ? ' This party has multiple pending orders — include Order No in the invoice or ensure the product name matches.'
                     : ' Create the order first or include Order No in the invoice export.';
                 throw new \RuntimeException(
                     'No matching pending order found for party "' . $mapped['party_name'] .
-                    '", product "' . $mapped['product_name'] . '".' . $hint
+                    '", product "' . $mapped['product_name'] . '".' . $hint . $billingHint
                 );
             }
 
@@ -244,6 +247,19 @@ class BusyIntegrationService
             }
         }
 
+        // Bill-to-another-party orders: match invoice Billed-to name against billing party first
+        if (OrderSchema::hasBillingPartyColumns()) {
+            $billingOrder = $this->findPendingOrderForBillingPartyInvoice(
+                $data['party_name'],
+                $data['product_name'],
+                $companyId,
+                (int)$data['quantity']
+            );
+            if ($billingOrder) {
+                return $billingOrder;
+            }
+        }
+
         $party = $this->findPartyByName($data['party_name']);
         if (!$party) {
             return null;
@@ -281,12 +297,77 @@ class BusyIntegrationService
     }
 
     /**
+     * Pending orders where bill-to-another-party is on and invoice Billed-to matches billing party.
+     */
+    private function findPendingOrderForBillingPartyInvoice(
+        string $invoicePartyName,
+        string $invoiceProductName,
+        int $companyId,
+        int $quantity
+    ): ?Order {
+        $party = $this->findPartyByName($invoicePartyName);
+        if (!$party) {
+            return null;
+        }
+
+        $product = $this->findProductByName($invoiceProductName);
+        $partyId = (int)$party->id;
+
+        $sql = "
+            SELECT o.id
+            FROM orders o
+            LEFT JOIN (
+                SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
+                FROM dispatches
+                GROUP BY order_id
+            ) d ON d.order_id = o.id
+            WHERE o.company_id = ?
+              AND COALESCE(o.bill_to_other_party, 0) = 1
+              AND o.billing_party_id = ?
+              AND o.status IN ('pending', 'partial')
+              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
+        ";
+        $params = [$companyId, $partyId, $quantity];
+
+        if ($product) {
+            $sql .= ' AND o.product_id = ?';
+            $params[] = (int)$product->id;
+        }
+
+        $sql .= "
+            ORDER BY
+                CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
+                o.order_date ASC,
+                o.id ASC
+        ";
+
+        $rows = $this->database->fetchAll($sql, $params);
+        if (empty($rows)) {
+            return null;
+        }
+
+        if (count($rows) === 1 || $product) {
+            return $this->orderRepository->findById((int)$rows[0]['id']);
+        }
+
+        foreach ($rows as $row) {
+            $order = $this->orderRepository->findById((int)$row['id']);
+            if ($order && $this->productNamesLooselyMatch($invoiceProductName, (string)$order->productName)) {
+                return $order;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @return Order[]
      */
     private function findPendingOrdersForInvoiceParty(int $partyId, int $companyId, int $quantity): array
     {
         $partyMatch = OrderSchema::invoicePartyMatchWhere('o');
         $partyParams = OrderSchema::invoicePartyMatchParams($partyId);
+        [$billingOrderSql, $billingOrderParams] = $this->billingPartyOrderBy($partyId);
         $sql = "
             SELECT o.id
             FROM orders o
@@ -300,12 +381,13 @@ class BusyIntegrationService
               AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
               AND {$partyMatch}
             ORDER BY
+                {$billingOrderSql}
                 CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
                 o.order_date ASC,
                 o.id ASC
         ";
 
-        $rows = $this->database->fetchAll($sql, array_merge([$companyId, $quantity], $partyParams));
+        $rows = $this->database->fetchAll($sql, array_merge([$companyId, $quantity], $partyParams, $billingOrderParams));
         $orders = [];
         foreach ($rows as $row) {
             $order = $this->orderRepository->findById((int)$row['id']);
@@ -321,6 +403,7 @@ class BusyIntegrationService
     {
         $partyMatch = OrderSchema::invoicePartyMatchWhere('o');
         $partyParams = OrderSchema::invoicePartyMatchParams($partyId);
+        [$billingOrderSql, $billingOrderParams] = $this->billingPartyOrderBy($partyId);
         $sql = "
             SELECT o.id
             FROM orders o
@@ -335,14 +418,30 @@ class BusyIntegrationService
               AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
               AND {$partyMatch}
             ORDER BY
+                {$billingOrderSql}
                 CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
                 o.order_date ASC,
                 o.id ASC
             LIMIT 1
         ";
 
-        $row = $this->database->fetch($sql, array_merge([$productId, $companyId, $quantity], $partyParams));
+        $row = $this->database->fetch($sql, array_merge([$productId, $companyId, $quantity], $partyParams, $billingOrderParams));
         return $row ? $this->orderRepository->findById((int)$row['id']) : null;
+    }
+
+    /** @return array{0: string, 1: array<int, int>} */
+    private function billingPartyOrderBy(int $partyId): array
+    {
+        if (!OrderSchema::hasBillingPartyColumns()) {
+            return ['', []];
+        }
+
+        return [
+            'CASE WHEN COALESCE(o.bill_to_other_party, 0) = 1 AND o.billing_party_id = ? THEN 0
+                  WHEN COALESCE(o.bill_to_other_party, 0) = 0 AND o.party_id = ? THEN 1
+                  ELSE 2 END,',
+            [$partyId, $partyId],
+        ];
     }
 
     private function invoicePartyMatchesOrder(Order $order, string $invoicePartyName): bool
@@ -431,12 +530,45 @@ class BusyIntegrationService
 
     private function findPartyByName(string $partyName): ?object
     {
+        $partyName = trim($partyName);
+        if ($partyName === '') {
+            return null;
+        }
+
         foreach ($this->partyRepository->findAll() as $party) {
             if (strcasecmp($party->name, $partyName) === 0) {
                 return $party;
             }
         }
+
+        $normalizedInvoice = $this->normalizePartyName($partyName);
+        if ($normalizedInvoice === '') {
+            return null;
+        }
+
+        foreach ($this->partyRepository->findAll() as $party) {
+            if ($this->normalizePartyName($party->name) === $normalizedInvoice) {
+                return $party;
+            }
+        }
+
+        foreach ($this->partyRepository->findAll() as $party) {
+            $normalizedDb = $this->normalizePartyName($party->name);
+            if ($normalizedDb !== ''
+                && (str_contains($normalizedDb, $normalizedInvoice) || str_contains($normalizedInvoice, $normalizedDb))) {
+                return $party;
+            }
+        }
+
         return null;
+    }
+
+    private function normalizePartyName(string $name): string
+    {
+        $name = strtoupper(trim(preg_replace('/\s+/', ' ', $name) ?? ''));
+        $name = preg_replace('/[.,\-]+/', ' ', $name) ?? $name;
+        $name = preg_replace('/\b(PRIVATE\s+LIMITED|PVT\s*\.?\s*LTD\.?|LIMITED|LTD\.?)\b/i', '', $name) ?? $name;
+        return trim(preg_replace('/\s+/', ' ', $name) ?? '');
     }
 
     private function findProductByName(string $productName): ?object
@@ -484,6 +616,7 @@ class BusyIntegrationService
     {
         $name = preg_replace('/\bP\d+\s+\d+\b/iu', '', $name) ?? $name;
         $name = preg_replace('/\s*\((PROCESSED|LOOSE)\)\s*/iu', '', $name) ?? $name;
+        $name = preg_replace('/[.\-]+$/', '', trim($name)) ?? trim($name);
         $name = preg_replace('/\s+/', ' ', trim($name)) ?? trim($name);
         return strtoupper($name);
     }
