@@ -9,6 +9,7 @@ use App\Repositories\PartyRepository;
 use App\Repositories\CrmReceivableEntryRepository;
 use App\Repositories\CreditApprovalRepository;
 use App\Repositories\CreditNoteRepository;
+use App\Repositories\DispatchTransferRepository;
 use App\Repositories\ScheduledDeliveryRepository;
 use App\Models\Order;
 use App\Models\ScheduledDelivery;
@@ -25,6 +26,7 @@ class OrderService
     private CreditApprovalRepository $creditApprovalRepository;
     private ScheduledDeliveryRepository $scheduledDeliveryRepository;
     private CreditNoteRepository $creditNoteRepository;
+    private DispatchTransferRepository $dispatchTransferRepository;
     
     public function __construct()
     {
@@ -36,6 +38,7 @@ class OrderService
         $this->creditApprovalRepository = new CreditApprovalRepository();
         $this->scheduledDeliveryRepository = new ScheduledDeliveryRepository();
         $this->creditNoteRepository = new CreditNoteRepository();
+        $this->dispatchTransferRepository = new DispatchTransferRepository();
     }
     
     public function getOrders(array $filters = []): array
@@ -594,12 +597,17 @@ class OrderService
             if ($order->isRecurring) {
                 $this->scheduledDeliveryRepository->deleteByOrderId($orderId);
             }
+
+            $this->purgeRejectTransferDependencies($orderId);
             
             // Log the deletion
             $this->logAuditEvent($userId, 'orders', $orderId, 'DELETE', $order->toArray(), null);
             
-            // Delete the order
+            // Delete the order (dispatches cascade once transfer/credit-note links are cleared)
             $success = $this->orderRepository->delete($orderId);
+            if (!$success) {
+                throw new \Exception('Order could not be deleted');
+            }
             
             $this->database->commit();
             
@@ -608,6 +616,27 @@ class OrderService
             $this->database->rollback();
             throw new \Exception("Failed to delete order: " . $e->getMessage());
         }
+    }
+
+    /** Remove credit notes and transfer records that block order deletion (migration 035). */
+    private function purgeRejectTransferDependencies(int $orderId): void
+    {
+        if ($this->tableExists('credit_notes')) {
+            $this->creditNoteRepository->deleteByOrderId($orderId);
+        }
+        if ($this->tableExists('dispatch_transfers')) {
+            $this->dispatchTransferRepository->deleteByOrderId($orderId);
+        }
+    }
+
+    private function tableExists(string $table): bool
+    {
+        $row = $this->database->fetch(
+            "SELECT COUNT(*) AS c FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = ?",
+            [$table]
+        );
+        return ((int)($row['c'] ?? 0)) > 0;
     }
 }
 

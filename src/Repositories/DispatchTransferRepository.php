@@ -150,4 +150,18 @@ class DispatchTransferRepository
 
         return $params;
     }
+
+    public function deleteByOrderId(int $orderId): void
+    {
+        $this->database->execute(
+            "DELETE dt FROM dispatch_transfers dt
+             LEFT JOIN dispatches sd ON dt.source_dispatch_id = sd.id
+             LEFT JOIN dispatches td ON dt.target_dispatch_id = td.id
+             WHERE dt.source_order_id = ?
+                OR dt.target_order_id = ?
+                OR sd.order_id = ?
+                OR td.order_id = ?",
+            [$orderId, $orderId, $orderId, $orderId]
+        );
+    }
 }

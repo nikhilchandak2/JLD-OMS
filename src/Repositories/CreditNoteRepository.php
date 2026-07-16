@@ -57,4 +57,14 @@ class CreditNoteRepository
         ";
         return $this->database->fetchAll($sql, [$orderId]);
     }
+
+    public function deleteByOrderId(int $orderId): void
+    {
+        $this->database->execute(
+            "DELETE cn FROM credit_notes cn
+             LEFT JOIN dispatches d ON cn.dispatch_id = d.id
+             WHERE cn.order_id = ? OR d.order_id = ?",
+            [$orderId, $orderId]
+        );
+    }
 }
