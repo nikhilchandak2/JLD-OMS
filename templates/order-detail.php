@@ -69,6 +69,30 @@
         padding: 0.5rem 0.35rem;
     }
 }
+#editOrderModal .modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
+}
+#editOrderModal #editOrderForm {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+#editOrderModal .modal-body {
+    overflow-y: auto;
+    flex: 1 1 auto;
+}
+#editOrderModal .modal-footer {
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: var(--bs-modal-bg, #fff);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+}
 </style>
 
 <div class="page-header">
@@ -334,7 +358,7 @@
                 <h5 class="modal-title">Edit Order</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="editOrderForm">
+            <form id="editOrderForm" novalidate>
                 <div class="modal-body">
                     <div class="row g-3">
                         <div class="col-md-6">
@@ -404,7 +428,7 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="editOrderSubmitBtn">
                         <span class="spinner-border spinner-border-sm d-none" id="editOrderSpinner"></span>
-                        Save Changes
+                        <i class="bi bi-check-lg me-1"></i> Save
                     </button>
                 </div>
             </form>
@@ -1176,7 +1200,6 @@ function toggleEditBillingParty() {
     const group = document.getElementById('editBillingPartyGroup');
     const billingSelect = document.getElementById('editBillingPartyId');
     group.style.display = enabled ? 'block' : 'none';
-    billingSelect.required = enabled;
     if (!enabled) {
         billingSelect.value = '';
     }
@@ -1239,9 +1262,15 @@ document.getElementById('editOrderForm').addEventListener('submit', async functi
     spinner.classList.remove('d-none');
 
     try {
+        const orderDate = document.getElementById('editOrderDate').value;
+        const partyId = parseInt(document.getElementById('editPartyId').value, 10);
+        const productId = parseInt(document.getElementById('editProductId').value, 10);
+        if (!orderDate) throw new Error('Order date is required');
+        if (!partyId) throw new Error('Select a party');
+        if (!productId) throw new Error('Select a product');
+
         const billToOther = document.getElementById('editBillToOtherParty').checked;
-        const partyId = parseInt(document.getElementById('editPartyId').value);
-        const billingPartyId = billToOther ? parseInt(document.getElementById('editBillingPartyId').value) : null;
+        const billingPartyId = billToOther ? parseInt(document.getElementById('editBillingPartyId').value, 10) : null;
         if (billToOther && (!billingPartyId || billingPartyId <= 0)) {
             throw new Error('Select a billing party');
         }
@@ -1249,10 +1278,18 @@ document.getElementById('editOrderForm').addEventListener('submit', async functi
             throw new Error('Billing party must be different from the delivery party');
         }
 
+        if (mode === 'trucks') {
+            const trucks = parseInt(document.getElementById('editOrderQty').value, 10);
+            if (!trucks || trucks <= 0) throw new Error('Enter a valid truck quantity');
+        } else {
+            const weight = parseFloat(document.getElementById('editOrderWeight').value);
+            if (!weight || weight <= 0) throw new Error('Enter a valid weight in MT');
+        }
+
         const payload = {
-            order_date: document.getElementById('editOrderDate').value,
-            party_id: parseInt(document.getElementById('editPartyId').value),
-            product_id: parseInt(document.getElementById('editProductId').value),
+            order_date: orderDate,
+            party_id: partyId,
+            product_id: productId,
             priority: document.getElementById('editPriority').value,
             order_qty_mode: mode,
             tons_per_truck: parseFloat(document.getElementById('editTonsPerTruck').value) || 40,
