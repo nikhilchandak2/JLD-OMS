@@ -17,37 +17,122 @@
     <style>
         /* Layout & components – design tokens live in /css/design-system.css */
         
-        /* Sidebar styling */
-        .sidebar {
-            background: linear-gradient(135deg, var(--jld-primary) 0%, #1e1a4a 100%);
-            min-height: 100vh;
-            box-shadow: var(--jld-shadow-lg);
+        /* Header nav menu panel (replaces left sidebar) */
+        .nav-menu-dropdown {
+            position: relative;
         }
-        
-        .sidebar .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            font-weight: 500;
-            padding: 0.75rem 1.5rem;
-            margin: 0.25rem 1rem;
+
+        .nav-menu-toggle {
+            color: var(--jld-primary);
+            border: 1px solid var(--jld-border);
+            background: var(--jld-white);
+            padding: 0.4rem 0.75rem;
+            min-width: 44px;
+            min-height: 44px;
+            line-height: 1;
+            flex-shrink: 0;
             border-radius: 0.5rem;
-            transition: all 0.2s ease;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         }
-        
-        .sidebar .nav-link:hover {
-            color: var(--jld-white);
-            background-color: rgba(255, 255, 255, 0.1);
-            transform: translateX(4px);
+        .nav-menu-toggle:hover,
+        .nav-menu-toggle:focus,
+        .nav-menu-toggle.show {
+            color: var(--jld-primary);
+            background: rgba(43, 35, 94, 0.06);
+            border-color: rgba(43, 35, 94, 0.25);
         }
-        
-        .sidebar .nav-link.active {
-            color: var(--jld-white);
-            background-color: var(--jld-secondary);
-            box-shadow: 0 0.25rem 0.5rem rgba(237, 29, 37, 0.3);
+        .nav-menu-toggle .menu-label {
+            font-size: 0.9rem;
         }
-        
-        .sidebar .nav-link i {
-            width: 1.25rem;
-            margin-right: 0.75rem;
+
+        .nav-menu-panel {
+            --nav-menu-width: min(720px, calc(100vw - 1.5rem));
+            width: var(--nav-menu-width);
+            max-width: var(--nav-menu-width);
+            max-height: min(78vh, 640px);
+            overflow-x: hidden;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 0;
+            margin-top: 0.5rem !important;
+            border: 1px solid var(--jld-border);
+            border-radius: 0.75rem;
+            box-shadow: var(--jld-shadow-lg);
+            background: var(--jld-white);
+            z-index: 1040;
+        }
+
+        .nav-menu-panel-inner {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.25rem 1.25rem;
+            padding: 1rem 1.1rem 1.15rem;
+        }
+
+        .nav-menu-section {
+            min-width: 0;
+            padding-bottom: 0.5rem;
+        }
+
+        .nav-menu-section-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--jld-gray);
+            padding: 0.35rem 0.65rem 0.5rem;
+            margin-bottom: 0.15rem;
+        }
+
+        .nav-menu-link {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            padding: 0.55rem 0.65rem;
+            margin: 0.1rem 0;
+            border-radius: 0.5rem;
+            color: var(--jld-dark-gray);
+            font-weight: 500;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .nav-menu-link i {
+            width: 1.15rem;
+            text-align: center;
+            color: var(--jld-primary);
+            opacity: 0.85;
+            flex-shrink: 0;
+        }
+        .nav-menu-link:hover {
+            background: rgba(43, 35, 94, 0.06);
+            color: var(--jld-primary);
+        }
+        .nav-menu-link.active {
+            background: rgba(237, 29, 37, 0.1);
+            color: var(--jld-secondary);
+        }
+        .nav-menu-link.active i {
+            color: var(--jld-secondary);
+            opacity: 1;
+        }
+
+        .nav-menu-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.35);
+            z-index: 1035;
+        }
+        .nav-menu-overlay.show {
+            display: block;
+        }
+        body.nav-menu-open {
+            overflow: hidden;
         }
         
         /* Header styling */
@@ -547,23 +632,6 @@
             opacity: 1;
         }
         
-        /* Mobile menu toggle – lives in navbar on small screens */
-        .mobile-nav-toggle {
-            color: var(--jld-primary);
-            border: none;
-            background: transparent;
-            padding: 0.375rem 0.5rem;
-            min-width: 44px;
-            min-height: 44px;
-            line-height: 1;
-            flex-shrink: 0;
-        }
-        .mobile-nav-toggle:hover,
-        .mobile-nav-toggle:focus {
-            color: var(--jld-secondary);
-            background: rgba(43, 35, 94, 0.06);
-        }
-
         .mobile-menu-toggle {
             display: none;
         }
@@ -576,31 +644,33 @@
             display: none !important;
         }
 
+        .app-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 1030;
+            overflow: visible;
+        }
+
+        .app-topbar .container-fluid {
+            overflow: visible;
+        }
+
+        @media (min-width: 992px) {
+            .main-content {
+                padding: 1.75rem 2rem 2.25rem;
+            }
+
+            .nav-menu-panel {
+                min-width: 480px;
+            }
+        }
+
         .app-topbar .navbar-brand {
             font-size: 1.1rem;
             max-width: min(48vw, 14rem);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-        }
-
-        .sidebar-wrapper {
-            position: relative;
-        }
-        
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 999;
-        }
-        
-        .sidebar-overlay.show {
-            display: block;
         }
         
         /* Mobile-first optimizations */
@@ -621,47 +691,46 @@
         
         /* Responsive adjustments */
         @media (max-width: 991.98px) {
-            .sidebar-wrapper {
-                flex: 0 0 0 !important;
-                width: 0 !important;
-                max-width: 0 !important;
-                padding: 0 !important;
-                overflow: visible;
+            .nav-menu-toggle .menu-label {
+                display: none;
             }
 
-            .main-content,
-            .col-md-10.main-content {
-                flex: 0 0 100% !important;
-                max-width: 100% !important;
+            .nav-menu-dropdown {
+                position: static;
+            }
+
+            .nav-menu-panel {
+                position: fixed !important;
+                top: var(--app-topbar-offset, 56px);
+                left: 0 !important;
+                right: 0 !important;
                 width: 100% !important;
+                max-width: 100% !important;
+                max-height: calc(100dvh - var(--app-topbar-offset, 56px));
+                margin: 0 !important;
+                border-radius: 0 0 0.75rem 0.75rem;
+                border-left: none;
+                border-right: none;
+                transform: none !important;
+                inset: auto 0 auto 0 !important;
             }
-            
-            .sidebar {
-                position: fixed;
-                left: 0;
-                top: 0;
-                width: 280px;
-                max-width: 85vw;
-                z-index: 1000;
-                transform: translateX(-100%);
-                transition: transform 0.3s ease;
-                overflow-y: auto;
-                height: 100vh;
-                height: 100dvh;
-                -webkit-overflow-scrolling: touch;
-                padding-top: env(safe-area-inset-top, 0);
+
+            .nav-menu-panel-inner {
+                grid-template-columns: 1fr;
+                padding: 0.75rem 0.85rem 1rem;
+                gap: 0.15rem;
             }
-            
-            .sidebar.show {
-                transform: translateX(0);
+
+            .nav-menu-link {
+                min-height: 44px;
+                padding: 0.7rem 0.75rem;
+                font-size: 0.95rem;
             }
-            
-            body.sidebar-open {
-                overflow: hidden;
-                position: fixed;
-                width: 100%;
+
+            .nav-menu-section-title {
+                padding-top: 0.65rem;
             }
-            
+
             .main-content {
                 margin-left: 0 !important;
                 padding: 0.75rem !important;
@@ -674,9 +743,6 @@
             }
 
             .app-topbar {
-                position: sticky;
-                top: 0;
-                z-index: 1030;
                 padding-top: env(safe-area-inset-top, 0);
             }
             
@@ -873,14 +939,13 @@
         }
         
         @media (max-width: 575.98px) {
-            .sidebar {
-                width: min(100%, 320px);
-                max-width: 92vw;
-            }
-            
             .app-topbar .navbar-brand {
                 max-width: min(42vw, 10rem);
                 font-size: 0.95rem;
+            }
+
+            .nav-menu-toggle {
+                padding: 0.35rem 0.55rem;
             }
             
             .page-title {
@@ -928,8 +993,12 @@
         
         /* Landscape mobile optimizations */
         @media (max-width: 991px) and (orientation: landscape) {
-            .sidebar {
-                width: 250px;
+            .nav-menu-panel {
+                max-height: calc(100dvh - var(--app-topbar-offset, 48px));
+            }
+
+            .nav-menu-panel-inner {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
             
             .navbar {
@@ -938,6 +1007,15 @@
             
             .main-content {
                 padding: 0.5rem !important;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .nav-menu-panel {
+                --nav-menu-width: min(840px, calc(100vw - 2rem));
+            }
+            .nav-menu-panel-inner {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
             }
         }
         
@@ -949,78 +1027,190 @@
             }
         }
     </style>
-    <script>
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            const body = document.body;
-            
-            if (sidebar && overlay) {
-                const isOpen = sidebar.classList.contains('show');
-                
-                if (isOpen) {
-                    sidebar.classList.remove('show');
-                    overlay.classList.remove('show');
-                    body.classList.remove('sidebar-open');
-                } else {
-                    sidebar.classList.add('show');
-                    overlay.classList.add('show');
-                    body.classList.add('sidebar-open');
-                }
-            }
-        }
-        
-        // Close sidebar when clicking outside on mobile
-        document.addEventListener('click', function(event) {
-            const sidebar = document.getElementById('sidebar');
-            const toggle = document.querySelector('.mobile-nav-toggle');
-            const overlay = document.getElementById('sidebarOverlay');
-            
-            if (window.innerWidth <= 991 && sidebar && toggle && overlay) {
-                if (!sidebar.contains(event.target) && !toggle.contains(event.target) && sidebar.classList.contains('show')) {
-                    sidebar.classList.remove('show');
-                    overlay.classList.remove('show');
-                    document.body.classList.remove('sidebar-open');
-                }
-            }
-        });
-        
-        // Close sidebar on window resize to desktop
-        window.addEventListener('resize', function() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            
-            if (window.innerWidth > 991 && sidebar && overlay) {
-                sidebar.classList.remove('show');
-                overlay.classList.remove('show');
-                document.body.classList.remove('sidebar-open');
-            }
-        });
-    </script>
 </head>
 <body>
     <?php if (isset($user)): ?>
-    <!-- Top header: brand left, user right -->
+    <?php
+    $r = $user['role'] ?? '';
+    $isAdmin = ($r === 'admin');
+    $roleHomes = [
+        'admin' => '/dashboard',
+        'order_processing' => '/orders',
+        'crm' => '/crm',
+        'marketing' => '/crm',
+        'accounts' => '/admin/parties',
+        'operator' => '/vehicles',
+        'dispatch' => '/dispatch',
+        'technical' => '/visit-requests',
+    ];
+    $brandHome = $roleHomes[$r] ?? '/orders';
+    $canOrders = in_array($r, ['admin', 'order_processing', 'entry', 'view', 'sales', 'dispatch']);
+    $canOrdersAnalytics = in_array($r, ['admin', 'entry', 'view']);
+    $canDispatchDash = in_array($r, ['admin', 'dispatch', 'order_processing']);
+    $canDispatchHistory = in_array($r, ['admin', 'dispatch', 'order_processing', 'entry']);
+    $canVisitRequests = in_array($r, ['admin', 'marketing', 'technical', 'crm']);
+    $canVehicles = in_array($r, ['admin', 'operator']);
+    $canExport = in_array($r, ['admin', 'accounts']);
+    $canCrm = in_array($r, ['admin', 'crm', 'entry', 'sales', 'marketing']);
+    $canPartyMgmt = in_array($r, ['admin', 'accounts', 'entry', 'crm', 'sales', 'marketing']);
+    $canProducts = in_array($r, ['admin', 'accounts', 'entry']);
+    $reqUri = $_SERVER['REQUEST_URI'] ?? '';
+    ?>
+    <!-- Top header: menu dropdown + brand + user -->
     <nav class="navbar navbar-expand-lg border-bottom app-topbar" style="background: var(--jld-white) !important;">
         <div class="container-fluid px-2 px-md-3">
-            <button class="mobile-nav-toggle d-lg-none" onclick="toggleSidebar()" type="button" aria-label="Open menu">
-                <i class="bi bi-list fs-4"></i>
-            </button>
-            <?php
-                    $r = $user['role'] ?? '';
-                    $roleHomes = [
-                        'admin' => '/dashboard',
-                        'order_processing' => '/orders',
-                        'crm' => '/crm',
-                        'marketing' => '/crm',
-                        'accounts' => '/admin/parties',
-                        'operator' => '/vehicles',
-                        'dispatch' => '/dispatch',
-                        'technical' => '/visit-requests',
-                    ];
-                    $brandHome = $roleHomes[$r] ?? '/orders';
-                    ?>
-            <a class="navbar-brand d-flex align-items-center me-auto text-truncate" href="<?= htmlspecialchars($brandHome) ?>"><?= htmlspecialchars($active_company['name'] ?? 'JLD Minerals') ?></a>
+            <div class="dropdown nav-menu-dropdown">
+                <button class="nav-menu-toggle" type="button" id="navMenuToggle"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside" data-bs-display="static"
+                        aria-expanded="false" aria-label="Open navigation menu">
+                    <i class="bi bi-list fs-4"></i>
+                    <span class="menu-label">Menu</span>
+                </button>
+                <div class="dropdown-menu nav-menu-panel" aria-labelledby="navMenuToggle">
+                    <div class="nav-menu-panel-inner">
+                        <?php if ($isAdmin): ?>
+                        <div class="nav-menu-section">
+                            <div class="nav-menu-section-title">Overview</div>
+                            <a class="nav-menu-link <?= basename($reqUri) === 'dashboard' ? 'active' : '' ?>" href="/dashboard">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($canOrders): ?>
+                        <div class="nav-menu-section">
+                            <div class="nav-menu-section-title">Orders & Dispatches</div>
+                            <?php if (in_array($r, ['admin', 'order_processing', 'entry', 'sales', 'dispatch'])): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/orders') === 0 && strpos($reqUri, '/orders/analytics') === false && strpos($reqUri, '/orders/new') === false ? 'active' : '' ?>" href="/orders">
+                                <i class="bi bi-clipboard-check"></i> Orders
+                            </a>
+                            <?php if (in_array($r, ['admin', 'order_processing', 'entry', 'sales'])): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/orders/new') === 0 ? 'active' : '' ?>" href="/orders/new">
+                                <i class="bi bi-plus-circle"></i> New Order
+                            </a>
+                            <?php endif; ?>
+                            <?php if ($canDispatchDash): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/dispatch') === 0 && strpos($reqUri, '/dispatch/history') === false && strpos($reqUri, '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
+                                <i class="bi bi-truck-flatbed"></i> Dispatch Dashboard
+                            </a>
+                            <?php endif; ?>
+                            <?php if ($canDispatchHistory): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/dispatch/history') === 0 ? 'active' : '' ?>" href="/dispatch/history">
+                                <i class="bi bi-clock-history"></i> Dispatch History
+                            </a>
+                            <?php endif; ?>
+                            <?php if ($canOrdersAnalytics): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/orders/analytics') === 0 ? 'active' : '' ?>" href="/orders/analytics">
+                                <i class="bi bi-bar-chart"></i> Orders Analytics
+                            </a>
+                            <?php endif; ?>
+                            <?php endif; ?>
+                            <?php if (in_array($r, ['admin', 'view'])): ?>
+                            <a class="nav-menu-link <?= basename($reqUri) === 'reports' ? 'active' : '' ?>" href="/reports">
+                                <i class="bi bi-graph-up"></i> Reports
+                            </a>
+                            <?php endif; ?>
+                            <?php if (in_array($r, ['admin', 'view', 'order_processing', 'dispatch', 'entry'])): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/reports/daily-dispatch') === 0 ? 'active' : '' ?>" href="/reports/daily-dispatch">
+                                <i class="bi bi-calendar-day"></i> Daily Dispatch Report
+                            </a>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($canVehicles): ?>
+                        <div class="nav-menu-section">
+                            <div class="nav-menu-section-title">Vehicle Tracking</div>
+                            <a class="nav-menu-link <?= basename($reqUri) === 'vehicles' ? 'active' : '' ?>" href="/vehicles">
+                                <i class="bi bi-truck"></i> Vehicles
+                            </a>
+                            <a class="nav-menu-link <?= basename($reqUri) === 'tracking' ? 'active' : '' ?>" href="/tracking">
+                                <i class="bi bi-geo-alt"></i> Live Tracking
+                            </a>
+                            <a class="nav-menu-link <?= basename($reqUri) === 'trips' ? 'active' : '' ?>" href="/trips">
+                                <i class="bi bi-arrow-left-right"></i> Trips
+                            </a>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/dumper-assignment') !== false ? 'active' : '' ?>" href="/dumper-assignment">
+                                <i class="bi bi-truck"></i> Dumper Assignment
+                            </a>
+                            <a class="nav-menu-link <?= basename($reqUri) === 'geofences' ? 'active' : '' ?>" href="/geofences">
+                                <i class="bi bi-geo-fill"></i> Geofences
+                            </a>
+                            <a class="nav-menu-link <?= basename($reqUri) === 'fuel' ? 'active' : '' ?>" href="/fuel">
+                                <i class="bi bi-fuel-pump"></i> Fuel Management
+                            </a>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($canExport): ?>
+                        <div class="nav-menu-section">
+                            <div class="nav-menu-section-title">Export Documents</div>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/export') === 0 ? 'active' : '' ?>" href="/export">
+                                <i class="bi bi-file-earmark-spreadsheet"></i> Nepal Export Docs
+                            </a>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($canCrm): ?>
+                        <div class="nav-menu-section">
+                            <div class="nav-menu-section-title">CRM</div>
+                            <a class="nav-menu-link <?= ($reqUri === '/crm' || $reqUri === '/crm/') ? 'active' : '' ?>" href="/crm">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/crm/funnel') === 0 ? 'active' : '' ?>" href="/crm/funnel">
+                                <i class="bi bi-funnel"></i> Funnel
+                            </a>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($canVisitRequests): ?>
+                        <div class="nav-menu-section">
+                            <div class="nav-menu-section-title">Client Visits</div>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/visit-requests') === 0 ? 'active' : '' ?>" href="/visit-requests">
+                                <i class="bi bi-geo-alt-fill"></i> Visit Requests
+                            </a>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($canPartyMgmt || $canProducts || $r === 'admin'): ?>
+                        <div class="nav-menu-section">
+                            <div class="nav-menu-section-title">Administration</div>
+                            <?php if ($canPartyMgmt): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/admin/parties') === 0 ? 'active' : '' ?>" href="/admin/parties">
+                                <i class="bi bi-person-circle"></i> Parties
+                            </a>
+                            <?php endif; ?>
+                            <?php if ($canProducts): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/admin/products') === 0 ? 'active' : '' ?>" href="/admin/products">
+                                <i class="bi bi-box"></i> Products
+                            </a>
+                            <?php endif; ?>
+                            <?php if (in_array($r, ['admin', 'accounts'])): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/admin/reminders') === 0 ? 'active' : '' ?>" href="/admin/reminders">
+                                <i class="bi bi-envelope-check"></i> Reminders
+                            </a>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/admin/bills/import') === 0 ? 'active' : '' ?>" href="/admin/bills/import">
+                                <i class="bi bi-upload"></i> Import Bills (Busy)
+                            </a>
+                            <?php endif; ?>
+                            <?php if ($r === 'admin'): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/admin/users') === 0 ? 'active' : '' ?>" href="/admin/users">
+                                <i class="bi bi-people"></i> Users
+                            </a>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/admin/credit-approvals') === 0 ? 'active' : '' ?>" href="/admin/credit-approvals">
+                                <i class="bi bi-shield-check"></i> Credit Approvals
+                            </a>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/admin/busy-integration') === 0 ? 'active' : '' ?>" href="/admin/busy-integration">
+                                <i class="bi bi-link-45deg"></i> Busy Integration
+                            </a>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <a class="navbar-brand d-flex align-items-center me-auto text-truncate ms-2" href="<?= htmlspecialchars($brandHome) ?>"><?= htmlspecialchars($active_company['name'] ?? 'JLD Minerals') ?></a>
             <div class="d-flex align-items-center flex-shrink-0 gap-1">
                 <?php if (!empty($companies_list)): ?>
                 <div class="nav-item dropdown">
@@ -1058,238 +1248,10 @@
         </div>
     </nav>
 
-    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+    <div class="nav-menu-overlay" id="navMenuOverlay" aria-hidden="true"></div>
     <div class="container-fluid">
-        <div class="row flex-nowrap g-0">
-            <!-- Sidebar -->
-            <div class="col-md-2 sidebar-wrapper" id="sidebarWrapper">
-            <div class="sidebar p-3" id="sidebar">
-                <ul class="nav nav-pills flex-column">
-                    <?php
-                    $r = $user['role'] ?? '';
-                    $isAdmin = ($r === 'admin');
-                    $roleHomes = [
-                        'admin' => '/dashboard',
-                        'order_processing' => '/orders',
-                        'crm' => '/crm',
-                        'marketing' => '/crm',
-                        'accounts' => '/admin/parties',
-                        'operator' => '/vehicles',
-                        'dispatch' => '/dispatch',
-                        'technical' => '/visit-requests',
-                    ];
-                    $navHome = $roleHomes[$r] ?? '/orders';
-                    if ($isAdmin): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'dashboard' ? 'active' : '' ?>" href="/dashboard">
-                            <i class="bi bi-speedometer2"></i> Dashboard
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php
-                    $canOrders = in_array($r, ['admin', 'order_processing', 'entry', 'view', 'sales', 'dispatch']);
-                    $canOrdersAnalytics = in_array($r, ['admin', 'entry', 'view']);
-                    $canDispatchDash = in_array($r, ['admin', 'dispatch', 'order_processing']);
-                    $canDispatchHistory = in_array($r, ['admin', 'dispatch', 'order_processing', 'entry']);
-                    $canVisitRequests = in_array($r, ['admin', 'marketing', 'technical', 'crm']);
-                    $canVehicles = in_array($r, ['admin', 'operator']);
-                    $canExport = in_array($r, ['admin', 'accounts']);
-                    $canCrm = in_array($r, ['admin', 'crm', 'entry', 'sales', 'marketing']);
-                    $canPartyMgmt = in_array($r, ['admin', 'accounts', 'entry', 'crm', 'sales', 'marketing']);
-                    $canProducts = in_array($r, ['admin', 'accounts', 'entry']);
-                    ?>
-                    <!-- Orders & Dispatches -->
-                    <?php if ($canOrders): ?>
-                    <li class="nav-item mt-3">
-                        <small class="text-white-50 text-uppercase px-3">Orders & Dispatches</small>
-                    </li>
-                    <?php if (in_array($r, ['admin', 'order_processing', 'entry', 'sales', 'dispatch'])): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders') === 0 && strpos($_SERVER['REQUEST_URI'], '/orders/analytics') === false && strpos($_SERVER['REQUEST_URI'], '/orders/new') === false ? 'active' : '' ?>" href="/orders">
-                            <i class="bi bi-clipboard-check"></i> Orders
-                        </a>
-                    </li>
-                    <?php if (in_array($r, ['admin', 'order_processing', 'entry', 'sales'])): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders/new') === 0 ? 'active' : '' ?>" href="/orders/new">
-                            <i class="bi bi-plus-circle"></i> New Order
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php if ($canDispatchDash): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/dispatch') === 0 && strpos($_SERVER['REQUEST_URI'], '/dispatch/history') === false && strpos($_SERVER['REQUEST_URI'], '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
-                            <i class="bi bi-truck-flatbed"></i> Dispatch Dashboard
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php if ($canDispatchHistory): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/dispatch/history') === 0 ? 'active' : '' ?>" href="/dispatch/history">
-                            <i class="bi bi-clock-history"></i> Dispatch History
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php if ($canOrdersAnalytics): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/orders/analytics') === 0 ? 'active' : '' ?>" href="/orders/analytics">
-                            <i class="bi bi-bar-chart"></i> Orders Analytics
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php if (in_array($r, ['admin', 'view'])): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'reports' ? 'active' : '' ?>" href="/reports">
-                            <i class="bi bi-graph-up"></i> Reports
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php if (in_array($r, ['admin', 'view', 'order_processing', 'dispatch', 'entry'])): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/reports/daily-dispatch') === 0 ? 'active' : '' ?>" href="/reports/daily-dispatch">
-                            <i class="bi bi-calendar-day"></i> Daily Dispatch Report
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php endif; ?>
-                    <?php endif; ?>
-
-                    <!-- Vehicle Tracking: admin, operator -->
-                    <?php if ($canVehicles): ?>
-                    <li class="nav-item mt-3">
-                        <small class="text-white-50 text-uppercase px-3">Vehicle Tracking</small>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'vehicles' ? 'active' : '' ?>" href="/vehicles">
-                            <i class="bi bi-truck"></i> Vehicles
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'tracking' ? 'active' : '' ?>" href="/tracking">
-                            <i class="bi bi-geo-alt"></i> Live Tracking
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'trips' ? 'active' : '' ?>" href="/trips">
-                            <i class="bi bi-arrow-left-right"></i> Trips
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/dumper-assignment') !== false ? 'active' : '' ?>" href="/dumper-assignment">
-                            <i class="bi bi-truck"></i> Dumper Assignment
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'geofences' ? 'active' : '' ?>" href="/geofences">
-                            <i class="bi bi-geo-fill"></i> Geofences
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= basename($_SERVER['REQUEST_URI']) === 'fuel' ? 'active' : '' ?>" href="/fuel">
-                            <i class="bi bi-fuel-pump"></i> Fuel Management
-                        </a>
-                    </li>
-                    <?php endif; ?>
-
-                    <!-- Export Documents: admin, accounts -->
-                    <?php if ($canExport): ?>
-                    <li class="nav-item mt-3">
-                        <small class="text-white-50 text-uppercase px-3">Export Documents</small>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/export') === 0 ? 'active' : '' ?>" href="/export">
-                            <i class="bi bi-file-earmark-spreadsheet"></i> Nepal Export Docs
-                        </a>
-                    </li>
-                    <?php endif; ?>
-
-                    <!-- CRM: admin, crm, entry -->
-                    <?php if ($canCrm): ?>
-                    <li class="nav-item mt-3">
-                        <small class="text-white-50 text-uppercase px-3">CRM</small>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= (($u = $_SERVER['REQUEST_URI']) === '/crm' || $u === '/crm/') ? 'active' : '' ?>" href="/crm">
-                            <i class="bi bi-speedometer2"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/crm/funnel') === 0 ? 'active' : '' ?>" href="/crm/funnel">
-                            <i class="bi bi-funnel"></i> Funnel
-                        </a>
-                    </li>
-                    <?php endif; ?>
-
-                    <!-- Visit Requests: admin, marketing, technical, crm -->
-                    <?php if ($canVisitRequests): ?>
-                    <li class="nav-item mt-3">
-                        <small class="text-white-50 text-uppercase px-3">Client Visits</small>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/visit-requests') === 0 ? 'active' : '' ?>" href="/visit-requests">
-                            <i class="bi bi-geo-alt-fill"></i> Visit Requests
-                        </a>
-                    </li>
-                    <?php endif; ?>
-
-                    <!-- Administration: Parties & Products for admin, accounts, entry; Users & Busy for admin only -->
-                    <?php if ($canPartyMgmt || $canProducts || $r === 'admin'): ?>
-                    <li class="nav-item mt-3">
-                        <small class="text-white-50 text-uppercase px-3">Administration</small>
-                    </li>
-                    <?php if ($canPartyMgmt): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/parties') === 0 ? 'active' : '' ?>" href="/admin/parties">
-                            <i class="bi bi-person-circle"></i> Parties
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php if ($canProducts): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/products') === 0 ? 'active' : '' ?>" href="/admin/products">
-                            <i class="bi bi-box"></i> Products
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php if (in_array($r, ['admin', 'accounts'])): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/reminders') === 0 ? 'active' : '' ?>" href="/admin/reminders">
-                            <i class="bi bi-envelope-check"></i> Reminders
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/bills/import') === 0 ? 'active' : '' ?>" href="/admin/bills/import">
-                            <i class="bi bi-upload"></i> Import Bills (Busy)
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                    <?php endif; ?>
-
-                    <?php if ($r === 'admin'): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/users') === 0 ? 'active' : '' ?>" href="/admin/users">
-                            <i class="bi bi-people"></i> Users
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/credit-approvals') === 0 ? 'active' : '' ?>" href="/admin/credit-approvals">
-                            <i class="bi bi-shield-check"></i> Credit Approvals
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], '/admin/busy-integration') === 0 ? 'active' : '' ?>" href="/admin/busy-integration">
-                            <i class="bi bi-link-45deg"></i> Busy Integration
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                </ul>
-            </div>
-            </div>
-
-            <!-- Main Content -->
-            <div class="col-md-10 main-content">
-                <?= $content ?>
-            </div>
+        <div class="main-content">
+            <?= $content ?>
         </div>
     </div>
     <?php else: ?>
@@ -1414,6 +1376,56 @@
                 showError(error.message || 'Failed to switch company');
             }
         }
+
+        function syncAppTopbarOffset() {
+            const topbar = document.querySelector('.app-topbar');
+            if (topbar) {
+                document.documentElement.style.setProperty('--app-topbar-offset', topbar.offsetHeight + 'px');
+            }
+        }
+
+        function setNavMenuOpenState(isOpen) {
+            const overlay = document.getElementById('navMenuOverlay');
+            document.body.classList.toggle('nav-menu-open', isOpen && window.innerWidth <= 991);
+            if (overlay) {
+                overlay.classList.toggle('show', isOpen && window.innerWidth <= 991);
+            }
+        }
+
+        function closeNavMenu() {
+            const toggle = document.getElementById('navMenuToggle');
+            if (!toggle || typeof bootstrap === 'undefined') return;
+            const dropdown = bootstrap.Dropdown.getInstance(toggle) || bootstrap.Dropdown.getOrCreateInstance(toggle);
+            if (dropdown) dropdown.hide();
+        }
+
+        syncAppTopbarOffset();
+        (function initNavMenuPanel() {
+            const toggle = document.getElementById('navMenuToggle');
+            const overlay = document.getElementById('navMenuOverlay');
+
+            if (toggle) {
+                toggle.addEventListener('show.bs.dropdown', function() {
+                    syncAppTopbarOffset();
+                    setNavMenuOpenState(true);
+                });
+                toggle.addEventListener('hide.bs.dropdown', function() {
+                    setNavMenuOpenState(false);
+                });
+            }
+
+            if (overlay) {
+                overlay.addEventListener('click', closeNavMenu);
+            }
+
+            window.addEventListener('resize', function() {
+                syncAppTopbarOffset();
+                if (window.innerWidth > 991) {
+                    document.body.classList.remove('nav-menu-open');
+                    if (overlay) overlay.classList.remove('show');
+                }
+            });
+        })();
     </script>
 </body>
 </html>
