@@ -213,6 +213,7 @@ $router->group('/api', function($router) {
         // Busy Integration (upload + status — session auth)
         $router->post('/busy/invoices/upload', 'BusyIntegrationController@uploadInvoicesFromCsv');
         $router->post('/busy/invoices/import', 'BusyIntegrationController@importInvoice');
+        $router->get('/busy/daily-invoices', 'BusyIntegrationController@dailyInvoices');
         $router->post('/busy/sync', 'BusyIntegrationController@syncInvoices');
         $router->get('/busy/status', 'BusyIntegrationController@getIntegrationStatus');
         
@@ -278,6 +279,7 @@ $router->get('/orders/new', 'WebController@newOrder');
 $router->get('/orders/{id}', 'WebController@orderDetail');
 $router->get('/dispatch/history', 'WebController@dispatchHistory');
 $router->get('/dispatch/reject-transfers', 'WebController@dispatchRejectTransfers');
+$router->get('/dispatch/daily', 'WebController@dispatchDaily');
 $router->get('/dispatch', 'WebController@dispatchDashboard');
 $router->get('/visit-requests', 'WebController@visitRequests');
 $router->get('/reports', 'WebController@reports');

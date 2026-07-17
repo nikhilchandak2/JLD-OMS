@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Services\AuthService;
 use App\Services\ReportService;
 use App\Support\CompanyContext;
+use App\Support\IndianDate;
 
 class ReportController
 {
@@ -42,9 +43,12 @@ class ReportController
         // Validate dates
         if (!$this->isValidDate($filters['start_date']) || !$this->isValidDate($filters['end_date'])) {
             http_response_code(400);
-            echo json_encode(['error' => 'Invalid date format. Use YYYY-MM-DD']);
+            echo json_encode(['error' => 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD']);
             return;
         }
+
+        $filters['start_date'] = IndianDate::toStorage($filters['start_date']);
+        $filters['end_date'] = IndianDate::toStorage($filters['end_date']);
         
         if (strtotime($filters['start_date']) > strtotime($filters['end_date'])) {
             http_response_code(400);
@@ -102,9 +106,12 @@ class ReportController
         // Validate dates
         if (!$this->isValidDate($filters['start_date']) || !$this->isValidDate($filters['end_date'])) {
             http_response_code(400);
-            echo json_encode(['error' => 'Invalid date format. Use YYYY-MM-DD']);
+            echo json_encode(['error' => 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD']);
             return;
         }
+
+        $filters['start_date'] = IndianDate::toStorage($filters['start_date']);
+        $filters['end_date'] = IndianDate::toStorage($filters['end_date']);
         
         try {
             if ($format === 'pdf') {
@@ -269,9 +276,12 @@ class ReportController
 
         if (!$this->isValidDate((string)$startDate) || !$this->isValidDate((string)$endDate)) {
             http_response_code(400);
-            echo json_encode(['error' => 'Invalid date format. Use YYYY-MM-DD']);
+            echo json_encode(['error' => 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD']);
             return null;
         }
+
+        $startDate = IndianDate::toStorage((string)$startDate);
+        $endDate = IndianDate::toStorage((string)$endDate);
 
         if (strtotime((string)$startDate) > strtotime((string)$endDate)) {
             http_response_code(400);
@@ -304,8 +314,7 @@ class ReportController
     
     private function isValidDate(string $date): bool
     {
-        $d = \DateTime::createFromFormat('Y-m-d', $date);
-        return $d && $d->format('Y-m-d') === $date;
+        return \App\Support\IndianDate::isValid($date);
     }
 }
 

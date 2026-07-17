@@ -290,7 +290,7 @@
                     </div>
                     <div class="summary-row">
                         <span class="summary-label">Order Date</span>
-                        <span class="summary-value" id="summaryDate"><?= date('d M Y') ?></span>
+                        <span class="summary-value" id="summaryDate"><?= date('d/m/Y') ?></span>
                     </div>
                     <div class="summary-row">
                         <span class="summary-label">Priority</span>
@@ -487,10 +487,7 @@ function updateOrderSummary() {
 
     const dateInput = document.getElementById('orderDate').value;
     if (dateInput) {
-        const d = new Date(dateInput + 'T12:00:00');
-        document.getElementById('summaryDate').textContent = d.toLocaleDateString('en-IN', {
-            day: 'numeric', month: 'short', year: 'numeric'
-        });
+        document.getElementById('summaryDate').textContent = formatDate(dateInput);
     }
 
     const priority = document.getElementById('priority').value;
@@ -519,7 +516,7 @@ function updateOrderSummary() {
         summaryScheduledRow.style.display = '';
         const schedDate = document.getElementById('scheduledDispatchDate').value;
         document.getElementById('summaryScheduledDispatch').textContent = schedDate
-            ? new Date(schedDate + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            ? formatDate(schedDate)
             : '—';
     } else if (deliveryType === 'recurring') {
         summaryDelivery.textContent = 'Recurring';
@@ -1010,7 +1007,7 @@ function updateDeliveryPreview() {
         
         scheduleHtml += `
             <div class="col-md-6 mb-2">
-                <strong>Delivery ${i}:</strong> ${currentDate.toLocaleDateString()} - ${trucksForThisDelivery} trucks
+                <strong>Delivery ${i}:</strong> ${formatDate(currentDate.toISOString().slice(0, 10))} - ${trucksForThisDelivery} trucks
                 ${i === totalDeliveries && trucksForThisDelivery !== trucksPerDelivery ? '<span class="text-info">(adjusted)</span>' : ''}
             </div>
         `;

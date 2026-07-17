@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Services\AuthService;
 use App\Services\DashboardService;
 use App\Support\CompanyContext;
+use App\Support\IndianDate;
 
 class DashboardController
 {
@@ -36,9 +37,12 @@ class DashboardController
         // Validate dates
         if (!$this->isValidDate($startDate) || !$this->isValidDate($endDate)) {
             http_response_code(400);
-            echo json_encode(['error' => 'Invalid date format. Use YYYY-MM-DD']);
+            echo json_encode(['error' => 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD']);
             return;
         }
+
+        $startDate = IndianDate::toStorage($startDate);
+        $endDate = IndianDate::toStorage($endDate);
         
         if (strtotime($startDate) > strtotime($endDate)) {
             http_response_code(400);
@@ -92,8 +96,7 @@ class DashboardController
     
     private function isValidDate(string $date): bool
     {
-        $d = \DateTime::createFromFormat('Y-m-d', $date);
-        return $d && $d->format('Y-m-d') === $date;
+        return \App\Support\IndianDate::isValid($date);
     }
 }
 

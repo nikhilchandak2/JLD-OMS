@@ -200,10 +200,11 @@
                         OMS reads party, product, rate per MT, loading weight, and vehicle details, then creates or updates the dispatch.
                     </p>
                     <div class="alert alert-info py-2 small">
-                        <strong>PDF (recommended):</strong> Busy tax invoice — party, weight, rate ₹/MT, vehicle no.<br>
-                        <strong>JLD Minerals:</strong> invoice must include <strong>E-way Bill No.</strong> (not Rawana).<br>
-                        <strong>Jaichand Lal Daga / Mines:</strong> Rawana no. is captured when present on invoice.<br>
-                        <strong>CSV:</strong> Invoice No, Party, Product, Rate, Weight (MT), optional Order No.
+                        <strong>PDF:</strong> Busy tax invoice — party, weight, rate ₹/MT, vehicle no.<br>
+                        <strong>CSV (Supply Outward Register):</strong>
+                        Party Name, Date, Rawana No, Truck No., Invoice, Item, Item Rate, Qty (MT), MC Name.<br>
+                        Each row = one truck. Qty is loading weight in MT. Unmapped invoices appear on
+                        <a href="/dispatch/daily">Daily Busy Dispatches</a>.
                     </div>
                     <div class="mb-3">
                         <label for="busyInvoiceFile" class="form-label">Invoice file (PDF or CSV) <span class="text-danger">*</span></label>
@@ -515,14 +516,18 @@ document.getElementById('busyUploadForm').addEventListener('submit', async funct
                     : '';
                 return `<li class="text-success">${escapeHtml(row.invoice_no)} → Order ${escapeHtml(row.order_no)} (${row.action})${orderLink}</li>`;
             }
+            if (row.status === 'unmapped') {
+                return `<li class="text-warning">${escapeHtml(row.invoice_no)}: Dispatch not mapped to any order — <a href="/dispatch/daily">view daily list</a></li>`;
+            }
             return `<li class="text-danger">${escapeHtml(row.invoice_no)}: ${escapeHtml(row.error || 'Failed')}</li>`;
         }).join('');
 
-        resultBox.className = 'alert ' + (data.data?.failed ? 'alert-warning' : 'alert-success');
+        const hasIssues = (data.data?.failed > 0) || (data.data?.unmapped > 0);
+        resultBox.className = 'alert ' + (hasIssues ? 'alert-warning' : 'alert-success');
         resultBox.innerHTML = `<strong>${escapeHtml(data.message || 'Done')}</strong><ul class="mb-0 mt-2">${details}</ul>`;
         resultBox.classList.remove('d-none');
 
-        if (data.data?.successful > 0) {
+        if ((data.data?.successful > 0) || (data.data?.unmapped > 0)) {
             showSuccess(data.message || 'Invoices imported.');
             await loadDispatchQueue();
             await loadRecentDispatches();

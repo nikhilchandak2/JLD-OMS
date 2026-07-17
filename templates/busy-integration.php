@@ -214,7 +214,7 @@ async function loadIntegrationStatus() {
         
         const lastWebhook = data.last_30_days.last_webhook;
         document.getElementById('lastWebhook').textContent = lastWebhook ? 
-            new Date(lastWebhook).toLocaleDateString() : 'Never';
+            lastWebhook ? formatDateTime(lastWebhook) : 'Never';
 
         renderWebhookLogs(data.recent_logs || []);
             

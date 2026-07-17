@@ -14,17 +14,20 @@ class BusyInvoiceImportService
     private const INVOICE_HEADERS = ['invoice no', 'invoice #', 'bill no', 'voucher no', 'inv no', 'invoice number', 'invoice'];
     private const DATE_HEADERS = ['invoice date', 'bill date', 'date', 'voucher date'];
     private const PARTY_HEADERS = ['party name', 'customer', 'party', 'customer name', 'account name', 'buyer', 'consignee'];
-    private const PRODUCT_HEADERS = ['product', 'item', 'item name', 'product name', 'material', 'description'];
-    private const TRUCK_HEADERS = ['trucks', 'no of trucks', 'truck qty', 'truck', 'vehicles', 'qty trucks'];
+    private const PRODUCT_HEADERS = ['item name', 'product name', 'item', 'product', 'material', 'description'];
+    private const TRUCK_HEADERS = ['no of trucks', 'truck qty', 'qty trucks', 'trucks', 'vehicles'];
     private const QTY_HEADERS = ['quantity', 'qty', 'dispatch qty'];
-    private const RATE_HEADERS = ['rate', 'rate per mt', 'rate/mt', 'rate per ton', 'product rate', 'price'];
-    private const WEIGHT_HEADERS = ['weight', 'net weight', 'loading weight', 'weight mt', 'weight (mt)', 'qty mt', 'quantity mt', 'mt'];
+    private const RATE_HEADERS = ['item rate', 'rate per mt', 'rate/mt', 'rate per ton', 'product rate', 'rate', 'price'];
+    private const WEIGHT_HEADERS = ['loading weight', 'net weight', 'weight mt', 'weight (mt)', 'qty mt', 'quantity mt', 'weight', 'mt'];
     private const ORDER_HEADERS = ['order no', 'order number', 'order #', 'oms order', 'order id'];
-    private const VEHICLE_HEADERS = ['vehicle no', 'vehicle', 'lr no', 'vehicle number'];
-    private const RAWANA_HEADERS = ['rawana no', 'rawana', 'rawana number'];
+    private const VEHICLE_HEADERS = ['truck no.', 'truck no', 'truck number', 'vehicle no', 'vehicle number', 'vehicle', 'lr no'];
+    private const RAWANA_HEADERS = ['rawana no', 'rawana number', 'rawana'];
     private const EWAY_HEADERS = ['e-way bill', 'eway bill', 'e way bill', 'eway bill no', 'e-way bill no', 'ewb no'];
-    private const AMOUNT_HEADERS = ['amount', 'total', 'invoice amount', 'bill amount'];
+    private const AMOUNT_HEADERS = ['amount', 'invoice amount', 'bill amount'];
     private const COMPANY_HEADERS = ['company', 'company name', 'unit', 'branch'];
+    private const MC_HEADERS = ['mc name', 'mine name', 'mine', 'mc'];
+    /** Minimum header markers for Busy Supply Outward Register format. */
+    private const SUPPLY_OUTWARD_MARKERS = ['party name', 'rawana no', 'truck no', 'invoice', 'item', 'item rate', 'qty'];
 
     /**
      * Parse a Busy tax-invoice PDF (Jaichand Lal Daga / JLD Minerals format).
@@ -566,6 +569,12 @@ class BusyInvoiceImportService
     }
 
     /**
+     * Parse Busy CSV / Supply Outward Register (tab or comma separated).
+     *
+     * Expected Supply Outward columns:
+     * Party Name | Date | Rawana No | Truck No. | Invoice | Item | Item Rate | Qty | MC Name
+     * (Qty = loading weight in MT; each row is one truck / one invoice)
+     *
      * @return array{invoices: array<int, array<string, mixed>>, errors: string[], preview: array}
      */
     public function parseCsv(string $csvContent): array
@@ -577,7 +586,7 @@ class BusyInvoiceImportService
             $csvContent = substr($csvContent, 3);
         }
 
-        $lines = preg_split('/\r\n|\r|\n/', trim($csvContent));
+        $lines = preg_split('/\r\n|\r|\n/', trim($csvContent)) ?: [];
         if (count($lines) < 2) {
             return [
                 'invoices' => [],
@@ -586,7 +595,21 @@ class BusyInvoiceImportService
             ];
         }
 
-        $headerRow = array_map(fn($h) => trim(strtolower((string)$h)), str_getcsv(array_shift($lines)));
+        $delimiter = $this->detectDelimiter($lines);
+        $located = $this->locateHeaderRow($lines, $delimiter);
+        if ($located === null) {
+            return [
+                'invoices' => [],
+                'errors' => [
+                    'Could not find CSV header row. Expected Busy Supply Outward Register columns: '
+                    . 'Party Name, Date, Rawana No, Truck No., Invoice, Item, Item Rate, Qty, MC Name.',
+                ],
+                'preview' => [],
+            ];
+        }
+
+        [$headerIndex, $headerRow] = $located;
+        $dataLines = array_slice($lines, $headerIndex + 1);
 
         $invoiceCol = $this->findColumn($headerRow, self::INVOICE_HEADERS);
         $dateCol = $this->findColumn($headerRow, self::DATE_HEADERS);
@@ -602,33 +625,42 @@ class BusyInvoiceImportService
         $ewayCol = $this->findColumn($headerRow, self::EWAY_HEADERS);
         $amountCol = $this->findColumn($headerRow, self::AMOUNT_HEADERS);
         $companyCol = $this->findColumn($headerRow, self::COMPANY_HEADERS);
+        $mcCol = $this->findColumn($headerRow, self::MC_HEADERS);
+
+        $isSupplyOutward = $this->isSupplyOutwardRegister($headerRow);
+
+        // Supply Outward Register: Qty = weight (MT), Truck No. = vehicle, 1 row = 1 truck
+        if ($isSupplyOutward && $weightCol === null && $qtyCol !== null) {
+            $weightCol = $qtyCol;
+            $qtyCol = null;
+        }
 
         if ($invoiceCol === null) {
             return [
                 'invoices' => [],
-                'errors' => ['Could not find Invoice No column. Use headers like "Invoice No", "Bill No", or "Voucher No".'],
+                'errors' => ['Could not find Invoice column. Use "Invoice", "Invoice No", "Bill No", or "Voucher No".'],
                 'preview' => [$headerRow],
             ];
         }
         if ($partyCol === null) {
             return [
                 'invoices' => [],
-                'errors' => ['Could not find Party/Customer column.'],
+                'errors' => ['Could not find Party Name column.'],
                 'preview' => [$headerRow],
             ];
         }
         if ($productCol === null) {
             return [
                 'invoices' => [],
-                'errors' => ['Could not find Product/Item column.'],
+                'errors' => ['Could not find Item/Product column.'],
                 'preview' => [$headerRow],
             ];
         }
 
-        $rowNum = 1;
-        foreach ($lines as $line) {
+        $rowNum = $headerIndex;
+        foreach ($dataLines as $line) {
             $rowNum++;
-            if ($rowNum > self::MAX_ROWS + 1) {
+            if (($rowNum - $headerIndex) > self::MAX_ROWS) {
                 $errors[] = 'Import stopped: CSV exceeds maximum allowed rows (' . self::MAX_ROWS . ').';
                 break;
             }
@@ -637,10 +669,15 @@ class BusyInvoiceImportService
                 continue;
             }
 
-            $row = str_getcsv($line);
+            $row = str_getcsv($line, $delimiter);
             $invoiceNo = trim((string)($row[$invoiceCol] ?? ''));
             $partyName = trim((string)($row[$partyCol] ?? ''));
             $productName = trim((string)($row[$productCol] ?? ''));
+
+            // Skip title / total footer rows
+            if ($this->isCsvNoiseRow($invoiceNo, $partyName, $productName, $row)) {
+                continue;
+            }
 
             if ($invoiceNo === '' || $partyName === '' || $productName === '') {
                 continue;
@@ -651,24 +688,35 @@ class BusyInvoiceImportService
                 $invoiceDate = date('Y-m-d');
             }
 
-            $trucks = 1;
-            if ($truckCol !== null) {
-                $trucks = max(1, (int)$this->parseNumber($row[$truckCol] ?? '1'));
-            } elseif ($qtyCol !== null) {
-                $trucks = max(1, (int)$this->parseNumber($row[$qtyCol] ?? '1'));
-            }
-
             $weight = $weightCol !== null ? $this->parseNumber($row[$weightCol] ?? '') : null;
             $rate = $rateCol !== null ? $this->parseNumber($row[$rateCol] ?? '') : null;
             $amount = $amountCol !== null ? $this->parseNumber($row[$amountCol] ?? '') : null;
+
+            $trucks = 1;
+            if ($isSupplyOutward) {
+                $trucks = 1;
+            } elseif ($truckCol !== null) {
+                $trucks = max(1, (int)($this->parseNumber($row[$truckCol] ?? '1') ?? 1));
+            } elseif ($qtyCol !== null && $weightCol === null) {
+                // Legacy CSV where Qty means truck count (not weight)
+                $trucks = max(1, (int)($this->parseNumber($row[$qtyCol] ?? '1') ?? 1));
+            } elseif ($qtyCol !== null && $weightCol !== null && $qtyCol !== $weightCol) {
+                $trucks = max(1, (int)($this->parseNumber($row[$qtyCol] ?? '1') ?? 1));
+            }
 
             if (($rate === null || $rate <= 0) && $amount !== null && $amount > 0 && $weight !== null && $weight > 0) {
                 $rate = round($amount / $weight, 2);
             }
 
             if ($rate === null || $rate <= 0) {
-                $errors[] = "Row {$rowNum}: invoice {$invoiceNo} — product rate per ton is required (or provide Amount and Weight).";
+                $errors[] = "Row {$rowNum}: invoice {$invoiceNo} — Item Rate (₹/MT) is required.";
                 continue;
+            }
+
+            $mcName = $mcCol !== null ? trim((string)($row[$mcCol] ?? '')) : '';
+            $remarks = "Imported from Busy invoice #{$invoiceNo}";
+            if ($mcName !== '') {
+                $remarks .= " | MC: {$mcName}";
             }
 
             $invoices[$invoiceNo] = [
@@ -679,12 +727,13 @@ class BusyInvoiceImportService
                 'quantity' => $trucks,
                 'product_rate' => (float)$rate,
                 'loading_weight_tons' => $weight !== null && $weight > 0 ? (float)$weight : null,
-                'order_no' => $orderCol !== null ? trim((string)($row[$orderCol] ?? '')) : null,
-                'vehicle_no' => $vehicleCol !== null ? trim((string)($row[$vehicleCol] ?? '')) : null,
-                'rawana_no' => $rawanaCol !== null ? trim((string)($row[$rawanaCol] ?? '')) : null,
-                'eway_bill_no' => $ewayCol !== null ? trim((string)($row[$ewayCol] ?? '')) : null,
-                'company_name' => $companyCol !== null ? trim((string)($row[$companyCol] ?? '')) : null,
-                'remarks' => "Imported from Busy invoice #{$invoiceNo}",
+                'order_no' => $orderCol !== null ? (trim((string)($row[$orderCol] ?? '')) ?: null) : null,
+                'vehicle_no' => $vehicleCol !== null ? (trim((string)($row[$vehicleCol] ?? '')) ?: null) : null,
+                'rawana_no' => $rawanaCol !== null ? (trim((string)($row[$rawanaCol] ?? '')) ?: null) : null,
+                'eway_bill_no' => $ewayCol !== null ? (trim((string)($row[$ewayCol] ?? '')) ?: null) : null,
+                'company_name' => $companyCol !== null ? (trim((string)($row[$companyCol] ?? '')) ?: null) : null,
+                'mc_name' => $mcName !== '' ? $mcName : null,
+                'remarks' => $remarks,
             ];
         }
 
@@ -699,18 +748,164 @@ class BusyInvoiceImportService
         ];
     }
 
-    private function findColumn(array $headers, array $candidates): ?int
+    /**
+     * @param list<string> $lines
+     */
+    private function detectDelimiter(array $lines): string
     {
-        foreach ($candidates as $candidate) {
-            $index = array_search($candidate, $headers, true);
-            if ($index !== false) {
-                return $index;
+        foreach (array_slice($lines, 0, 15) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+            $tabs = substr_count($line, "\t");
+            $commas = substr_count($line, ',');
+            if ($tabs >= 3 && $tabs >= $commas) {
+                return "\t";
+            }
+            if ($commas >= 3) {
+                return ',';
             }
         }
-        foreach ($headers as $index => $header) {
-            foreach ($candidates as $candidate) {
-                if ($header !== '' && str_contains($header, $candidate)) {
-                    return $index;
+        return ',';
+    }
+
+    /**
+     * Skip Busy title rows ("JAICHAND…", "Supply Outward Register") and find the real header.
+     *
+     * @param list<string> $lines
+     * @return array{0: int, 1: list<string>}|null
+     */
+    private function locateHeaderRow(array $lines, string $delimiter): ?array
+    {
+        $best = null;
+        $bestScore = 0;
+
+        foreach ($lines as $index => $line) {
+            if ($index > 30) {
+                break;
+            }
+            if (trim($line) === '') {
+                continue;
+            }
+
+            $cells = array_map(
+                fn($h) => $this->normalizeHeaderCell((string)$h),
+                str_getcsv($line, $delimiter)
+            );
+            $score = $this->scoreHeaderRow($cells);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = [$index, $cells];
+            }
+        }
+
+        // Need at least Party + Invoice + Item (or Product)
+        return $bestScore >= 3 ? $best : null;
+    }
+
+    /**
+     * @param list<string> $headers
+     */
+    private function scoreHeaderRow(array $headers): int
+    {
+        $score = 0;
+        if ($this->findColumn($headers, self::PARTY_HEADERS) !== null) {
+            $score++;
+        }
+        if ($this->findColumn($headers, self::INVOICE_HEADERS) !== null) {
+            $score++;
+        }
+        if ($this->findColumn($headers, self::PRODUCT_HEADERS) !== null) {
+            $score++;
+        }
+        if ($this->findColumn($headers, self::DATE_HEADERS) !== null) {
+            $score++;
+        }
+        if ($this->findColumn($headers, self::RATE_HEADERS) !== null) {
+            $score++;
+        }
+        if ($this->findColumn($headers, self::RAWANA_HEADERS) !== null) {
+            $score++;
+        }
+        if ($this->findColumn($headers, self::VEHICLE_HEADERS) !== null) {
+            $score++;
+        }
+        return $score;
+    }
+
+    /**
+     * @param list<string> $headers
+     */
+    private function isSupplyOutwardRegister(array $headers): bool
+    {
+        $hits = 0;
+        foreach (self::SUPPLY_OUTWARD_MARKERS as $marker) {
+            foreach ($headers as $header) {
+                if ($header === $marker || str_starts_with($header, $marker)) {
+                    $hits++;
+                    break;
+                }
+            }
+        }
+        return $hits >= 5;
+    }
+
+    /**
+     * @param list<string> $row
+     */
+    private function isCsvNoiseRow(string $invoiceNo, string $partyName, string $productName, array $row): bool
+    {
+        $joined = strtolower(trim(implode(' ', $row)));
+        if ($joined === '') {
+            return true;
+        }
+        if (str_contains($joined, 'supply outward')) {
+            return true;
+        }
+        if (str_starts_with($joined, 'voucher series')) {
+            return true;
+        }
+        if (preg_match('/\btotal\b/', $joined) && $invoiceNo === '' && $partyName === '') {
+            return true;
+        }
+        // Title-only rows without invoice number
+        if ($invoiceNo === '' && $productName === '' && !preg_match('/\d/', $partyName)) {
+            return true;
+        }
+        return false;
+    }
+
+    private function normalizeHeaderCell(string $header): string
+    {
+        $header = strtolower(trim($header));
+        $header = preg_replace('/\s+/', ' ', $header) ?? $header;
+        return $header;
+    }
+
+    private function findColumn(array $headers, array $candidates): ?int
+    {
+        $normalized = array_map([$this, 'normalizeHeaderCell'], $headers);
+
+        foreach ($candidates as $candidate) {
+            $candidate = $this->normalizeHeaderCell($candidate);
+            $index = array_search($candidate, $normalized, true);
+            if ($index !== false) {
+                return (int)$index;
+            }
+        }
+
+        // Prefer longer candidates first for fuzzy contains (e.g. "truck no" before "truck")
+        $sorted = $candidates;
+        usort($sorted, static fn($a, $b) => strlen((string)$b) <=> strlen((string)$a));
+
+        foreach ($normalized as $index => $header) {
+            if ($header === '') {
+                continue;
+            }
+            foreach ($sorted as $candidate) {
+                $candidate = $this->normalizeHeaderCell((string)$candidate);
+                if ($candidate !== '' && str_contains($header, $candidate)) {
+                    return (int)$index;
                 }
             }
         }
@@ -731,19 +926,6 @@ class BusyInvoiceImportService
 
     private function normalizeDate(string $value): ?string
     {
-        if ($value === '') {
-            return null;
-        }
-
-        $formats = ['Y-m-d', 'd-m-Y', 'd/m/Y', 'm/d/Y', 'd-M-Y', 'd M Y'];
-        foreach ($formats as $format) {
-            $dt = \DateTime::createFromFormat($format, $value);
-            if ($dt && $dt->format($format) === $value) {
-                return $dt->format('Y-m-d');
-            }
-        }
-
-        $ts = strtotime($value);
-        return $ts !== false ? date('Y-m-d', $ts) : null;
+        return \App\Support\IndianDate::toStorage($value);
     }
 }

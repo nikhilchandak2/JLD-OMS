@@ -784,16 +784,20 @@ async function loadDeliverySchedule(orderId) {
 }
 
 function formatDate(dateString) {
-    if (!dateString) return 'Invalid Date';
-    
+    if (!dateString) return '—';
+    const iso = String(dateString).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) {
+        return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    }
+    const indian = String(dateString).match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+    if (indian) {
+        return `${indian[1].padStart(2, '0')}/${indian[2].padStart(2, '0')}/${indian[3]}`;
+    }
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return 'Invalid Date';
-    
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
+    if (isNaN(date.getTime())) return '—';
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}/${date.getFullYear()}`;
 }
 
 function displayDeliverySchedule(deliveries) {

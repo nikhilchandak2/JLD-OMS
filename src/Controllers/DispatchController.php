@@ -6,6 +6,7 @@ use App\Services\AuthService;
 use App\Services\DispatchService;
 use App\Services\DispatchTransferService;
 use App\Support\CompanyContext;
+use App\Support\IndianDate;
 
 class DispatchController
 {
@@ -148,7 +149,7 @@ class DispatchController
         }
         
         if (!empty($input['dispatch_date']) && !$this->isValidDate($input['dispatch_date'])) {
-            $errors[] = 'Valid dispatch date is required (YYYY-MM-DD format)';
+            $errors[] = 'Valid dispatch date is required (DD/MM/YYYY or YYYY-MM-DD)';
         }
         
         if (!empty($errors)) {
@@ -169,7 +170,7 @@ class DispatchController
         try {
             $dispatchData = [
                 'order_id' => $orderId,
-                'dispatch_date' => $input['dispatch_date'],
+                'dispatch_date' => IndianDate::toStorage($input['dispatch_date']),
                 'dispatch_qty_trucks' => (int)$input['dispatch_qty_trucks'],
                 'product_rate' => (float)$input['product_rate'],
                 'rawana_no' => $input['rawana_no'] ?? null,
@@ -293,7 +294,7 @@ class DispatchController
             
             // Only update provided fields
             if (isset($input['dispatch_date']) && $this->isValidDate($input['dispatch_date'])) {
-                $updateData['dispatch_date'] = $input['dispatch_date'];
+                $updateData['dispatch_date'] = IndianDate::toStorage($input['dispatch_date']);
             }
             
             if (isset($input['dispatch_qty_trucks']) && is_numeric($input['dispatch_qty_trucks']) && $input['dispatch_qty_trucks'] > 0) {
@@ -519,8 +520,7 @@ class DispatchController
 
     private function isValidDate(string $date): bool
     {
-        $d = \DateTime::createFromFormat('Y-m-d', $date);
-        return $d && $d->format('Y-m-d') === $date;
+        return \App\Support\IndianDate::isValid($date);
     }
 
     private function requireDispatchReadAccess(): bool

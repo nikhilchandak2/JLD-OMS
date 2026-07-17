@@ -175,6 +175,23 @@ class WebController
         ]);
     }
 
+    /** Daily Busy CSV invoices — mapped and unmapped (no portal order). */
+    public function dispatchDaily(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing', 'entry'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Dispatch access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('dispatch-daily', [
+            'title' => 'Daily Busy Dispatches',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
     /**
      * Visit requests – marketing raises client visit requests, technical team executes them.
      */

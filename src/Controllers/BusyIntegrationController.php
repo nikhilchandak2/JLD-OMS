@@ -50,6 +50,15 @@ class BusyIntegrationController
 
         try {
             $result = $this->busyIntegrationService->processInvoice($invoiceData);
+            if (($result['mapping_status'] ?? '') === 'unmapped') {
+                http_response_code(422);
+                echo json_encode([
+                    'success' => false,
+                    'message' => $result['error'] ?? 'Invoice saved but not mapped to any order',
+                    'data' => $result,
+                ]);
+                return;
+            }
             http_response_code(200);
             echo json_encode([
                 'success' => true,
@@ -148,18 +157,81 @@ class BusyIntegrationController
             $companyId > 0 ? $companyId : null
         );
 
+        $unmapped = (int)($result['unmapped'] ?? 0);
+        $parts = [
+            sprintf('%d succeeded', $result['successful']),
+        ];
+        if ($unmapped > 0) {
+            $parts[] = sprintf('%d unmapped (no order)', $unmapped);
+        }
+        if ($result['failed'] > 0) {
+            $parts[] = sprintf('%d failed', $result['failed']);
+        }
+
         echo json_encode([
             'success' => $result['failed'] === 0,
             'message' => sprintf(
-                '%d invoice(s) processed — %d succeeded, %d failed',
+                '%d invoice(s) processed — %s',
                 $result['processed'],
-                $result['successful'],
-                $result['failed']
+                implode(', ', $parts)
             ),
             'data' => $result,
             'parse_warnings' => $parsed['errors'],
             'preview' => $parsed['preview'],
         ]);
+    }
+
+    /**
+     * GET /api/busy/daily-invoices — daily Busy CSV invoices (mapped + unmapped).
+     */
+    public function dailyInvoices(): void
+    {
+        header('Content-Type: application/json');
+
+        if (!$this->requireDispatchImportAccess()) {
+            return;
+        }
+
+        $date = trim((string)($_GET['date'] ?? ''));
+        $startDate = trim((string)($_GET['start_date'] ?? ''));
+        $endDate = trim((string)($_GET['end_date'] ?? ''));
+        if ($date === '' && $startDate === '' && $endDate === '') {
+            $date = date('Y-m-d');
+        }
+
+        $mappingStatus = trim((string)($_GET['mapping_status'] ?? ''));
+        if ($mappingStatus !== '' && !in_array($mappingStatus, ['mapped', 'unmapped', 'error'], true)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'mapping_status must be mapped, unmapped, or error']);
+            return;
+        }
+
+        $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : CompanyContext::getActiveCompanyId();
+        $limit = isset($_GET['limit']) ? max(1, min(500, (int)$_GET['limit'])) : 100;
+        $offset = isset($_GET['offset']) ? max(0, (int)$_GET['offset']) : 0;
+
+        try {
+            $result = $this->busyIntegrationService->listDailyInvoices([
+                'date' => $date !== '' ? $date : null,
+                'start_date' => $startDate !== '' ? $startDate : null,
+                'end_date' => $endDate !== '' ? $endDate : null,
+                'mapping_status' => $mappingStatus !== '' ? $mappingStatus : null,
+                'company_id' => $companyId > 0 ? $companyId : null,
+                'search' => trim((string)($_GET['search'] ?? '')) ?: null,
+                'limit' => $limit,
+                'offset' => $offset,
+            ]);
+
+            echo json_encode([
+                'success' => true,
+                'data' => $result['rows'],
+                'summary' => $result['summary'],
+                'pagination' => $result['pagination'],
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
     }
 
     /** POST JSON body — single invoice import (same shape as webhook). */
@@ -193,9 +265,12 @@ class BusyIntegrationController
                 $user ? (int)$user['id'] : null,
                 $companyId > 0 ? $companyId : null
             );
+            $isUnmapped = ($result['mapping_status'] ?? '') === 'unmapped';
             echo json_encode([
                 'success' => true,
-                'message' => 'Invoice imported — dispatch ' . $result['action'],
+                'message' => $isUnmapped
+                    ? 'Invoice saved but not mapped to any order'
+                    : 'Invoice imported — dispatch ' . ($result['action'] ?? 'processed'),
                 'data' => $result,
             ]);
         } catch (\Throwable $e) {

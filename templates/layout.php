@@ -1090,11 +1090,14 @@
                             </a>
                             <?php endif; ?>
                             <?php if ($canDispatchDash): ?>
-                            <a class="nav-menu-link <?= strpos($reqUri, '/dispatch') === 0 && strpos($reqUri, '/dispatch/history') === false && strpos($reqUri, '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
+                            <a class="nav-menu-link <?= strpos($reqUri, '/dispatch') === 0 && strpos($reqUri, '/dispatch/history') === false && strpos($reqUri, '/dispatch/daily') === false && strpos($reqUri, '/dispatch/reject-transfers') === false && strpos($reqUri, '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
                                 <i class="bi bi-truck-flatbed"></i> Dispatch Dashboard
                             </a>
                             <?php endif; ?>
                             <?php if ($canDispatchHistory): ?>
+                            <a class="nav-menu-link <?= strpos($reqUri, '/dispatch/daily') === 0 ? 'active' : '' ?>" href="/dispatch/daily">
+                                <i class="bi bi-calendar3"></i> Daily Busy Dispatches
+                            </a>
                             <a class="nav-menu-link <?= strpos($reqUri, '/dispatch/history') === 0 ? 'active' : '' ?>" href="/dispatch/history">
                                 <i class="bi bi-clock-history"></i> Dispatch History
                             </a>
@@ -1335,7 +1338,34 @@
         }
         
         function formatDate(dateString) {
-            return new Date(dateString).toLocaleDateString();
+            if (!dateString) return '—';
+            // Prefer YYYY-MM-DD from API/DB without timezone shift
+            const iso = String(dateString).match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (iso) {
+                return `${iso[3]}/${iso[2]}/${iso[1]}`;
+            }
+            // Already Indian DD/MM/YYYY
+            const indian = String(dateString).match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+            if (indian) {
+                const d = indian[1].padStart(2, '0');
+                const m = indian[2].padStart(2, '0');
+                return `${d}/${m}/${indian[3]}`;
+            }
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return '—';
+            const dd = String(date.getDate()).padStart(2, '0');
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const yyyy = date.getFullYear();
+            return `${dd}/${mm}/${yyyy}`;
+        }
+
+        function formatDateTime(dateString) {
+            if (!dateString) return '—';
+            const m = String(dateString).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+            if (m) {
+                return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
+            }
+            return formatDate(dateString);
         }
         
         function formatStatus(status) {

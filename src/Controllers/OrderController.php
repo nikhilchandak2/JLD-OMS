@@ -7,6 +7,7 @@ use App\Services\OrderService;
 use App\Services\CreditLimitExceededException;
 use App\Models\Order;
 use App\Support\CompanyContext;
+use App\Support\IndianDate;
 use App\Repositories\CompanyRepository;
 
 class OrderController
@@ -183,7 +184,7 @@ class OrderController
         }
         
         if (!empty($input['order_date']) && !$this->isValidDate((string)$input['order_date'])) {
-            $errors[] = 'Valid order date is required (YYYY-MM-DD format)';
+            $errors[] = 'Valid order date is required (DD/MM/YYYY or YYYY-MM-DD)';
         }
 
         $priority = strtolower(trim((string)($input['priority'] ?? 'normal')));
@@ -212,9 +213,13 @@ class OrderController
         if ($hasScheduledDispatch) {
             $scheduledDate = trim((string)($input['scheduled_dispatch_date'] ?? ''));
             if ($scheduledDate === '' || !$this->isValidDate($scheduledDate)) {
-                $errors[] = 'Scheduled dispatch date is required (YYYY-MM-DD format)';
-            } elseif (!empty($input['order_date']) && $scheduledDate < (string)$input['order_date']) {
-                $errors[] = 'Scheduled dispatch date cannot be before the order date';
+                $errors[] = 'Scheduled dispatch date is required (DD/MM/YYYY or YYYY-MM-DD)';
+            } elseif (!empty($input['order_date'])) {
+                $orderStorage = IndianDate::toStorage((string)$input['order_date']);
+                $scheduledStorage = IndianDate::toStorage($scheduledDate);
+                if ($orderStorage && $scheduledStorage && $scheduledStorage < $orderStorage) {
+                    $errors[] = 'Scheduled dispatch date cannot be before the order date';
+                }
             }
         }
 
@@ -250,7 +255,7 @@ class OrderController
 
             $orderData = [
                 'company_id' => $companyId,
-                'order_date' => $input['order_date'],
+                'order_date' => IndianDate::toStorage((string)$input['order_date']),
                 'product_id' => (int)$input['product_id'],
                 'order_qty_mode' => $qtyMode,
                 'order_qty_trucks' => isset($input['order_qty_trucks']) ? (int)$input['order_qty_trucks'] : null,
@@ -263,7 +268,7 @@ class OrderController
                     : null,
                 'priority' => $priority,
                 'scheduled_dispatch_date' => $hasScheduledDispatch
-                    ? trim((string)($input['scheduled_dispatch_date'] ?? ''))
+                    ? IndianDate::toStorage(trim((string)($input['scheduled_dispatch_date'] ?? '')))
                     : null,
                 'is_recurring' => $isRecurring,
                 'delivery_frequency_days' => isset($input['delivery_frequency_days']) ? (int)$input['delivery_frequency_days'] : null,
@@ -495,10 +500,10 @@ class OrderController
             if (array_key_exists('order_date', $input)) {
                 if (!$this->isValidDate((string)$input['order_date'])) {
                     http_response_code(400);
-                    echo json_encode(['error' => 'Valid order date is required (YYYY-MM-DD format)']);
+                    echo json_encode(['error' => 'Valid order date is required (DD/MM/YYYY or YYYY-MM-DD)']);
                     return;
                 }
-                $updateData['order_date'] = (string)$input['order_date'];
+                $updateData['order_date'] = IndianDate::toStorage((string)$input['order_date']);
             }
             
             if (array_key_exists('product_id', $input)) {
@@ -691,8 +696,7 @@ class OrderController
     
     private function isValidDate(string $date): bool
     {
-        $d = \DateTime::createFromFormat('Y-m-d', $date);
-        return $d && $d->format('Y-m-d') === $date;
+        return \App\Support\IndianDate::isValid($date);
     }
 
     private function getJsonOrPostInput(): array

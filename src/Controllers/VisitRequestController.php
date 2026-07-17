@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Database;
 use App\Services\AuthService;
 use App\Repositories\VisitRequestRepository;
+use App\Support\IndianDate;
 
 /**
  * Client visit requests: marketing raises a request, technical team
@@ -102,7 +103,7 @@ class VisitRequestController
             $errors[] = 'Purpose must be at most 500 characters';
         }
         if ($preferredDate !== null && !$this->isValidDate($preferredDate)) {
-            $errors[] = 'Valid preferred date is required (YYYY-MM-DD format)';
+            $errors[] = 'Valid preferred date is required (DD/MM/YYYY or YYYY-MM-DD)';
         }
         if (!in_array($priority, self::ALLOWED_PRIORITIES, true)) {
             $errors[] = 'Priority must be normal or urgent';
@@ -126,7 +127,7 @@ class VisitRequestController
                 $partyId,
                 (int)$user['id'],
                 $purpose,
-                $preferredDate,
+                $preferredDate !== null ? IndianDate::toStorage($preferredDate) : null,
                 $priority
             );
 
@@ -210,12 +211,12 @@ class VisitRequestController
                     $scheduledDate = (string)($input['scheduled_date'] ?? '');
                     if (!$this->isValidDate($scheduledDate)) {
                         http_response_code(400);
-                        echo json_encode(['error' => 'Valid scheduled date is required (YYYY-MM-DD format)']);
+                        echo json_encode(['error' => 'Valid scheduled date is required (DD/MM/YYYY or YYYY-MM-DD)']);
                         return;
                     }
                     $this->visitRequestRepository->update($id, [
                         'status' => 'scheduled',
-                        'scheduled_date' => $scheduledDate,
+                        'scheduled_date' => IndianDate::toStorage($scheduledDate),
                         'assigned_to' => $request['assigned_to'] ?: (int)$user['id']
                     ]);
                     break;
@@ -332,8 +333,7 @@ class VisitRequestController
 
     private function isValidDate(string $date): bool
     {
-        $d = \DateTime::createFromFormat('Y-m-d', $date);
-        return $d && $d->format('Y-m-d') === $date;
+        return \App\Support\IndianDate::isValid($date);
     }
 
     private function getJsonOrPostInput(): array

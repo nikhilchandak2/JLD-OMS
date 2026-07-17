@@ -117,7 +117,7 @@ function renderProductsTable() {
 
     products.forEach(product => {
         const row = document.createElement('tr');
-        const createdDate = product.created_at ? new Date(product.created_at).toLocaleDateString() : '-';
+        const createdDate = product.created_at ? formatDate(product.created_at) : '-';
         const deleteBtn = isProductAdmin
             ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteProduct(${Number(product.id) || 0})" title="Delete"><i class="bi bi-trash"></i></button>`
             : '';

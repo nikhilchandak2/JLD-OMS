@@ -8,6 +8,7 @@ use App\Repositories\CreditNoteRepository;
 use App\Repositories\DispatchRepository;
 use App\Repositories\DispatchTransferRepository;
 use App\Repositories\OrderRepository;
+use App\Support\IndianDate;
 
 class DispatchTransferService
 {
@@ -317,7 +318,9 @@ class DispatchTransferService
             'amount' => $amount,
             'weight_tons' => $dispatch->loadingWeightTons,
             'rate_per_ton' => $dispatch->productRate,
-            'note_date' => $data['credit_note_date'] ?? date('Y-m-d'),
+            'note_date' => !empty($data['credit_note_date'])
+                ? (IndianDate::toStorage((string)$data['credit_note_date']) ?? date('Y-m-d'))
+                : date('Y-m-d'),
             'reason' => $reason,
             'created_by' => $userId,
         ]);
@@ -330,12 +333,12 @@ class DispatchTransferService
             return date('Y-m-d');
         }
 
-        $parsed = \DateTime::createFromFormat('Y-m-d', $transferDate);
-        if (!$parsed || $parsed->format('Y-m-d') !== $transferDate) {
-            throw new \InvalidArgumentException('transfer_date must be a valid date (YYYY-MM-DD)');
+        $storage = IndianDate::toStorage($transferDate);
+        if ($storage === null) {
+            throw new \InvalidArgumentException('transfer_date must be a valid date (DD/MM/YYYY or YYYY-MM-DD)');
         }
 
-        return $transferDate;
+        return $storage;
     }
 
     private function resolveCreditNotePartyId(object $order): int

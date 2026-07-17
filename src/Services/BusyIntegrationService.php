@@ -9,7 +9,9 @@ use App\Repositories\PartyRepository;
 use App\Repositories\ProductRepository;
 use App\Repositories\CompanyRepository;
 use App\Repositories\DispatchRepository;
+use App\Repositories\BusyDailyInvoiceRepository;
 use App\Support\CompanyContext;
+use App\Support\IndianDate;
 use App\Support\OrderSchema;
 
 class BusyIntegrationService
@@ -20,6 +22,7 @@ class BusyIntegrationService
     private ProductRepository $productRepository;
     private CompanyRepository $companyRepository;
     private DispatchRepository $dispatchRepository;
+    private BusyDailyInvoiceRepository $busyDailyInvoiceRepository;
     private DispatchService $dispatchService;
 
     public function __construct()
@@ -30,13 +33,15 @@ class BusyIntegrationService
         $this->productRepository = new ProductRepository();
         $this->companyRepository = new CompanyRepository();
         $this->dispatchRepository = new DispatchRepository();
+        $this->busyDailyInvoiceRepository = new BusyDailyInvoiceRepository();
         $this->dispatchService = new DispatchService();
     }
 
     /**
      * Process one Busy invoice and create or update the linked dispatch.
+     * Unmatched invoices are still saved to busy_daily_invoices (mapping_status=unmapped).
      *
-     * @return array{action: string, order_id: int, order_no: string, dispatch_id: int, invoice_no: string, party_name: string}
+     * @return array{action: string, invoice_no: string, party_name: string, mapping_status: string, order_id?: int, order_no?: string, dispatch_id?: int}
      */
     public function processInvoice(array $invoiceData, ?int $processedByUserId = null, ?int $defaultCompanyId = null): array
     {
@@ -59,18 +64,41 @@ class BusyIntegrationService
                 $hint = $pendingCount > 1
                     ? ' This party has multiple pending orders — include Order No in the invoice or ensure the product name matches.'
                     : ' Create the order first or include Order No in the invoice export.';
-                throw new \RuntimeException(
-                    'No matching pending order found for party "' . $mapped['party_name'] .
-                    '", product "' . $mapped['product_name'] . '".' . $hint . $billingHint
-                );
+                $message = 'No matching pending order found for party "' . $mapped['party_name'] .
+                    '", product "' . $mapped['product_name'] . '".' . $hint . $billingHint;
+
+                $dailyId = $this->upsertDailyInvoiceRecord($mapped, $companyId, 'unmapped', $message, null, null, $processedByUserId);
+                $this->updateWebhookLog($logId, 'error', $message);
+
+                return [
+                    'action' => 'unmapped',
+                    'mapping_status' => 'unmapped',
+                    'invoice_no' => $mapped['invoice_no'],
+                    'party_name' => $mapped['party_name'],
+                    'product_name' => $mapped['product_name'],
+                    'invoice_date' => $mapped['invoice_date'],
+                    'dispatch_qty' => $mapped['quantity'],
+                    'daily_invoice_id' => $dailyId,
+                    'error' => $message,
+                ];
             }
 
             $result = $this->upsertDispatchFromInvoice($order, $mapped, $processedByUserId);
+            $this->upsertDailyInvoiceRecord(
+                $mapped,
+                $companyId,
+                'mapped',
+                null,
+                (int)$result['order_id'],
+                (int)$result['dispatch_id'],
+                $processedByUserId
+            );
             $this->updateWebhookLog($logId, 'success', null);
 
-            return $result;
+            return array_merge($result, ['mapping_status' => 'mapped']);
         } catch (\Throwable $e) {
             $this->updateWebhookLog($logId, 'error', $e->getMessage());
+            $this->trySaveDailyInvoiceOnError($invoiceData, $defaultCompanyId, $e->getMessage(), $processedByUserId);
             throw $e;
         }
     }
@@ -85,7 +113,8 @@ class BusyIntegrationService
             $invoiceNo = (string)($invoiceData['invoice_no'] ?? 'unknown');
             try {
                 $result = $this->processInvoice($invoiceData, $processedByUserId, $defaultCompanyId);
-                $details[] = array_merge(['status' => 'success', 'invoice_no' => $invoiceNo], $result);
+                $status = ($result['mapping_status'] ?? '') === 'unmapped' ? 'unmapped' : 'success';
+                $details[] = array_merge(['status' => $status, 'invoice_no' => $invoiceNo], $result);
             } catch (\Throwable $e) {
                 $details[] = [
                     'status' => 'error',
@@ -98,8 +127,33 @@ class BusyIntegrationService
         return [
             'processed' => count($details),
             'successful' => count(array_filter($details, fn($r) => $r['status'] === 'success')),
+            'unmapped' => count(array_filter($details, fn($r) => $r['status'] === 'unmapped')),
             'failed' => count(array_filter($details, fn($r) => $r['status'] === 'error')),
             'details' => $details,
+        ];
+    }
+
+    /**
+     * List Busy invoices for the daily dispatches page (mapped + unmapped).
+     *
+     * @param array<string, mixed> $filters
+     * @return array{rows: list<array<string, mixed>>, total: int, summary: array<string, int|float>, pagination: array<string, int>}
+     */
+    public function listDailyInvoices(array $filters): array
+    {
+        $result = $this->busyDailyInvoiceRepository->findDaily($filters);
+        $limit = isset($filters['limit']) ? (int)$filters['limit'] : count($result['rows']);
+        $offset = isset($filters['offset']) ? (int)$filters['offset'] : 0;
+
+        return [
+            'rows' => array_map([$this, 'formatDailyInvoiceRow'], $result['rows']),
+            'total' => $result['total'],
+            'summary' => $result['summary'],
+            'pagination' => [
+                'total' => $result['total'],
+                'limit' => $limit,
+                'offset' => $offset,
+            ],
         ];
     }
 
@@ -181,7 +235,7 @@ class BusyIntegrationService
         }
 
         if (!$this->isValidDate((string)$data['invoice_date'])) {
-            throw new \InvalidArgumentException('Invalid invoice date format. Expected YYYY-MM-DD');
+            throw new \InvalidArgumentException('Invalid invoice date format. Expected DD/MM/YYYY or YYYY-MM-DD');
         }
     }
 
@@ -189,7 +243,7 @@ class BusyIntegrationService
     {
         return [
             'invoice_no' => trim((string)$invoiceData['invoice_no']),
-            'invoice_date' => (string)$invoiceData['invoice_date'],
+            'invoice_date' => IndianDate::toStorage((string)$invoiceData['invoice_date']),
             'party_name' => trim((string)$invoiceData['party_name']),
             'product_name' => trim((string)$invoiceData['product_name']),
             'quantity' => max(1, (int)($invoiceData['quantity'] ?? 1)),
@@ -199,9 +253,159 @@ class BusyIntegrationService
                 : null,
             'order_no' => !empty($invoiceData['order_no']) ? trim((string)$invoiceData['order_no']) : null,
             'vehicle_no' => !empty($invoiceData['vehicle_no']) ? trim((string)$invoiceData['vehicle_no']) : null,
+            'rawana_no' => !empty($invoiceData['rawana_no']) ? trim((string)$invoiceData['rawana_no']) : null,
+            'eway_bill_no' => !empty($invoiceData['eway_bill_no']) ? trim((string)$invoiceData['eway_bill_no']) : null,
             'company_name' => !empty($invoiceData['company_name']) ? trim((string)$invoiceData['company_name']) : null,
             'remarks' => $invoiceData['remarks'] ?? ('Imported from Busy invoice #' . $invoiceData['invoice_no']),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $mapped
+     */
+    private function upsertDailyInvoiceRecord(
+        array $mapped,
+        ?int $companyId,
+        string $mappingStatus,
+        ?string $errorMessage,
+        ?int $orderId,
+        ?int $dispatchId,
+        ?int $uploadedBy
+    ): int {
+        if (!$this->busyDailyInvoicesTableExists()) {
+            return 0;
+        }
+
+        return $this->busyDailyInvoiceRepository->upsert([
+            'invoice_no' => $mapped['invoice_no'],
+            'invoice_date' => $mapped['invoice_date'],
+            'party_name' => $mapped['party_name'],
+            'product_name' => $mapped['product_name'] ?? null,
+            'product_rate' => $mapped['product_rate'] ?? null,
+            'quantity_trucks' => $mapped['quantity'] ?? 1,
+            'loading_weight_tons' => $mapped['loading_weight_tons'] ?? null,
+            'vehicle_no' => $mapped['vehicle_no'] ?? null,
+            'rawana_no' => $mapped['rawana_no'] ?? null,
+            'eway_bill_no' => $mapped['eway_bill_no'] ?? null,
+            'order_no_from_invoice' => $mapped['order_no'] ?? null,
+            'company_id' => $companyId,
+            'order_id' => $orderId,
+            'dispatch_id' => $dispatchId,
+            'mapping_status' => $mappingStatus,
+            'error_message' => $errorMessage,
+            'uploaded_by' => $uploadedBy,
+        ]);
+    }
+
+    /**
+     * Persist a failed invoice row when possible so it still appears on the daily page.
+     *
+     * @param array<string, mixed> $invoiceData
+     */
+    private function trySaveDailyInvoiceOnError(
+        array $invoiceData,
+        ?int $defaultCompanyId,
+        string $errorMessage,
+        ?int $uploadedBy
+    ): void {
+        try {
+            if (!$this->busyDailyInvoicesTableExists()) {
+                return;
+            }
+            $invoiceNo = trim((string)($invoiceData['invoice_no'] ?? ''));
+            $invoiceDate = trim((string)($invoiceData['invoice_date'] ?? ''));
+            $partyName = trim((string)($invoiceData['party_name'] ?? ''));
+            if ($invoiceNo === '' || $invoiceDate === '' || $partyName === '' || !$this->isValidDate($invoiceDate)) {
+                return;
+            }
+
+            $mapped = [
+                'invoice_no' => $invoiceNo,
+                'invoice_date' => IndianDate::toStorage($invoiceDate),
+                'party_name' => $partyName,
+                'product_name' => trim((string)($invoiceData['product_name'] ?? '')),
+                'product_rate' => isset($invoiceData['product_rate']) && is_numeric($invoiceData['product_rate'])
+                    ? (float)$invoiceData['product_rate']
+                    : null,
+                'quantity' => max(1, (int)($invoiceData['quantity'] ?? 1)),
+                'loading_weight_tons' => isset($invoiceData['loading_weight_tons']) && $invoiceData['loading_weight_tons'] !== ''
+                    ? (float)$invoiceData['loading_weight_tons']
+                    : null,
+                'vehicle_no' => !empty($invoiceData['vehicle_no']) ? trim((string)$invoiceData['vehicle_no']) : null,
+                'rawana_no' => !empty($invoiceData['rawana_no']) ? trim((string)$invoiceData['rawana_no']) : null,
+                'eway_bill_no' => !empty($invoiceData['eway_bill_no']) ? trim((string)$invoiceData['eway_bill_no']) : null,
+                'order_no' => !empty($invoiceData['order_no']) ? trim((string)$invoiceData['order_no']) : null,
+            ];
+
+            $companyId = null;
+            try {
+                $companyId = $this->resolveCompanyId(
+                    array_merge($mapped, [
+                        'company_name' => !empty($invoiceData['company_name'])
+                            ? trim((string)$invoiceData['company_name'])
+                            : null,
+                    ]),
+                    $defaultCompanyId
+                );
+            } catch (\Throwable $ignored) {
+                $companyId = $defaultCompanyId;
+            }
+
+            $this->upsertDailyInvoiceRecord($mapped, $companyId, 'error', $errorMessage, null, null, $uploadedBy);
+        } catch (\Throwable $ignored) {
+            // Never mask the original processing error
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function formatDailyInvoiceRow(array $row): array
+    {
+        $status = (string)($row['mapping_status'] ?? 'unmapped');
+        return [
+            'id' => (int)$row['id'],
+            'invoice_no' => $row['invoice_no'],
+            'invoice_date' => $row['invoice_date'],
+            'party_name' => $row['party_name'],
+            'product_name' => $row['product_name'],
+            'product_rate' => $row['product_rate'] !== null ? (float)$row['product_rate'] : null,
+            'quantity_trucks' => (int)$row['quantity_trucks'],
+            'loading_weight_tons' => $row['loading_weight_tons'] !== null ? (float)$row['loading_weight_tons'] : null,
+            'vehicle_no' => $row['vehicle_no'],
+            'rawana_no' => $row['rawana_no'] ?? null,
+            'eway_bill_no' => $row['eway_bill_no'] ?? null,
+            'order_no_from_invoice' => $row['order_no_from_invoice'],
+            'company_id' => $row['company_id'] !== null ? (int)$row['company_id'] : null,
+            'company_name' => $row['company_name'] ?? null,
+            'order_id' => $row['order_id'] !== null ? (int)$row['order_id'] : null,
+            'order_no' => $row['order_no'] ?? null,
+            'dispatch_id' => $row['dispatch_id'] !== null ? (int)$row['dispatch_id'] : null,
+            'mapping_status' => $status,
+            'is_mapped' => $status === 'mapped',
+            'mapping_label' => $status === 'mapped'
+                ? 'Mapped to order'
+                : ($status === 'error' ? 'Import error' : 'Dispatch not mapped to any order'),
+            'error_message' => $row['error_message'],
+            'uploaded_by_name' => $row['uploaded_by_name'] ?? null,
+            'created_at' => $row['created_at'] ?? null,
+            'updated_at' => $row['updated_at'] ?? null,
+        ];
+    }
+
+    private function busyDailyInvoicesTableExists(): bool
+    {
+        static $exists = null;
+        if ($exists !== null) {
+            return $exists;
+        }
+        $row = $this->database->fetch(
+            "SELECT COUNT(*) AS c FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = 'busy_daily_invoices'"
+        );
+        $exists = ((int)($row['c'] ?? 0)) > 0;
+        return $exists;
     }
 
     private function resolveCompanyId(array $data, ?int $defaultCompanyId): int
@@ -747,7 +951,6 @@ class BusyIntegrationService
 
     private function isValidDate(string $date): bool
     {
-        $d = \DateTime::createFromFormat('Y-m-d', $date);
-        return $d && $d->format('Y-m-d') === $date;
+        return \App\Support\IndianDate::isValid($date);
     }
 }

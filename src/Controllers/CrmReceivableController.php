@@ -7,6 +7,7 @@ use App\Services\ReceivablesImportService;
 use App\Repositories\CrmReceivableEntryRepository;
 use App\Repositories\PartyRepository;
 use App\Models\CrmReceivableEntry;
+use App\Support\IndianDate;
 
 class CrmReceivableController
 {
@@ -97,7 +98,7 @@ class CrmReceivableController
         $entryDate = !empty($input['entry_date']) ? (string)$input['entry_date'] : date('Y-m-d');
         if (!$this->isValidDate($entryDate)) {
             http_response_code(400);
-            echo json_encode(['error' => 'entry_date must be in YYYY-MM-DD format']);
+            echo json_encode(['error' => 'entry_date must be in DD/MM/YYYY or YYYY-MM-DD']);
             return;
         }
 
@@ -118,7 +119,7 @@ class CrmReceivableController
         $entry->partyId = $partyId;
         $entry->entryType = $type;
         $entry->amount = $amount;
-        $entry->entryDate = $entryDate;
+        $entry->entryDate = IndianDate::toStorage($entryDate);
         $entry->reference = $reference;
         $entry->description = $description;
         $entry->createdBy = $user ? (int)$user['id'] : null;
@@ -265,8 +266,7 @@ class CrmReceivableController
 
     private function isValidDate(string $date): bool
     {
-        $d = \DateTime::createFromFormat('Y-m-d', $date);
-        return $d && $d->format('Y-m-d') === $date;
+        return \App\Support\IndianDate::isValid($date);
     }
 
     private function respondServerError(string $message, \Throwable $e): void
