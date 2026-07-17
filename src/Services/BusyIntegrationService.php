@@ -141,6 +141,12 @@ class BusyIntegrationService
      */
     public function listDailyInvoices(array $filters): array
     {
+        if (!$this->busyDailyInvoicesTableExists()) {
+            throw new \RuntimeException(
+                'Daily invoices table is missing. Run: php scripts/migrate.php'
+            );
+        }
+
         $result = $this->busyDailyInvoiceRepository->findDaily($filters);
         $limit = isset($filters['limit']) ? (int)$filters['limit'] : count($result['rows']);
         $offset = isset($filters['offset']) ? (int)$filters['offset'] : 0;
