@@ -8,6 +8,8 @@ use App\Repositories\OrderRepository;
 use App\Repositories\CreditApprovalRepository;
 use App\Repositories\ScheduledDeliveryRepository;
 use App\Repositories\CompanyRepository;
+use App\Repositories\DispatchTransferRepository;
+use App\Repositories\CreditNoteRepository;
 use App\Support\CompanyContext;
 use App\Models\Dispatch;
 use App\Models\Order;
@@ -20,6 +22,8 @@ class DispatchService
     private CreditApprovalRepository $creditApprovalRepository;
     private ScheduledDeliveryRepository $scheduledDeliveryRepository;
     private CompanyRepository $companyRepository;
+    private DispatchTransferRepository $dispatchTransferRepository;
+    private CreditNoteRepository $creditNoteRepository;
     
     public function __construct()
     {
@@ -29,6 +33,8 @@ class DispatchService
         $this->creditApprovalRepository = new CreditApprovalRepository();
         $this->scheduledDeliveryRepository = new ScheduledDeliveryRepository();
         $this->companyRepository = new CompanyRepository();
+        $this->dispatchTransferRepository = new DispatchTransferRepository();
+        $this->creditNoteRepository = new CreditNoteRepository();
     }
     
     public function getDispatches(array $filters = []): array
@@ -224,9 +230,6 @@ class DispatchService
             throw new \Exception("Dispatch not found");
         }
 
-        if (($dispatch->status ?? 'active') !== 'active') {
-            throw new \Exception("Only active dispatches can be updated");
-        }
         $oldValues = $dispatch->toArray();
         
         // Get the order to validate constraints
@@ -235,8 +238,8 @@ class DispatchService
             throw new \Exception("Associated order not found");
         }
         
-        // If updating quantity, validate the new total doesn't exceed order quantity
-        if (isset($data['dispatch_qty_trucks'])) {
+        // If updating quantity on an active dispatch, validate the new total doesn't exceed order quantity
+        if (isset($data['dispatch_qty_trucks']) && ($dispatch->status ?? 'active') === 'active') {
             $newQty = $data['dispatch_qty_trucks'];
             $currentTotalWithoutThis = $order->totalDispatched - $dispatch->dispatchQtyTrucks;
             $newTotal = $currentTotalWithoutThis + $newQty;
@@ -331,17 +334,20 @@ class DispatchService
         
         try {
             $this->database->beginTransaction();
+
+            $affectedOrderIds = [$dispatch->orderId];
+            $this->unlinkTransferPeers($dispatch, $affectedOrderIds);
+            $this->purgeDispatchDependencies($id);
             
             // Log the deletion
             $this->logAuditEvent($_SESSION['user_id'] ?? null, 'dispatches', $id, 'DELETE', $dispatch->toArray(), null);
             
             $result = $this->dispatchRepository->delete($id);
-            
-            // Update order status after deletion
-            $this->updateOrderStatus($dispatch->orderId);
-            
-            // Adjust scheduled deliveries after deletion
-            $this->adjustScheduledDeliveries($dispatch->orderId);
+
+            foreach (array_unique($affectedOrderIds) as $orderId) {
+                $this->updateOrderStatus($orderId);
+                $this->adjustScheduledDeliveries($orderId);
+            }
             
             $this->database->commit();
             
@@ -350,6 +356,56 @@ class DispatchService
             $this->database->rollback();
             throw new \Exception("Failed to delete dispatch: " . $e->getMessage());
         }
+    }
+
+    /**
+     * Clear peer transfer links before deleting a dispatch (source or target of a transfer).
+     *
+     * @param list<int> $affectedOrderIds
+     */
+    private function unlinkTransferPeers(Dispatch $dispatch, array &$affectedOrderIds): void
+    {
+        // Source was transferred to another dispatch — clear the target's source link
+        if (!empty($dispatch->transferredToDispatchId)) {
+            $target = $this->dispatchRepository->findById((int)$dispatch->transferredToDispatchId);
+            if ($target) {
+                $this->dispatchRepository->updateLifecycle($target->id, ['source_dispatch_id' => null]);
+                $affectedOrderIds[] = $target->orderId;
+            }
+        }
+
+        // This dispatch was created by a transfer — restore the source to active
+        if (!empty($dispatch->sourceDispatchId)) {
+            $source = $this->dispatchRepository->findById((int)$dispatch->sourceDispatchId);
+            if ($source) {
+                $this->dispatchRepository->updateLifecycle($source->id, [
+                    'status' => 'active',
+                    'rejection_reason' => null,
+                    'transferred_to_dispatch_id' => null,
+                ]);
+                $affectedOrderIds[] = $source->orderId;
+            }
+        }
+    }
+
+    private function purgeDispatchDependencies(int $dispatchId): void
+    {
+        if ($this->tableExists('credit_notes')) {
+            $this->creditNoteRepository->deleteByDispatchId($dispatchId);
+        }
+        if ($this->tableExists('dispatch_transfers')) {
+            $this->dispatchTransferRepository->deleteByDispatchId($dispatchId);
+        }
+    }
+
+    private function tableExists(string $table): bool
+    {
+        $row = $this->database->fetch(
+            "SELECT COUNT(*) AS c FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = ?",
+            [$table]
+        );
+        return ((int)($row['c'] ?? 0)) > 0;
     }
     
     private function updateOrderStatus(int $orderId): void

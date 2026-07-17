@@ -1043,9 +1043,12 @@ function updateDispatchHistory(dispatches) {
                     ${isActive ? `<button type="button" class="btn btn-sm btn-outline-warning me-1" onclick="openRejectTransferModal(${dispatch.id})" title="Party rejected — transfer or credit note">
                         <i class="bi bi-arrow-left-right"></i>
                     </button>` : ''}
-                    ${isActive ? `<button type="button" class="btn btn-sm btn-outline-secondary" onclick="openWeightModal(${dispatch.id})" title="Enter weight from kanta parchi">
+                    <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="openWeightModal(${dispatch.id})" title="Edit weight / kanta parchi">
                         <i class="bi bi-scale"></i>
-                    </button>` : ''}
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteDispatch(${dispatch.id})" title="Delete dispatch">
+                        <i class="bi bi-trash"></i>
+                    </button>
                </td>`
             : '';
         return `
@@ -1064,6 +1067,26 @@ function updateDispatchHistory(dispatches) {
     }).join('');
     
     tbody.innerHTML = rows;
+}
+
+async function deleteDispatch(dispatchId) {
+    const dispatch = (currentOrder?.dispatches || []).find(d => Number(d.id) === Number(dispatchId));
+    if (!dispatch) return;
+
+    const status = dispatch.status || 'active';
+    const label = status === 'transferred' ? 'transferred' : (status === 'rejected' ? 'rejected' : '');
+    const msg = label
+        ? `Delete this ${label} dispatch (${dispatch.dispatch_qty_trucks} truck(s))?\n\nThis cannot be undone.`
+        : `Delete this dispatch (${dispatch.dispatch_qty_trucks} truck(s))?\n\nThis cannot be undone.`;
+    if (!confirm(msg)) return;
+
+    try {
+        await apiCall(`/api/dispatches/${dispatchId}`, { method: 'DELETE' });
+        showSuccess('Dispatch deleted.');
+        setTimeout(() => loadOrderDetails(), 400);
+    } catch (error) {
+        showError(error.message || 'Failed to delete dispatch');
+    }
 }
 
 async function openRejectTransferModal(dispatchId) {

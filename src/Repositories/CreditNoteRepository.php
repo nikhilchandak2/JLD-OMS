@@ -67,4 +67,12 @@ class CreditNoteRepository
             [$orderId, $orderId]
         );
     }
+
+    public function deleteByDispatchId(int $dispatchId): void
+    {
+        $this->database->execute(
+            'DELETE FROM credit_notes WHERE dispatch_id = ?',
+            [$dispatchId]
+        );
+    }
 }

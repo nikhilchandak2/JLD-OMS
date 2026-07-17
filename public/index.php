@@ -184,6 +184,7 @@ $router->group('/api', function($router) {
         $router->get('/dispatch/pending', 'DispatchController@pending');
         $router->get('/dispatches/{id}', 'DispatchController@show');
         $router->put('/dispatches/{id}', 'DispatchController@update');
+        $router->delete('/dispatches/{id}', 'DispatchController@delete');
         $router->post('/orders/{id}/dispatches', 'DispatchController@create');
 
         // Party credit status & credit requests (max 2 per party per month)

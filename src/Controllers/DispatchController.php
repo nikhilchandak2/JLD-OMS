@@ -357,11 +357,11 @@ class DispatchController
             return;
         }
         
-        // Check permissions
+        // Check permissions (same roles that can edit dispatches)
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasRole('admin')) {
+        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing', 'dispatch'])) {
             http_response_code(403);
-            echo json_encode(['error' => 'Admin access required']);
+            echo json_encode(['error' => 'Insufficient permissions']);
             return;
         }
         

@@ -164,4 +164,13 @@ class DispatchTransferRepository
             [$orderId, $orderId, $orderId, $orderId]
         );
     }
+
+    public function deleteByDispatchId(int $dispatchId): void
+    {
+        $this->database->execute(
+            'DELETE FROM dispatch_transfers
+             WHERE source_dispatch_id = ? OR target_dispatch_id = ?',
+            [$dispatchId, $dispatchId]
+        );
+    }
 }

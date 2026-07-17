@@ -280,6 +280,7 @@ function renderHistoryTable() {
         const isActive = (d.status || 'active') === 'active';
         const actions = canEditDispatch ? `<td class="text-end text-nowrap">
             ${isActive ? `<button type="button" class="btn btn-sm btn-outline-warning me-1" onclick="openRejectTransferModal(${d.id})" title="Party rejected — transfer or credit note"><i class="bi bi-arrow-left-right"></i></button>` : ''}
+            <button type="button" class="btn btn-sm btn-outline-danger me-1" onclick="deleteHistoryDispatch(${d.id}, ${d.dispatch_qty_trucks || 1}, '${escapeHtml(d.status || 'active')}')" title="Delete dispatch"><i class="bi bi-trash"></i></button>
             <a href="/orders/${d.order_id}" class="btn btn-sm btn-outline-primary" title="View order"><i class="bi bi-eye"></i></a>
         </td>` : '';
         return `<tr class="${!isActive ? 'table-secondary' : ''}">
@@ -296,6 +297,22 @@ function renderHistoryTable() {
             ${actions}
         </tr>`;
     }).join('');
+}
+
+async function deleteHistoryDispatch(dispatchId, trucks, status) {
+    const label = status === 'transferred' ? 'transferred' : (status === 'rejected' ? 'rejected' : '');
+    const msg = label
+        ? `Delete this ${label} dispatch (${trucks} truck(s))?\n\nThis cannot be undone.`
+        : `Delete this dispatch (${trucks} truck(s))?\n\nThis cannot be undone.`;
+    if (!confirm(msg)) return;
+
+    try {
+        await apiCall(`/api/dispatches/${dispatchId}`, { method: 'DELETE' });
+        showSuccess('Dispatch deleted.');
+        loadDispatchHistory();
+    } catch (error) {
+        showError(error.message || 'Failed to delete dispatch');
+    }
 }
 
 function updateHistoryPagination() {
