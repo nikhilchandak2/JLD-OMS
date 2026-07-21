@@ -10,7 +10,6 @@ class CsrfMiddleware
         if ($_SERVER['REQUEST_METHOD'] === 'GET' || 
             $_SERVER['REQUEST_URI'] === '/api/login' ||
             strpos($_SERVER['REQUEST_URI'], '/api/gps/webhook') === 0 ||
-            strpos($_SERVER['REQUEST_URI'], '/api/fuel/webhook') === 0 ||
             strpos($_SERVER['REQUEST_URI'], '/api/gps/batch') === 0 ||
             // Reminders runner endpoints are authenticated with a separate runner key (no browser session).
             strpos($_SERVER['REQUEST_URI'], '/api/reminders/jobs/next') === 0 ||

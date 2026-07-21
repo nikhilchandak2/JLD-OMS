@@ -1313,6 +1313,11 @@
         function showSuccess(message, containerId = 'success-container') {
             const container = document.getElementById(containerId);
             if (container) {
+                if (!message || String(message).trim() === '') {
+                    container.innerHTML = '';
+                    container.style.display = 'none';
+                    return;
+                }
                 const safeMessage = escapeHtml(message);
                 container.innerHTML = `
                     <div class="alert alert-success alert-dismissible fade show" role="alert">

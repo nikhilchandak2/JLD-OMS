@@ -58,14 +58,12 @@ $router->group('/api', function($router) {
     $router->post('/logout', 'AuthController@logout');
     $router->get('/session-status', 'AuthController@sessionStatus');
     
-    // GPS/Fuel Webhooks (public, no auth required)
+    // GPS Webhooks (public, no auth required) — fuel management uses monthly reports, not webhooks
     $router->post('/gps/webhook', 'GPSFuelWebhookController@receiveGPSData');
-    $router->post('/fuel/webhook', 'GPSFuelWebhookController@receiveFuelData');
     $router->post('/gps/batch', 'GPSFuelWebhookController@receiveGPSData'); // Batch endpoint
     // Providers (e.g. Ashok Leyland iAlert) probe the webhook URL with GET/HEAD before
     // enabling data forwarding; respond 200 so the endpoint validation passes.
     $router->get('/gps/webhook', 'GPSFuelWebhookController@webhookHealth');
-    $router->get('/fuel/webhook', 'GPSFuelWebhookController@webhookHealth');
     $router->get('/gps/batch', 'GPSFuelWebhookController@webhookHealth');
 
     // Reminders runner endpoints (public; authenticated using REMINDERS_RUNNER_KEY)
@@ -87,9 +85,6 @@ $router->group('/api', function($router) {
         
         // GPS Devices
         $router->get('/gps/devices', 'VehicleController@gpsDevices');
-        
-        // Fuel Sensors
-        $router->get('/fuel/sensors', 'VehicleController@fuelSensors');
         
         // Live Tracking
         $router->get('/tracking/live', 'TrackingController@live');
@@ -117,10 +112,11 @@ $router->group('/api', function($router) {
         $router->put('/geofences/{id}', 'GeofenceController@update');
         $router->delete('/geofences/{id}', 'GeofenceController@delete');
         
-        // Fuel Management
-        $router->get('/fuel/vehicles', 'FuelController@vehicles');
-        $router->get('/fuel/vehicle/{id}', 'FuelController@vehicleFuel');
-        $router->get('/fuel/alerts', 'FuelController@alerts');
+        // Fuel Management (monthly vendor reports — Kobelco / JCB / Dumpers)
+        $router->get('/fuel/categories', 'FuelController@categories');
+        $router->get('/fuel/machines', 'FuelController@machines');
+        $router->get('/fuel/machines/{id}/readings', 'FuelController@machineReadings');
+        $router->post('/fuel/reports/upload', 'FuelController@uploadReport');
         // Excavating machines & daily dumper assignments
         $router->get('/excavating-machines', 'DumperAssignmentController@listMachines');
         $router->put('/excavating-machines/{id}', 'DumperAssignmentController@updateMachine');

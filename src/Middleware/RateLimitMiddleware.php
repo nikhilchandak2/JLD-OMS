@@ -76,15 +76,15 @@ class RateLimitMiddleware
                 'max_requests' => $this->readIntEnv('RATE_LIMIT_GPS_WEBHOOK_MAX', 300, 1, 100000),
                 'window_seconds' => $this->readIntEnv('RATE_LIMIT_GPS_WEBHOOK_WINDOW_SECONDS', 60, 1, 86400),
             ],
-            'POST /api/fuel/webhook' => [
-                'key' => 'fuel_webhook',
-                'max_requests' => $this->readIntEnv('RATE_LIMIT_FUEL_WEBHOOK_MAX', 300, 1, 100000),
-                'window_seconds' => $this->readIntEnv('RATE_LIMIT_FUEL_WEBHOOK_WINDOW_SECONDS', 60, 1, 86400),
-            ],
             'POST /api/gps/batch' => [
                 'key' => 'gps_batch',
                 'max_requests' => $this->readIntEnv('RATE_LIMIT_GPS_BATCH_MAX', 120, 1, 100000),
                 'window_seconds' => $this->readIntEnv('RATE_LIMIT_GPS_BATCH_WINDOW_SECONDS', 60, 1, 86400),
+            ],
+            'POST /api/fuel/reports/upload' => [
+                'key' => 'fuel_report_upload',
+                'max_requests' => $this->readIntEnv('RATE_LIMIT_FUEL_UPLOAD_MAX', 20, 1, 1000),
+                'window_seconds' => $this->readIntEnv('RATE_LIMIT_FUEL_UPLOAD_WINDOW_SECONDS', 300, 10, 86400),
             ],
             'POST /api/crm/receivables/import' => [
                 'key' => 'receivables_import',

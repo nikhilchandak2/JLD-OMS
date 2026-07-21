@@ -10,6 +10,7 @@ composer.phar
 /storage/documents/
 /storage/export_documents/
 /storage/export_templates/
+/storage/fuel-reports/
 /storage/logs/
 
 # IDE

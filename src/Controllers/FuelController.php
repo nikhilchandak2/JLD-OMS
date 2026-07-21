@@ -3,184 +3,239 @@
 namespace App\Controllers;
 
 use App\Services\AuthService;
-use App\Core\Database;
-use App\Repositories\VehicleRepository;
-use App\Repositories\FuelReadingRepository;
-use App\Services\FuelAlertService;
-use App\Services\WheelsEyeApiService;
+use App\Services\FuelReportImportService;
+use App\Repositories\FuelReportRepository;
 
 class FuelController
 {
+    private const MAX_UPLOAD_BYTES = 15728640; // 15MB
+    private const ALLOWED_EXT = ['xlsx', 'xls', 'csv', 'pdf', 'ods'];
+
     private AuthService $authService;
-    private Database $database;
-    private VehicleRepository $vehicleRepository;
-    private FuelReadingRepository $fuelReadingRepository;
-    private FuelAlertService $fuelAlertService;
-    
+    private FuelReportRepository $repository;
+    private FuelReportImportService $importService;
+
     public function __construct()
     {
         $this->authService = new AuthService();
-        $this->database = new Database();
-        $this->vehicleRepository = new VehicleRepository();
-        $this->fuelReadingRepository = new FuelReadingRepository();
-        $this->fuelAlertService = new FuelAlertService();
+        $this->repository = new FuelReportRepository();
+        $this->importService = new FuelReportImportService($this->repository);
     }
-    
+
     /**
-     * Get all vehicles with fuel data
-     * GET /api/fuel/vehicles
+     * GET /api/fuel/categories — machine counts per category
      */
-    public function vehicles(): void
+    public function categories(): void
     {
         header('Content-Type: application/json');
-        
-        $user = $this->authService->getCurrentUser();
-        if (!$user) {
-            http_response_code(401);
-            echo json_encode(['error' => 'Unauthorized']);
+        if (!$this->requireFuelAccess()) {
             return;
         }
-        
-        try {
-            $syncResult = null;
-            if (isset($_GET['sync_now']) && (int)$_GET['sync_now'] === 1) {
-                $wheelsEye = new WheelsEyeApiService();
-                $syncResult = $wheelsEye->syncCurrentLocations();
-            }
 
-            $vehicles = $this->vehicleRepository->findAll(['status' => 'active']);
-            
-            $result = [];
-            foreach ($vehicles as $vehicle) {
-                $latestReading = $this->fuelReadingRepository->getLatestForVehicle($vehicle->id);
-                // Show vehicles that have a linked fuel sensor OR already have fuel readings.
-                if (!$vehicle->fuelSensorId && !$latestReading) {
-                    continue;
-                }
-                $alerts = $this->fuelAlertService->getUnresolvedAlerts($vehicle->id);
-                
-                $vehicleData = $vehicle->toArray();
-                $vehicleData['latest_fuel_reading'] = $latestReading ? $latestReading->toArray() : null;
-                $vehicleData['fuel_alerts'] = $alerts;
-                $result[] = $vehicleData;
-            }
-            
+        try {
             echo json_encode([
                 'success' => true,
-                'data' => $result,
-                'sync_result' => $syncResult
+                'data' => $this->repository->categoryCounts(),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            error_log('Fuel categories failed: ' . $e->getMessage());
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            echo json_encode(['error' => 'Failed to load categories']);
         }
     }
-    
+
     /**
-     * Get fuel data for a specific vehicle
-     * GET /api/fuel/vehicle/{id}
+     * GET /api/fuel/machines?category=kobelco|jcb|dumpers&month=YYYY-MM
      */
-    public function vehicleFuel(int $id): void
+    public function machines(): void
     {
         header('Content-Type: application/json');
-        
-        $user = $this->authService->getCurrentUser();
-        if (!$user) {
-            http_response_code(401);
-            echo json_encode(['error' => 'Unauthorized']);
+        if (!$this->requireFuelAccess()) {
             return;
         }
-        
+
+        $category = strtolower(trim((string)($_GET['category'] ?? '')));
+        if (!$this->isValidCategory($category)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'category must be kobelco, jcb, or dumpers']);
+            return;
+        }
+
+        $month = $this->normalizeMonth($_GET['month'] ?? null);
+
         try {
-            $vehicle = $this->vehicleRepository->findById($id);
-            if (!$vehicle) {
+            $machines = $this->repository->listMachinesWithStats($category, $month);
+            $uploads = $this->repository->findUploadsByCategory($category, 25);
+            $months = $this->repository->listMonthsForCategory($category);
+            $summary = $this->repository->categorySummary($category, $month);
+            echo json_encode([
+                'success' => true,
+                'category' => $category,
+                'month' => $month,
+                'months' => $months,
+                'summary' => $summary,
+                'data' => $machines,
+                'uploads' => $uploads,
+                'count' => count($machines),
+            ]);
+        } catch (\Throwable $e) {
+            error_log('Fuel machines failed: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to load machines']);
+        }
+    }
+
+    /**
+     * GET /api/fuel/machines/{id}/readings?month=YYYY-MM
+     */
+    public function machineReadings(string $id): void
+    {
+        header('Content-Type: application/json');
+        if (!$this->requireFuelAccess()) {
+            return;
+        }
+
+        $machineId = (int)$id;
+        if ($machineId <= 0) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid machine id']);
+            return;
+        }
+
+        $month = $this->normalizeMonth($_GET['month'] ?? null);
+
+        try {
+            $machine = $this->repository->findMachineById($machineId);
+            if (!$machine) {
                 http_response_code(404);
-                echo json_encode(['error' => 'Vehicle not found']);
+                echo json_encode(['error' => 'Machine not found']);
                 return;
             }
-            
-            $startDate = $_GET['start_date'] ?? date('Y-m-d 00:00:00', strtotime('-7 days'));
-            $endDate = $_GET['end_date'] ?? date('Y-m-d 23:59:59');
-            
-            $history = $this->fuelReadingRepository->getHistoryForVehicle($id, $startDate, $endDate);
-            $latestReading = $this->fuelReadingRepository->getLatestForVehicle($id);
-            $alerts = $this->fuelAlertService->getUnresolvedAlerts($id);
-            
-            // Calculate statistics
-            $stats = $this->calculateFuelStatistics($id, $startDate, $endDate);
-            
+
+            $months = $this->repository->listMonthsForMachine($machineId);
+            if ($month === null && $months !== []) {
+                $month = $months[0]; // latest month by default
+            }
+
+            $readings = $this->repository->getMachineDailyReadings($machineId, $month, 400);
             echo json_encode([
                 'success' => true,
-                'vehicle' => $vehicle->toArray(),
-                'latest_reading' => $latestReading ? $latestReading->toArray() : null,
-                'history' => array_map(fn($r) => $r->toArray(), $history),
-                'alerts' => $alerts,
-                'statistics' => $stats
+                'machine_id' => $machineId,
+                'machine' => $machine,
+                'month' => $month,
+                'months' => $months,
+                'data' => $readings,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            error_log('Fuel readings failed: ' . $e->getMessage());
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            echo json_encode(['error' => 'Failed to load readings']);
         }
     }
-    
+
     /**
-     * Get all fuel alerts
-     * GET /api/fuel/alerts
+     * POST /api/fuel/reports/upload  (multipart: file, category)
      */
-    public function alerts(): void
+    public function uploadReport(): void
     {
         header('Content-Type: application/json');
-        
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
+
+        if (!$this->requireFuelAccess()) {
+            return;
+        }
+
+        $user = $this->authService->getCurrentUser();
+        $category = strtolower(trim((string)($_POST['category'] ?? '')));
+        if (!$this->isValidCategory($category)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'category must be kobelco, jcb, or dumpers']);
+            return;
+        }
+
+        $file = $_FILES['file'] ?? null;
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            http_response_code(400);
+            echo json_encode(['error' => 'No file uploaded or upload error.']);
+            return;
+        }
+
+        $ext = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, self::ALLOWED_EXT, true)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Only Excel (.xlsx/.xls), CSV, or PDF files are allowed.']);
+            return;
+        }
+
+        $size = (int)($file['size'] ?? 0);
+        if ($size <= 0 || $size > self::MAX_UPLOAD_BYTES) {
+            http_response_code(400);
+            echo json_encode(['error' => 'File must be between 1 byte and 15MB']);
+            return;
+        }
+
+        $tmpName = (string)($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid uploaded file']);
+            return;
+        }
+
+        try {
+            $result = $this->importService->import(
+                $category,
+                $tmpName,
+                (string)$file['name'],
+                $ext,
+                isset($user['id']) ? (int)$user['id'] : null
+            );
+
+            if (!$result['success']) {
+                http_response_code(422);
+            }
+
+            echo json_encode($result);
+        } catch (\Throwable $e) {
+            error_log('Fuel report upload failed: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to import fuel report']);
+        }
+    }
+
+    private function requireFuelAccess(): bool
+    {
         $user = $this->authService->getCurrentUser();
         if (!$user) {
             http_response_code(401);
             echo json_encode(['error' => 'Unauthorized']);
-            return;
+            return false;
         }
-        
-        try {
-            $sql = "
-                SELECT fa.*, v.vehicle_number
-                FROM fuel_alerts fa
-                JOIN vehicles v ON fa.vehicle_id = v.id
-                WHERE fa.is_resolved = 0
-                ORDER BY fa.created_at DESC
-            ";
-            
-            $alerts = $this->database->fetchAll($sql);
-            
-            echo json_encode([
-                'success' => true,
-                'data' => $alerts
-            ]);
-        } catch (\Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+        if (!$this->authService->hasAnyRole(['admin', 'operator'])) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Access denied']);
+            return false;
         }
+        return true;
     }
-    
-    private function calculateFuelStatistics(int $vehicleId, string $startDate, string $endDate): array
+
+    private function isValidCategory(string $category): bool
     {
-        $sql = "
-            SELECT 
-                MIN(fuel_level) as min_fuel,
-                MAX(fuel_level) as max_fuel,
-                AVG(fuel_level) as avg_fuel,
-                COUNT(*) as reading_count,
-                (MAX(fuel_level) - MIN(fuel_level)) as total_consumed
-            FROM fuel_reading_data
-            WHERE vehicle_id = ?
-            AND timestamp BETWEEN ? AND ?
-        ";
-        
-        $result = $this->database->fetch($sql, [$vehicleId, $startDate, $endDate]);
-        
-        return $result ?? [
-            'min_fuel' => 0,
-            'max_fuel' => 0,
-            'avg_fuel' => 0,
-            'reading_count' => 0,
-            'total_consumed' => 0
-        ];
+        return in_array($category, ['kobelco', 'jcb', 'dumpers'], true);
+    }
+
+    private function normalizeMonth(mixed $value): ?string
+    {
+        $month = strtolower(trim((string)($value ?? '')));
+        if ($month === '' || $month === 'all') {
+            return null;
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return null;
+        }
+        return $month;
     }
 }
