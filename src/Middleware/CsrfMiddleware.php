@@ -24,17 +24,15 @@ class CsrfMiddleware
         }
         
         // Check CSRF token for POST/PUT/DELETE requests
-        $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+        $token = $_POST['csrf_token']
+            ?? $_SERVER['HTTP_X_CSRF_TOKEN']
+            ?? $_SERVER['HTTP_X_CSRFTOKEN']
+            ?? null;
         
         if (!$token || !hash_equals($_SESSION['csrf_token'], $token)) {
             http_response_code(403);
-            
-            if ($this->isApiRequest()) {
-                echo json_encode(['error' => 'CSRF token mismatch']);
-            } else {
-                echo 'CSRF token mismatch';
-            }
-            
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'CSRF token mismatch. Refresh the page and try again.']);
             return false;
         }
         
@@ -43,8 +41,9 @@ class CsrfMiddleware
     
     private function isApiRequest(): bool
     {
-        return strpos($_SERVER['REQUEST_URI'], '/api/') === 0 ||
-               (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
+        $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+        return str_contains($uri, '/api/') ||
+               (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'));
     }
     
     public static function getToken(): string

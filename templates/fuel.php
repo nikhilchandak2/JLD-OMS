@@ -601,6 +601,9 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
     formData.append('category', category);
+    if (typeof csrfToken !== 'undefined' && csrfToken) {
+        formData.append('csrf_token', csrfToken);
+    }
 
     try {
         const response = await fetch('/api/fuel/reports/upload', {
@@ -608,14 +611,30 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
             headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' },
             body: formData
         });
-        const data = await response.json();
+        const raw = await response.text();
+        let data = {};
+        try {
+            data = raw ? JSON.parse(raw) : {};
+        } catch (parseErr) {
+            resultEl.style.display = 'block';
+            resultEl.className = 'small text-danger';
+            resultEl.innerHTML = '<strong>Upload failed</strong> (HTTP ' + response.status + '). ' +
+                'Server did not return JSON. ' + escapeHtml((raw || '').replace(/\s+/g, ' ').slice(0, 180));
+            btn.disabled = false;
+            return;
+        }
 
         resultEl.style.display = 'block';
         if (!response.ok || data.success === false) {
-            const errs = (data.errors && data.errors.length) ? data.errors : [data.error || 'Import failed'];
+            const errs = (data.errors && data.errors.length)
+                ? data.errors
+                : [data.error || data.detail || ('Import failed (HTTP ' + response.status + ')')];
             resultEl.className = 'small text-danger';
             resultEl.innerHTML = '<strong>Could not import:</strong><ul class="mb-0">' +
                 errs.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul>';
+            if (data.detail && data.error && data.detail !== data.error) {
+                resultEl.innerHTML += '<p class="mt-2 mb-0 text-muted">' + escapeHtml(data.detail) + '</p>';
+            }
             btn.disabled = false;
             return;
         }
@@ -639,7 +658,7 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
     } catch (err) {
         resultEl.style.display = 'block';
         resultEl.className = 'small text-danger';
-        resultEl.textContent = 'Upload failed: ' + err.message;
+        resultEl.textContent = 'Upload failed: ' + (err && err.message ? err.message : String(err));
         btn.disabled = false;
     }
 });

@@ -32,9 +32,9 @@ class AuthMiddleware
     
     private function isApiRequest(): bool
     {
-        return strpos($_SERVER['REQUEST_URI'], '/api/') === 0 ||
-               (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
+        $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+        return str_contains($uri, '/api/') ||
+               (isset($_SERVER['HTTP_ACCEPT']) && str_contains((string)$_SERVER['HTTP_ACCEPT'], 'application/json'));
     }
 }
-
 

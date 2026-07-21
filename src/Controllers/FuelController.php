@@ -33,6 +33,7 @@ class FuelController
         }
 
         try {
+            $this->repository->ensureSchema();
             echo json_encode([
                 'success' => true,
                 'data' => $this->repository->categoryCounts(),
@@ -64,6 +65,7 @@ class FuelController
         $month = $this->normalizeMonth($_GET['month'] ?? null);
 
         try {
+            $this->repository->ensureSchema();
             $machines = $this->repository->listMachinesWithStats($category, $month);
             $uploads = $this->repository->findUploadsByCategory($category, 25);
             $months = $this->repository->listMonthsForCategory($category);
@@ -149,6 +151,27 @@ class FuelController
             return;
         }
 
+        try {
+            $this->repository->ensureSchema();
+        } catch (\Throwable $e) {
+            error_log('Fuel schema ensure failed: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode([
+                'error' => 'Fuel tables are missing. Run database migration 040_fuel_monthly_reports.sql on the server.',
+                'detail' => $e->getMessage(),
+            ]);
+            return;
+        }
+
+        $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+        if ($contentLength > 0 && empty($_POST) && empty($_FILES)) {
+            http_response_code(400);
+            echo json_encode([
+                'error' => 'Upload was rejected by the server (file too large for PHP post_max_size / upload_max_filesize). Try a smaller file or raise those limits.',
+            ]);
+            return;
+        }
+
         $user = $this->authService->getCurrentUser();
         $category = strtolower(trim((string)($_POST['category'] ?? '')));
         if (!$this->isValidCategory($category)) {
@@ -158,9 +181,16 @@ class FuelController
         }
 
         $file = $_FILES['file'] ?? null;
-        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        if (!$file) {
             http_response_code(400);
-            echo json_encode(['error' => 'No file uploaded or upload error.']);
+            echo json_encode(['error' => 'No file uploaded.']);
+            return;
+        }
+
+        $uploadError = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($uploadError !== UPLOAD_ERR_OK) {
+            http_response_code(400);
+            echo json_encode(['error' => $this->uploadErrorMessage($uploadError)]);
             return;
         }
 
@@ -179,7 +209,13 @@ class FuelController
         }
 
         $tmpName = (string)($file['tmp_name'] ?? '');
-        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+        if ($tmpName === '' || !is_readable($tmpName)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid uploaded file']);
+            return;
+        }
+        // Prefer is_uploaded_file, but some hosts move temp files; accept readable temp path.
+        if (is_uploaded_file($tmpName) === false && !is_file($tmpName)) {
             http_response_code(400);
             echo json_encode(['error' => 'Invalid uploaded file']);
             return;
@@ -202,8 +238,29 @@ class FuelController
         } catch (\Throwable $e) {
             error_log('Fuel report upload failed: ' . $e->getMessage());
             http_response_code(500);
-            echo json_encode(['error' => 'Failed to import fuel report']);
+            $msg = $e->getMessage();
+            $hint = 'Failed to import fuel report';
+            if (stripos($msg, 'fuel_') !== false || stripos($msg, "doesn't exist") !== false || stripos($msg, 'exist') !== false) {
+                $hint = 'Fuel database tables are missing. Run migration 040_fuel_monthly_reports.sql on the server.';
+            }
+            echo json_encode([
+                'error' => $hint,
+                'detail' => $msg,
+            ]);
         }
+    }
+
+    private function uploadErrorMessage(int $code): string
+    {
+        return match ($code) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'File is larger than the server upload limit.',
+            UPLOAD_ERR_PARTIAL => 'File was only partially uploaded. Please try again.',
+            UPLOAD_ERR_NO_FILE => 'No file uploaded.',
+            UPLOAD_ERR_NO_TMP_DIR => 'Server temp folder is missing.',
+            UPLOAD_ERR_CANT_WRITE => 'Server could not write the uploaded file.',
+            UPLOAD_ERR_EXTENSION => 'A PHP extension blocked the upload.',
+            default => 'Upload error (code ' . $code . ').',
+        };
     }
 
     private function requireFuelAccess(): bool

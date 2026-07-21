@@ -7,10 +7,85 @@ use App\Core\Database;
 class FuelReportRepository
 {
     private Database $database;
+    private static bool $schemaReady = false;
 
     public function __construct()
     {
         $this->database = new Database();
+    }
+
+    /**
+     * Create fuel report tables if missing (safe for portals that skip migrate.php).
+     */
+    public function ensureSchema(): void
+    {
+        if (self::$schemaReady) {
+            return;
+        }
+
+        try {
+            $row = $this->database->fetch(
+                "SELECT COUNT(*) AS c
+                 FROM information_schema.tables
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'fuel_report_uploads'"
+            );
+            if ((int)($row['c'] ?? 0) > 0) {
+                self::$schemaReady = true;
+                return;
+            }
+        } catch (\Throwable $e) {
+            // Fall through and try CREATE TABLE
+        }
+
+        $statements = [
+            "CREATE TABLE IF NOT EXISTS fuel_report_uploads (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              category ENUM('kobelco', 'jcb', 'dumpers') NOT NULL,
+              original_filename VARCHAR(255) NOT NULL,
+              file_type VARCHAR(20) NOT NULL,
+              stored_path VARCHAR(500) NULL,
+              report_month DATE NULL,
+              uploaded_by INT NULL,
+              machines_found INT NOT NULL DEFAULT 0,
+              readings_saved INT NOT NULL DEFAULT 0,
+              parse_notes TEXT NULL,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_fuel_uploads_category (category),
+              INDEX idx_fuel_uploads_month (report_month)
+            )",
+            "CREATE TABLE IF NOT EXISTS fuel_machines (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              category ENUM('kobelco', 'jcb', 'dumpers') NOT NULL,
+              name VARCHAR(255) NULL,
+              serial_no VARCHAR(120) NULL,
+              chassis_no VARCHAR(120) NULL,
+              identity_key VARCHAR(255) NOT NULL,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY uq_fuel_machine_identity (category, identity_key),
+              INDEX idx_fuel_machines_category (category)
+            )",
+            "CREATE TABLE IF NOT EXISTS fuel_daily_readings (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              machine_id INT NOT NULL,
+              upload_id INT NULL,
+              reading_date DATE NULL,
+              fuel_consumed_liters DECIMAL(12, 2) NULL,
+              working_hours DECIMAL(10, 2) NULL,
+              average_usage DECIMAL(12, 4) NULL,
+              extra_json JSON NULL,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_fuel_readings_machine (machine_id),
+              INDEX idx_fuel_readings_date (reading_date),
+              INDEX idx_fuel_readings_upload (upload_id)
+            )",
+        ];
+
+        foreach ($statements as $sql) {
+            $this->database->getConnection()->exec($sql);
+        }
+        self::$schemaReady = true;
     }
 
     public function createUpload(
