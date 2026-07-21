@@ -28,13 +28,14 @@
                 <i class="bi bi-calendar3 me-2"></i>Daily Busy Dispatches
             </h1>
             <p class="page-subtitle">
-                All invoices from the daily Busy CSV upload — including ones not mapped to a portal order
+                Read-only view of invoices from Dispatch upload — including ones not mapped to a portal order.
+                Upload once on the <a href="/dispatch">Dispatch Dashboard</a>.
             </p>
         </div>
         <div class="d-flex gap-2">
-            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#busyUploadModal">
-                <i class="bi bi-upload me-1"></i> Upload CSV
-            </button>
+            <a href="/dispatch" class="btn btn-outline-primary">
+                <i class="bi bi-upload me-1"></i> Go to Dispatch Upload
+            </a>
             <button type="button" class="btn btn-primary" onclick="loadDailyBusyDispatches(true)">
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
@@ -143,42 +144,6 @@
     </div>
 </div>
 
-<!-- Busy Invoice Upload (same as Dispatch Dashboard) -->
-<div class="modal fade" id="busyUploadModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Upload Busy Supply Outward CSV</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="busyUploadForm">
-                <div class="modal-body">
-                    <p class="text-muted mb-2">
-                        Upload the day’s Busy Supply Outward Register CSV (or tax invoice PDF).
-                        Every invoice is listed here — including ones not mapped to a portal order.
-                    </p>
-                    <div class="alert alert-info py-2 small">
-                        <strong>CSV columns:</strong>
-                        Party Name, Date, Rawana No, Truck No., Invoice, Item, Item Rate, Qty (MT), MC Name.
-                    </div>
-                    <div class="mb-3">
-                        <label for="busyInvoiceFile" class="form-label">Invoice file (PDF or CSV) <span class="text-danger">*</span></label>
-                        <input type="file" class="form-control" id="busyInvoiceFile" name="file" accept=".pdf,.csv,text/csv,application/pdf" required>
-                    </div>
-                    <div id="busyUploadResult" class="d-none"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary" id="busyUploadBtn">
-                        <span class="spinner-border spinner-border-sm d-none" id="busyUploadSpinner"></span>
-                        Import &amp; Update Dispatches
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <script>
 const dailyPageSize = 50;
 let dailyPage = 0;
@@ -252,7 +217,8 @@ function renderDailyTable() {
     const tbody = document.querySelector('#dailyBusyTable tbody');
     if (!dailyRows.length) {
         tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted p-4">
-            No Busy invoices for this date. Click <strong>Upload CSV</strong> to import the day’s register.
+            No Busy invoices for this date.
+            Upload the day’s CSV once from the <a href="/dispatch">Dispatch Dashboard</a>, then refresh here.
         </td></tr>`;
         return;
     }
@@ -298,84 +264,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('filterSearch').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') loadDailyBusyDispatches(true);
     });
-
-    document.getElementById('busyUploadForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const fileInput = document.getElementById('busyInvoiceFile');
-        const submitBtn = document.getElementById('busyUploadBtn');
-        const spinner = document.getElementById('busyUploadSpinner');
-        const resultBox = document.getElementById('busyUploadResult');
-
-        if (!fileInput.files || !fileInput.files[0]) {
-            showError('Please select a Busy invoice PDF or CSV file.');
-            return;
-        }
-
-        submitBtn.disabled = true;
-        spinner.classList.remove('d-none');
-        resultBox.classList.add('d-none');
-        showError('');
-
-        try {
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-            formData.append('csrf_token', typeof csrfToken !== 'undefined' ? csrfToken : '');
-
-            const response = await fetch('/api/busy/invoices/upload', {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin',
-                headers: {
-                    'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : ''
-                }
-            });
-
-            const data = await response.json();
-            if (!response.ok) {
-                const details = Array.isArray(data.details) ? data.details : [];
-                if (details.length > 0) {
-                    resultBox.className = 'alert alert-danger';
-                    resultBox.innerHTML = `<strong>${escapeHtml(data.error || 'Upload failed')}</strong><ul class="mb-0 mt-2">${details.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`;
-                    resultBox.classList.remove('d-none');
-                    return;
-                }
-                throw new Error(data.error || data.message || 'Upload failed');
-            }
-
-            const details = (data.data?.details || []).map(row => {
-                if (row.status === 'success') {
-                    const orderLink = row.order_id
-                        ? `<a href="/orders/${row.order_id}" class="ms-1">View order</a>`
-                        : '';
-                    return `<li class="text-success">${escapeHtml(row.invoice_no)} → Order ${escapeHtml(row.order_no)} (${row.action})${orderLink}</li>`;
-                }
-                if (row.status === 'unmapped') {
-                    return `<li class="text-warning">${escapeHtml(row.invoice_no)}: Dispatch not mapped to any order</li>`;
-                }
-                return `<li class="text-danger">${escapeHtml(row.invoice_no)}: ${escapeHtml(row.error || 'Failed')}</li>`;
-            }).join('');
-
-            const hasIssues = (data.data?.failed > 0) || (data.data?.unmapped > 0);
-            resultBox.className = 'alert ' + (hasIssues ? 'alert-warning' : 'alert-success');
-            resultBox.innerHTML = `<strong>${escapeHtml(data.message || 'Done')}</strong><ul class="mb-0 mt-2">${details}</ul>`;
-            resultBox.classList.remove('d-none');
-
-            // Prefer invoice date from first imported row when available
-            const firstDate = (data.data?.details || []).find(r => r.invoice_date)?.invoice_date;
-            if (firstDate && /^\d{4}-\d{2}-\d{2}$/.test(firstDate)) {
-                document.getElementById('filterDate').value = firstDate;
-            }
-
-            showSuccess(data.message || 'Invoices imported.');
-            await loadDailyBusyDispatches(true);
-        } catch (error) {
-            showError(error.message);
-        } finally {
-            submitBtn.disabled = false;
-            spinner.classList.add('d-none');
-        }
-    });
-
     loadDailyBusyDispatches(true);
 });
 </script>

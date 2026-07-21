@@ -203,8 +203,9 @@
                         <strong>PDF:</strong> Busy tax invoice — party, weight, rate ₹/MT, vehicle no.<br>
                         <strong>CSV (Supply Outward Register):</strong>
                         Party Name, Date, Rawana No, Truck No., Invoice, Item, Item Rate, Qty (MT), MC Name.<br>
-                        Each row = one truck. Qty is loading weight in MT. Unmapped invoices appear on
-                        <a href="/dispatch/daily">Daily Busy Dispatches</a>.
+                        Each row = one truck. Qty is loading weight in MT.<br>
+                        One upload updates dispatches <strong>and</strong>
+                        <a href="/dispatch/daily">Daily Busy Dispatches</a> (mapped + unmapped).
                     </div>
                     <div class="mb-3">
                         <label for="busyInvoiceFile" class="form-label">Invoice file (PDF or CSV) <span class="text-danger">*</span></label>
