@@ -146,6 +146,13 @@ $router->group('/api', function($router) {
         $router->post('/reminders/jobs', 'RemindersJobsController@create');
         $router->get('/reminders/jobs/{id}', 'RemindersJobsController@status');
         $router->post('/reminders/jobs/{id}/cancel', 'RemindersJobsController@cancel');
+
+        // TDS (Accounts) – Busy outward vouchers price-slab classification
+        $router->get('/tds/uploads', 'TdsController@uploads');
+        $router->get('/tds/uploads/{id}', 'TdsController@show');
+        $router->get('/tds/uploads/{id}/export', 'TdsController@export');
+        $router->post('/tds/upload', 'TdsController@upload');
+        $router->delete('/tds/uploads/{id}', 'TdsController@delete');
         
         // Product management API
         $router->get('/products', 'ProductController@index');
@@ -287,6 +294,7 @@ $router->get('/admin/parties', 'WebController@parties');
 $router->get('/admin/products', 'WebController@products');
 $router->get('/admin/products/import', 'WebController@productsImport');
 $router->get('/admin/reminders', 'WebController@reminders');
+$router->get('/admin/tds', 'WebController@tds');
 $router->get('/admin/bills/import', 'WebController@adminImportBills');
 $router->get('/analytics/orders', 'WebController@analyticsOrders');
 $router->get('/analytics/dispatches', 'WebController@analyticsDispatches');

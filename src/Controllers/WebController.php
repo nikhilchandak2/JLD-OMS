@@ -610,6 +610,24 @@ class WebController
     }
 
     /**
+     * TDS classification – Busy outward vouchers by Price slab / Material Centre. Accounts + admin.
+     */
+    public function tds(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'accounts'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Admin or Accounts access required']);
+            return;
+        }
+        $this->renderTemplate('admin/tds', [
+            'title' => 'TDS',
+            'user' => $this->authService->getCurrentUser(),
+            'csrf_token' => CsrfMiddleware::getToken(),
+        ]);
+    }
+
+    /**
      * Email & WhatsApp reminders – runs external Python script. Accounts + admin only.
      */
     public function reminders(): void

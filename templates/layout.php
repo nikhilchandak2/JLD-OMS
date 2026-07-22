@@ -1224,6 +1224,7 @@
                             <?php endif; ?>
                             <?php if (in_array($r, ['admin', 'accounts'])): ?>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/reminders') === 0 ? 'active' : '' ?>" href="/admin/reminders"><i class="bi bi-envelope-check"></i> Reminders</a></li>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/admin/tds') === 0 ? 'active' : '' ?>" href="/admin/tds"><i class="bi bi-calculator"></i> TDS</a></li>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/bills/import') === 0 ? 'active' : '' ?>" href="/admin/bills/import"><i class="bi bi-upload"></i> Import Bills (Busy)</a></li>
                             <?php endif; ?>
                             <?php if ($r === 'admin'): ?>
