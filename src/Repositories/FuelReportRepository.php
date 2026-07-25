@@ -32,6 +32,7 @@ class FuelReportRepository
             );
             if ((int)($row['c'] ?? 0) > 0) {
                 self::$schemaReady = true;
+                $this->syncKnownKobelcoNames();
                 return;
             }
         } catch (\Throwable $e) {
@@ -86,6 +87,24 @@ class FuelReportRepository
             $this->database->getConnection()->exec($sql);
         }
         self::$schemaReady = true;
+        $this->syncKnownKobelcoNames();
+    }
+
+    /** Apply fixed site names for known Kobelco serial numbers. */
+    public function syncKnownKobelcoNames(): void
+    {
+        foreach (\App\Services\FuelReportImportService::KOBELCO_MACHINE_NAMES as $serial => $label) {
+            $display = \App\Services\FuelReportImportService::kobelcoDisplayName($serial);
+            if ($display === null) {
+                continue;
+            }
+            $this->database->execute(
+                "UPDATE fuel_machines
+                 SET name = ?, updated_at = NOW()
+                 WHERE category = 'kobelco' AND UPPER(TRIM(serial_no)) = ?",
+                [$display, strtoupper($serial)]
+            );
+        }
     }
 
     public function createUpload(
@@ -363,7 +382,7 @@ class FuelReportRepository
             $params[] = $month;
         }
 
-        return $this->database->fetchAll(
+        $rows = $this->database->fetchAll(
             "SELECT *
              FROM fuel_daily_readings
              WHERE machine_id = ?{$monthSql}
@@ -371,6 +390,101 @@ class FuelReportRepository
              LIMIT {$limit}",
             $params
         );
+
+        return $this->hydrateReadingExtras($rows);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @return list<array<string, mixed>>
+     */
+    public function hydrateReadingExtras(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $extra = [];
+            if (!empty($row['extra_json'])) {
+                $decoded = json_decode((string)$row['extra_json'], true);
+                if (is_array($decoded)) {
+                    $extra = $decoded;
+                }
+            }
+            $row['extra'] = $extra;
+            $vendor = strtolower((string)($extra['vendor'] ?? ''));
+            $row['working_hrs_display'] = isset($extra['working_hrs_display'])
+                ? $this->formatMax2Decimals((string)$extra['working_hrs_display'])
+                : ($vendor === 'jcb'
+                    ? $this->formatMax2Decimals(isset($row['working_hours']) ? (string)$row['working_hours'] : null)
+                    : $this->decimalHoursToHhmm(isset($row['working_hours']) ? (float)$row['working_hours'] : null));
+            $row['fuel_display'] = isset($extra['fuel_display'])
+                ? $this->formatMax2Decimals((string)$extra['fuel_display'])
+                : $this->formatFuelDisplay(isset($row['fuel_consumed_liters']) ? (float)$row['fuel_consumed_liters'] : null);
+            $row['avg_display'] = isset($extra['avg_display'])
+                ? $this->formatMax2Decimals((string)$extra['avg_display'])
+                : $this->formatAvgDisplay(isset($row['average_usage']) ? (float)$row['average_usage'] : null);
+            $row['engine_on_display'] = isset($extra['engine_on_display'])
+                ? $this->formatMax2Decimals((string)$extra['engine_on_display'])
+                : null;
+            $row['idle_display'] = isset($extra['idle_display'])
+                ? $this->formatMax2Decimals((string)$extra['idle_display'])
+                : null;
+            $row['distance_display'] = isset($extra['distance_display'])
+                ? $this->formatMax2Decimals((string)$extra['distance_display'])
+                : null;
+            $row['vendor'] = $vendor !== '' ? $vendor : null;
+        }
+        unset($row);
+        return $rows;
+    }
+
+    private function decimalHoursToHhmm(?float $hours): ?string
+    {
+        if ($hours === null || !is_finite($hours)) {
+            return null;
+        }
+        $totalMinutes = (int)round($hours * 60);
+        $h = intdiv($totalMinutes, 60);
+        $m = $totalMinutes % 60;
+        return sprintf('%d:%02d', $h, $m);
+    }
+
+    private function formatFuelDisplay(?float $liters): ?string
+    {
+        if ($liters === null || !is_finite($liters)) {
+            return null;
+        }
+        return $this->formatMax2Decimals((string)$liters) . ' L';
+    }
+
+    private function formatAvgDisplay(?float $avg): ?string
+    {
+        if ($avg === null || !is_finite($avg)) {
+            return null;
+        }
+        return $this->formatMax2Decimals((string)$avg) . ' L/h';
+    }
+
+    /** Round numeric prefix to max 2 decimals; keep HH:MM and unit suffixes. */
+    private function formatMax2Decimals(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        if (preg_match('/^\d{1,4}:\d{2}$/', $value)) {
+            return $value;
+        }
+        if (preg_match('/^(-?\d+(?:\.\d+)?)(.*)$/', $value, $m)) {
+            $num = round((float)$m[1], 2);
+            $formatted = rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
+            if ($formatted === '' || $formatted === '-') {
+                $formatted = '0';
+            }
+            return $formatted . ($m[2] ?? '');
+        }
+        return $value;
     }
 
     public function findMachineById(int $id): ?array

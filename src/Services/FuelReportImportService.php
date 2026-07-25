@@ -14,9 +14,32 @@ use Smalot\PdfParser\Parser as PdfParser;
  *
  * Known vendor layouts:
  * - Kobelco EquipOperationReport / MONTHLY WORKING REPORT (.xls)
+ * - JCB DI_*_Report (.xlsx)
  */
 class FuelReportImportService
 {
+    /** Friendly site names keyed by Kobelco serial number. */
+    public const KOBELCO_MACHINE_NAMES = [
+        'YQ15514877' => '8 No. Machine',
+        'YQ15515180' => 'Bikaner Silica',
+        'YC14-B1156' => '5 No. Machine',
+        'YC14505319' => '6 No. Machine',
+    ];
+
+    /**
+     * Full display label including serial, e.g. "8 No. Machine (Serial No. YQ15514877)".
+     */
+    public static function kobelcoDisplayName(string $serial): ?string
+    {
+        $serialKey = strtoupper(trim($serial));
+        foreach (self::KOBELCO_MACHINE_NAMES as $key => $label) {
+            if (strtoupper($key) === $serialKey) {
+                return $label . ' (Serial No. ' . $key . ')';
+            }
+        }
+        return null;
+    }
+
     private const NAME_HEADERS = [
         'machine name', 'machine', 'equipment', 'equipment name', 'unit name',
         'vehicle name', 'vehicle', 'name', 'model', 'asset name', 'plant',
@@ -92,6 +115,10 @@ class FuelReportImportService
                 if ($category === 'kobelco') {
                     $mapped = $this->parseKobelcoEquipOperationReport($tmpPath);
                 }
+                // JCB DI_*_Report.xlsx — Asset ID / TxnTime Slot daily telemetry
+                if ($mapped['rows'] === [] && $category === 'jcb') {
+                    $mapped = $this->parseJcbDiReport($tmpPath);
+                }
                 if ($mapped['rows'] === []) {
                     $rows = $this->parseSpreadsheet($tmpPath);
                     if ($rows !== []) {
@@ -120,7 +147,8 @@ class FuelReportImportService
                 : '';
             return $this->fail([
                 'Could not map report columns to JLD format (machine + fuel/hours).' . $hint
-                . ' For Kobelco, upload the EquipOperationReport / MONTHLY WORKING REPORT .xls file.',
+                . ' For Kobelco use EquipOperationReport .xls; for JCB use DI_*_Report .xlsx '
+                . '(Asset ID, TxnTime Slot, FuelUsedInWorking, Working Time, etc.).',
             ], $mapped['headers']);
         }
 
@@ -249,9 +277,9 @@ class FuelReportImportService
         $periodEnd = $this->sheetCell($sheet, 'AD9');
         $year = $this->extractYear($periodStart) ?? $this->extractYear($periodEnd) ?? (int)date('Y');
 
-        $name = $model !== '' ? $model : ($serial !== '' ? 'Kobelco ' . $serial : 'Kobelco');
+        $name = $this->resolveKobelcoMachineName($serial, $model);
         if ($customer !== '') {
-            // keep model as primary machine name; customer goes in extra
+            // customer goes in extra
         }
 
         $headerRow = $this->findRowContaining($sheet, 'Total Fuel Consump', 1, 40);
@@ -287,6 +315,8 @@ class FuelReportImportService
             $fuelLevelRaw = $this->sheetCell($sheet, $colFuelLevel . $r);
             $totalFuelRaw = $sheet->getCell($colTotalFuel . $r)->getCalculatedValue();
             $avgFuelRaw = $sheet->getCell($colAvgFuel . $r)->getCalculatedValue();
+            $fuelDisplay = $this->sheetCell($sheet, $colTotalFuel . $r);
+            $avgDisplay = $this->sheetCell($sheet, $colAvgFuel . $r);
 
             $workingHours = $this->hhmmToDecimalHours($workingRaw);
             $fuelLiters = is_numeric($totalFuelRaw) ? (float)$totalFuelRaw : $this->toFloat((string)$totalFuelRaw);
@@ -310,6 +340,8 @@ class FuelReportImportService
                     'hour_meter' => $hourMeterRaw !== '' ? $hourMeterRaw : null,
                     'fuel_level' => $fuelLevelRaw !== '' ? $fuelLevelRaw : null,
                     'working_hrs_display' => $workingRaw !== '' ? $workingRaw : null,
+                    'fuel_display' => $fuelDisplay !== '' ? $fuelDisplay : null,
+                    'avg_display' => $avgDisplay !== '' ? $avgDisplay : null,
                     'period_start' => $periodStart !== '' ? $periodStart : null,
                     'period_end' => $periodEnd !== '' ? $periodEnd : null,
                 ], static fn($v) => $v !== null),
@@ -409,6 +441,233 @@ class FuelReportImportService
             return (int)$m[1];
         }
         return null;
+    }
+
+    /**
+     * JCB DI_*_Report.xlsx — daily telemetry rows.
+     * Supports Premium (FuelUsedInWorking + DistanceTravelledInRoading)
+     * and Standard (Fuel Used In Working, fewer columns) layouts.
+     *
+     * @return array{headers: string[], rows: list<array<string, mixed>>}
+     */
+    private function parseJcbDiReport(string $path): array
+    {
+        $spreadsheet = IOFactory::load($path);
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headerRow = $this->findRowContainingNormalized($sheet, 'fuelusedinworking', 1, 15);
+        if ($headerRow === null) {
+            $headerRow = $this->findRowContainingNormalized($sheet, 'assetid', 1, 15);
+        }
+        if ($headerRow === null) {
+            return ['headers' => [], 'rows' => []];
+        }
+
+        $colAsset = $this->findColumnInRowNormalized($sheet, $headerRow, ['assetid', 'asset id']);
+        $colDate = $this->findColumnInRowNormalized($sheet, $headerRow, ['txntimeslot', 'txn time slot']);
+        $colFuel = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'fuelusedinworking', 'fuel used in working',
+        ]);
+        $colWorking = $this->findColumnInRowNormalized($sheet, $headerRow, ['workingtime', 'working time']);
+        $colEngineOn = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'engineontime', 'engineon time', 'engine on time',
+        ]);
+        $colIdle = $this->findColumnInRowNormalized($sheet, $headerRow, ['idletime', 'idle time']);
+        $colDistance = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'distancetravelledinroading', 'distance travelled in roading',
+        ]);
+        $colModel = $this->findColumnInRowNormalized($sheet, $headerRow, ['modelname', 'model name']);
+        $colProfile = $this->findColumnInRowNormalized($sheet, $headerRow, ['profilename', 'profile name']);
+        $colMds = $this->findColumnInRowNormalized($sheet, $headerRow, ['mdscode', 'mds code']);
+        if ($colAsset === null || $colDate === null) {
+            return ['headers' => [], 'rows' => []];
+        }
+        if ($colFuel === null && $colWorking === null) {
+            return ['headers' => [], 'rows' => []];
+        }
+
+        $headerLabels = [];
+        $maxCol = min(80, Coordinate::columnIndexFromString($sheet->getHighestColumn()));
+        for ($c = 1; $c <= $maxCol; $c++) {
+            $col = Coordinate::stringFromColumnIndex($c);
+            $label = $this->sheetCell($sheet, $col . $headerRow);
+            if ($label !== '') {
+                $headerLabels[] = $label;
+            }
+        }
+
+        $rows = [];
+        $maxRow = $sheet->getHighestRow();
+        for ($r = $headerRow + 1; $r <= $maxRow; $r++) {
+            $asset = $this->sheetCell($sheet, $colAsset . $r);
+            if ($asset === '') {
+                continue;
+            }
+
+            $dateRaw = $sheet->getCell($colDate . $r)->getFormattedValue();
+            $dateCalc = $sheet->getCell($colDate . $r)->getCalculatedValue();
+            $readingDate = $this->normalizeDate(trim((string)($dateRaw ?? '')));
+            if ($readingDate === null && $dateCalc instanceof \DateTimeInterface) {
+                $readingDate = $dateCalc->format('Y-m-d');
+            } elseif ($readingDate === null && is_numeric($dateCalc)) {
+                try {
+                    $readingDate = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$dateCalc)->format('Y-m-d');
+                } catch (\Throwable $e) {
+                    $readingDate = null;
+                }
+            }
+            if ($readingDate === null) {
+                continue;
+            }
+
+            $model = $colModel ? $this->sheetCell($sheet, $colModel . $r) : '';
+            $profile = $colProfile ? $this->sheetCell($sheet, $colProfile . $r) : '';
+            $mds = $colMds ? $this->sheetCell($sheet, $colMds . $r) : '';
+
+            $fuelDisplay = $colFuel ? $this->sheetCell($sheet, $colFuel . $r) : '';
+            $workingDisplay = $colWorking ? $this->sheetCell($sheet, $colWorking . $r) : '';
+            $engineDisplay = $colEngineOn ? $this->sheetCell($sheet, $colEngineOn . $r) : '';
+            $idleDisplay = $colIdle ? $this->sheetCell($sheet, $colIdle . $r) : '';
+            $distanceDisplay = $colDistance ? $this->sheetCell($sheet, $colDistance . $r) : '';
+
+            $fuelLiters = $colFuel ? $this->cellNumeric($sheet, $colFuel . $r) : null;
+            $workingHours = $colWorking ? $this->cellNumeric($sheet, $colWorking . $r) : null;
+            $engineOn = $colEngineOn ? $this->cellNumeric($sheet, $colEngineOn . $r) : null;
+            $idleHours = $colIdle ? $this->cellNumeric($sheet, $colIdle . $r) : null;
+            $distance = $colDistance ? $this->cellNumeric($sheet, $colDistance . $r) : null;
+
+            $avgUsage = null;
+            $avgDisplay = null;
+            if ($fuelLiters !== null && $workingHours !== null && $workingHours > 0) {
+                $avgUsage = round($fuelLiters / $workingHours, 2);
+                $avgDisplay = number_format($avgUsage, 2, '.', '') . ' L/h';
+            }
+
+            $name = $model !== '' ? $model : ($profile !== '' ? $profile : ('JCB ' . $asset));
+
+            $fmt2 = static function (?string $v): ?string {
+                if ($v === null || trim($v) === '') {
+                    return null;
+                }
+                $v = trim($v);
+                if (preg_match('/^(-?\d+(?:\.\d+)?)(.*)$/', $v, $m)) {
+                    $num = round((float)$m[1], 2);
+                    $formatted = rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
+                    if ($formatted === '' || $formatted === '-') {
+                        $formatted = '0';
+                    }
+                    return $formatted . ($m[2] ?? '');
+                }
+                return $v;
+            };
+
+            $rows[] = [
+                'name' => $name,
+                'serial_no' => null,
+                'chassis_no' => $asset,
+                'reading_date' => $readingDate,
+                'fuel_consumed_liters' => $fuelLiters !== null ? round($fuelLiters, 2) : null,
+                'working_hours' => $workingHours !== null ? round($workingHours, 2) : null,
+                'average_usage' => $avgUsage,
+                'extra' => array_filter([
+                    'vendor' => 'jcb',
+                    'model' => $model !== '' ? $model : null,
+                    'profile' => $profile !== '' ? $profile : null,
+                    'mds_code' => $mds !== '' ? $mds : null,
+                    'asset_id' => $asset,
+                    'working_hrs_display' => $fmt2($workingDisplay !== '' ? $workingDisplay : null),
+                    'fuel_display' => $fmt2($fuelDisplay !== '' ? $fuelDisplay : null),
+                    'avg_display' => $avgDisplay,
+                    'engine_on_display' => $fmt2($engineDisplay !== '' ? $engineDisplay : null),
+                    'engine_on_hours' => $engineOn !== null ? round($engineOn, 2) : null,
+                    'idle_display' => $fmt2($idleDisplay !== '' ? $idleDisplay : null),
+                    'idle_hours' => $idleHours !== null ? round($idleHours, 2) : null,
+                    'distance_display' => $fmt2($distanceDisplay !== '' ? $distanceDisplay : null),
+                    'distance_roading' => $distance !== null ? round($distance, 2) : null,
+                ], static fn($v) => $v !== null),
+            ];
+        }
+
+        return [
+            'headers' => $headerLabels !== [] ? $headerLabels : [
+                'Asset ID', 'TxnTime Slot', 'EngineOn Time', 'Working Time', 'Idle Time',
+                'Fuel Used In Working', 'DistanceTravelledInRoading',
+            ],
+            'rows' => $rows,
+        ];
+    }
+
+    private function normalizeHeaderKey(string $value): string
+    {
+        return strtolower(preg_replace('/[^a-z0-9]+/i', '', $value) ?? $value);
+    }
+
+    private function findRowContainingNormalized(Worksheet $sheet, string $needleKey, int $fromRow, int $toRow): ?int
+    {
+        $needleKey = $this->normalizeHeaderKey($needleKey);
+        $maxCol = min(100, Coordinate::columnIndexFromString($sheet->getHighestColumn()));
+        $toRow = min($toRow, $sheet->getHighestRow());
+        for ($r = $fromRow; $r <= $toRow; $r++) {
+            for ($c = 1; $c <= $maxCol; $c++) {
+                $col = Coordinate::stringFromColumnIndex($c);
+                $v = $this->normalizeHeaderKey($this->sheetCell($sheet, $col . $r));
+                if ($v !== '' && str_contains($v, $needleKey)) {
+                    return $r;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @param list<string> $aliases
+     */
+    private function findColumnInRowNormalized(Worksheet $sheet, int $row, array $aliases): ?string
+    {
+        $aliasKeys = array_map(fn($a) => $this->normalizeHeaderKey($a), $aliases);
+        $maxCol = min(100, Coordinate::columnIndexFromString($sheet->getHighestColumn()));
+        for ($c = 1; $c <= $maxCol; $c++) {
+            $col = Coordinate::stringFromColumnIndex($c);
+            $v = $this->normalizeHeaderKey($this->sheetCell($sheet, $col . $row));
+            if ($v === '') {
+                continue;
+            }
+            foreach ($aliasKeys as $alias) {
+                if ($alias !== '' && ($v === $alias || str_contains($v, $alias))) {
+                    return $col;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function cellNumeric(Worksheet $sheet, string $coord): ?float
+    {
+        $raw = $sheet->getCell($coord)->getCalculatedValue();
+        if (is_numeric($raw)) {
+            return (float)$raw;
+        }
+        return $this->toFloat($this->sheetCell($sheet, $coord));
+    }
+
+    /**
+     * Map known Kobelco serials to site machine names; fall back to model / serial.
+     */
+    public static function resolveKobelcoMachineName(?string $serial, ?string $model = null): string
+    {
+        $mapped = self::kobelcoDisplayName((string)$serial);
+        if ($mapped !== null) {
+            return $mapped;
+        }
+        $model = trim((string)$model);
+        if ($model !== '') {
+            return $model;
+        }
+        $serialKey = trim((string)$serial);
+        if ($serialKey !== '') {
+            return 'Kobelco ' . $serialKey;
+        }
+        return 'Kobelco';
     }
 
     /**

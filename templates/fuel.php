@@ -65,8 +65,10 @@
                     </select>
                 </div>
                 <div class="col-sm-8 col-md-5">
-                    <label class="form-label small mb-1" for="machineSearch">Search machine</label>
-                    <input type="search" class="form-control" id="machineSearch" placeholder="Name, serial or chassis…" oninput="filterMachineRows()">
+                    <label class="form-label small mb-1" for="machineFilter">Machine</label>
+                    <select class="form-select" id="machineFilter" onchange="filterMachineRows()">
+                        <option value="all">All machines</option>
+                    </select>
                 </div>
                 <div class="col-md-4 text-md-end">
                     <span class="text-muted small" id="filterHint">Showing all uploaded months</span>
@@ -200,7 +202,7 @@
 
 <!-- Readings modal -->
 <div class="modal fade" id="readingsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
@@ -218,24 +220,17 @@
                     <div class="ms-auto small text-muted" id="readingsMonthHint"></div>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm table-striped mb-0">
-                        <thead>
+                    <table class="table table-sm table-striped mb-0" id="readingsTable">
+                        <thead id="readingsHead">
                             <tr>
                                 <th>Date</th>
-                                <th>Fuel (L)</th>
-                                <th>Hours</th>
-                                <th>Avg usage</th>
+                                <th>Fuel</th>
+                                <th>Working Time</th>
+                                <th>Avg</th>
                             </tr>
                         </thead>
                         <tbody id="readingsBody"></tbody>
-                        <tfoot id="readingsFoot" style="display:none;">
-                            <tr class="fw-semibold table-light">
-                                <td>Total</td>
-                                <td id="readingsTotalFuel">—</td>
-                                <td id="readingsTotalHours">—</td>
-                                <td id="readingsTotalAvg">—</td>
-                            </tr>
-                        </tfoot>
+                        <tfoot id="readingsFoot" style="display:none;"></tfoot>
                     </table>
                 </div>
             </div>
@@ -274,10 +269,20 @@
     border-radius: var(--jld-radius-sm, 0.5rem);
     padding: 0.85rem 1rem;
     height: 100%;
+    text-align: center;
 }
 .fuel-stat-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--jld-gray, #6c757d); }
 .fuel-stat-value { font-size: 1.35rem; font-weight: 700; color: var(--jld-primary, #2b235e); margin-top: 0.15rem; }
 .fuel-toolbar { border: 1px solid var(--jld-border, #e9ecef); }
+#machinesTable th,
+#machinesTable td,
+#uploadsTable th,
+#uploadsTable td,
+#readingsTable th,
+#readingsTable td {
+    text-align: center;
+    vertical-align: middle;
+}
 </style>
 
 <script>
@@ -306,8 +311,24 @@ function escapeHtml(s) {
 function fmtNum(v) {
     if (v === null || v === undefined || v === '') return '—';
     const n = Number(v);
-    return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—';
+    return Number.isFinite(n)
+        ? n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+        : '—';
 }
+
+/** Round numeric part to max 2 decimals; keep HH:MM and unit suffixes (L, L/h). */
+function fmtDec2(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    const s = String(v).trim();
+    if (/^\d{1,4}:\d{2}$/.test(s)) return s;
+    const m = s.match(/^(-?\d+(?:\.\d+)?)(.*)$/);
+    if (!m) return s;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n)) return s;
+    const rounded = Number((Math.round(n * 100) / 100).toFixed(2));
+    return String(rounded) + (m[2] || '');
+}
+
 
 /** YYYY-MM-DD or Date-like → DD-MM-YYYY */
 function fmtDate(v) {
@@ -350,7 +371,8 @@ function openCategory(category) {
     document.getElementById('detailTitle').textContent = CATEGORY_LABELS[category];
     document.getElementById('uploadCategory').value = category;
     document.getElementById('uploadCategoryLabel').value = CATEGORY_LABELS[category];
-    document.getElementById('machineSearch').value = '';
+    document.getElementById('machineFilter').innerHTML = '<option value="all">All machines</option>';
+    document.getElementById('machineFilter').value = 'all';
     document.getElementById('monthFilter').value = 'all';
     clearAlerts();
     loadMachines();
@@ -391,6 +413,7 @@ function loadMachines() {
             populateMonthFilter(data.months || [], currentMonthFilter);
             renderSummary(data.summary || {}, currentMonthFilter);
             machinesCache = data.data || [];
+            populateMachineFilter(machinesCache);
             renderMachines(machinesCache);
             renderUploads(data.uploads || []);
             document.getElementById('machineCountBadge').textContent = machinesCache.length;
@@ -424,6 +447,20 @@ function renderSummary(summary, month) {
     document.getElementById('sumHours').textContent = fmtNum(summary.total_working_hours);
 }
 
+function populateMachineFilter(machines) {
+    const sel = document.getElementById('machineFilter');
+    const prev = sel.value || 'all';
+    const opts = ['<option value="all">All machines</option>'];
+    machines.forEach(m => {
+        const labelParts = [m.name, m.serial_no, m.chassis_no].filter(Boolean);
+        const label = labelParts.length ? labelParts.join(' · ') : ('Machine #' + m.id);
+        opts.push('<option value="' + Number(m.id) + '">' + escapeHtml(label) + '</option>');
+    });
+    sel.innerHTML = opts.join('');
+    const ids = machines.map(m => String(m.id));
+    sel.value = (prev !== 'all' && ids.includes(String(prev))) ? String(prev) : 'all';
+}
+
 function renderMachines(machines) {
     const tbody = document.querySelector('#machinesTable tbody');
     if (!machines.length) {
@@ -432,9 +469,8 @@ function renderMachines(machines) {
     }
     tbody.innerHTML = machines.map((m, i) => {
         const label = m.name || m.serial_no || m.chassis_no || 'Machine';
-        const searchBlob = [m.name, m.serial_no, m.chassis_no].filter(Boolean).join(' ').toLowerCase();
         return `
-        <tr data-search="${escapeHtml(searchBlob)}">
+        <tr data-machine-id="${Number(m.id)}">
             <td>${i + 1}</td>
             <td class="fw-medium">${escapeHtml(m.name || '—')}</td>
             <td>${escapeHtml(m.serial_no || '—')}</td>
@@ -458,11 +494,12 @@ function renderMachines(machines) {
 }
 
 function filterMachineRows() {
-    const q = (document.getElementById('machineSearch').value || '').trim().toLowerCase();
-    const rows = document.querySelectorAll('#machinesTable tbody tr[data-search]');
+    const selected = (document.getElementById('machineFilter').value || 'all');
+    const rows = document.querySelectorAll('#machinesTable tbody tr[data-machine-id]');
     let visible = 0;
     rows.forEach(tr => {
-        const show = !q || (tr.getAttribute('data-search') || '').includes(q);
+        const id = tr.getAttribute('data-machine-id') || '';
+        const show = selected === 'all' || id === String(selected);
         tr.style.display = show ? '' : 'none';
         if (show) visible++;
     });
@@ -548,34 +585,113 @@ function fetchReadings(machineId, month) {
         });
 }
 
+function decimalHoursToHhmm(hours) {
+    const h = Number(hours);
+    if (!Number.isFinite(h)) return '—';
+    const totalMinutes = Math.round(h * 60);
+    const hh = Math.floor(totalMinutes / 60);
+    const mm = String(totalMinutes % 60).padStart(2, '0');
+    return hh + ':' + mm;
+}
+
 function renderReadingRows(rows) {
     const tbody = document.getElementById('readingsBody');
+    const thead = document.getElementById('readingsHead');
     const tfoot = document.getElementById('readingsFoot');
     if (!rows.length) {
+        thead.innerHTML = '<tr><th>Date</th><th>Fuel</th><th>Working Time</th><th>Avg</th></tr>';
         tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">No daily readings for this month.</td></tr>';
         tfoot.style.display = 'none';
+        tfoot.innerHTML = '';
         return;
     }
-    tbody.innerHTML = rows.map(r => `
-        <tr>
-            <td>${fmtDate(r.reading_date)}</td>
-            <td>${fmtNum(r.fuel_consumed_liters)}</td>
-            <td>${fmtNum(r.working_hours)}</td>
-            <td>${fmtNum(r.average_usage)}</td>
-        </tr>
-    `).join('');
 
-    let totalFuel = 0, totalHours = 0;
+    const isJcb = rows.some(r => (r.vendor || (r.extra && r.extra.vendor) || '') === 'jcb'
+        || r.engine_on_display != null || r.idle_display != null || r.distance_display != null);
+
+    if (isJcb) {
+        thead.innerHTML = `
+            <tr>
+                <th>Date</th>
+                <th>FuelUsedInWorking</th>
+                <th>Working Time</th>
+                <th>EngineOn Time</th>
+                <th>Idle Time</th>
+                <th>DistanceTravelledInRoading</th>
+                <th>Avg</th>
+            </tr>`;
+        tbody.innerHTML = rows.map(r => {
+            const fuel = r.fuel_display != null && r.fuel_display !== '' ? r.fuel_display : (r.fuel_consumed_liters != null ? String(r.fuel_consumed_liters) : '—');
+            const hours = r.working_hrs_display != null && r.working_hrs_display !== '' ? r.working_hrs_display : (r.working_hours != null ? String(r.working_hours) : '—');
+            const engine = r.engine_on_display != null && r.engine_on_display !== '' ? r.engine_on_display : '—';
+            const idle = r.idle_display != null && r.idle_display !== '' ? r.idle_display : '—';
+            const dist = r.distance_display != null && r.distance_display !== '' ? r.distance_display : '—';
+            const avg = r.avg_display != null && r.avg_display !== '' ? r.avg_display : '—';
+            return `<tr>
+                <td>${fmtDate(r.reading_date)}</td>
+                <td>${escapeHtml(fmtDec2(fuel))}</td>
+                <td>${escapeHtml(fmtDec2(hours))}</td>
+                <td>${escapeHtml(fmtDec2(engine))}</td>
+                <td>${escapeHtml(fmtDec2(idle))}</td>
+                <td>${escapeHtml(fmtDec2(dist))}</td>
+                <td>${escapeHtml(fmtDec2(avg))}</td>
+            </tr>`;
+        }).join('');
+    } else {
+        thead.innerHTML = `
+            <tr>
+                <th>Date</th>
+                <th>Total Fuel Consump.</th>
+                <th>Working Hrs</th>
+                <th>Ave. Fuel Consump.</th>
+            </tr>`;
+        tbody.innerHTML = rows.map(r => {
+            const fuel = r.fuel_display || (r.fuel_consumed_liters != null ? (fmtNum(r.fuel_consumed_liters) + ' L') : '—');
+            const hours = r.working_hrs_display || decimalHoursToHhmm(r.working_hours);
+            const avg = r.avg_display || (r.average_usage != null ? (fmtNum(r.average_usage) + ' L/h') : '—');
+            return `<tr>
+                <td>${fmtDate(r.reading_date)}</td>
+                <td>${escapeHtml(fmtDec2(fuel))}</td>
+                <td>${escapeHtml(fmtDec2(hours))}</td>
+                <td>${escapeHtml(fmtDec2(avg))}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    let totalFuel = 0, totalHours = 0, totalEngine = 0, totalIdle = 0, totalDist = 0;
+    let hasEngine = false, hasIdle = false, hasDist = false;
     rows.forEach(r => {
         const f = Number(r.fuel_consumed_liters);
         const h = Number(r.working_hours);
         if (Number.isFinite(f)) totalFuel += f;
         if (Number.isFinite(h)) totalHours += h;
+        const eng = Number(r.extra && r.extra.engine_on_hours);
+        const idle = Number(r.extra && r.extra.idle_hours);
+        const dist = Number(r.extra && r.extra.distance_roading);
+        if (Number.isFinite(eng)) { totalEngine += eng; hasEngine = true; }
+        if (Number.isFinite(idle)) { totalIdle += idle; hasIdle = true; }
+        if (Number.isFinite(dist)) { totalDist += dist; hasDist = true; }
     });
     const overallAvg = totalHours > 0 ? totalFuel / totalHours : null;
-    document.getElementById('readingsTotalFuel').textContent = fmtNum(totalFuel);
-    document.getElementById('readingsTotalHours').textContent = fmtNum(totalHours);
-    document.getElementById('readingsTotalAvg').textContent = overallAvg != null ? fmtNum(overallAvg) : '—';
+
+    if (isJcb) {
+        tfoot.innerHTML = `<tr class="fw-semibold table-light">
+            <td>Total</td>
+            <td>${escapeHtml(fmtDec2(totalFuel))}</td>
+            <td>${escapeHtml(fmtDec2(totalHours))}</td>
+            <td>${escapeHtml(hasEngine ? fmtDec2(totalEngine) : '—')}</td>
+            <td>${escapeHtml(hasIdle ? fmtDec2(totalIdle) : '—')}</td>
+            <td>${escapeHtml(hasDist ? fmtDec2(totalDist) : '—')}</td>
+            <td>${escapeHtml(overallAvg != null ? fmtDec2(overallAvg) + ' L/h' : '—')}</td>
+        </tr>`;
+    } else {
+        tfoot.innerHTML = `<tr class="fw-semibold table-light">
+            <td>Total</td>
+            <td>${escapeHtml(fmtDec2(totalFuel) + ' L')}</td>
+            <td>${escapeHtml(decimalHoursToHhmm(totalHours))}</td>
+            <td>${escapeHtml(overallAvg != null ? fmtDec2(overallAvg) + ' L/h' : '—')}</td>
+        </tr>`;
+    }
     tfoot.style.display = '';
 }
 
