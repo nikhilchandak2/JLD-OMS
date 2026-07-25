@@ -30,6 +30,7 @@
             <p class="page-subtitle">
                 Invoices from Dispatch upload — including ones not mapped to a portal order.
                 After creating missing orders, use <strong>Remap unmapped</strong> (no need to re-upload CSV).
+                Remap only maps when an order exists — other unmapped invoices stay on this page.
                 Upload CSV once on the <a href="/dispatch">Dispatch Dashboard</a>.
             </p>
         </div>
@@ -57,6 +58,7 @@
             <div class="col-md-3">
                 <label for="filterDate" class="form-label">Invoice date</label>
                 <input type="date" class="form-control" id="filterDate" value="<?= date('Y-m-d') ?>">
+                <div class="form-text">Unmapped invoices keep their Busy invoice date — change date or use “All unmapped”.</div>
             </div>
             <div class="col-md-3">
                 <label for="filterMapping" class="form-label">Mapping</label>
@@ -71,9 +73,12 @@
                 <label for="filterSearch" class="form-label">Search</label>
                 <input type="text" class="form-control" id="filterSearch" placeholder="Invoice, party, product, order…">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-3 d-flex flex-column gap-2">
                 <button type="button" class="btn btn-outline-primary w-100" onclick="loadDailyBusyDispatches(true)">
                     <i class="bi bi-funnel me-1"></i> Apply Filters
+                </button>
+                <button type="button" class="btn btn-outline-warning w-100" onclick="showAllUnmapped()">
+                    <i class="bi bi-exclamation-triangle me-1"></i> All unmapped
                 </button>
             </div>
         </div>
@@ -154,17 +159,35 @@ const dailyPageSize = 50;
 let dailyPage = 0;
 let dailyTotal = 0;
 let dailyRows = [];
+/** When true, ignore date filter and load every matching invoice (used by All unmapped). */
+let dailyAllDates = false;
 
 function buildDailyParams() {
     const params = new URLSearchParams();
-    params.set('date', document.getElementById('filterDate').value || new Date().toISOString().slice(0, 10));
+    if (dailyAllDates) {
+        params.set('all_dates', '1');
+    } else {
+        params.set('date', document.getElementById('filterDate').value || new Date().toISOString().slice(0, 10));
+    }
     params.set('limit', String(dailyPageSize));
     params.set('offset', String(dailyPage * dailyPageSize));
     const mapping = document.getElementById('filterMapping').value;
-    if (mapping) params.set('mapping_status', mapping);
+    if (dailyAllDates && (!mapping || mapping === 'unmapped')) {
+        // Include error rows that older remap wrongly flipped from unmapped
+        params.set('mapping_status', 'open');
+    } else if (mapping) {
+        params.set('mapping_status', mapping);
+    }
     const search = document.getElementById('filterSearch').value.trim();
     if (search) params.set('search', search);
     return params;
+}
+
+function showAllUnmapped() {
+    dailyAllDates = true;
+    document.getElementById('filterMapping').value = 'unmapped';
+    document.getElementById('filterDate').value = '';
+    loadDailyBusyDispatches(true);
 }
 
 function formatWeightTons(value) {
@@ -191,6 +214,11 @@ function formatMappingCell(row) {
 
 async function loadDailyBusyDispatches(resetPage = false) {
     if (resetPage) dailyPage = 0;
+    const dateVal = document.getElementById('filterDate').value;
+    // Any explicit date selection exits "all dates" mode
+    if (dateVal) {
+        dailyAllDates = false;
+    }
     const tbody = document.querySelector('#dailyBusyTable tbody');
     tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted p-4">Loading…</td></tr>`;
 
@@ -258,8 +286,11 @@ function renderDailyTable() {
     const tbody = document.querySelector('#dailyBusyTable tbody');
     if (!dailyRows.length) {
         tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted p-4">
-            No Busy invoices for this date.
-            Upload the day’s CSV once from the <a href="/dispatch">Dispatch Dashboard</a>, then refresh here.
+            No Busy invoices for this filter.
+            Unmapped rows keep the <strong>invoice date from Busy</strong> (not today’s date).
+            Try <button type="button" class="btn btn-link p-0 align-baseline" onclick="showAllUnmapped()">All unmapped</button>
+            or pick the invoice date, then refresh.
+            Upload CSV once from the <a href="/dispatch">Dispatch Dashboard</a> if nothing was imported yet.
         </td></tr>`;
         return;
     }

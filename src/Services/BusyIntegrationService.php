@@ -147,6 +147,11 @@ class BusyIntegrationService
             );
         }
 
+        // Recover rows older remap marked as error so "All unmapped" shows them again.
+        if (($filters['mapping_status'] ?? '') === 'open') {
+            $this->busyDailyInvoiceRepository->reopenErrorsAsUnmapped();
+        }
+
         $result = $this->busyDailyInvoiceRepository->findDaily($filters);
         $limit = isset($filters['limit']) ? (int)$filters['limit'] : count($result['rows']);
         $offset = isset($filters['offset']) ? (int)$filters['offset'] : 0;
@@ -178,52 +183,65 @@ class BusyIntegrationService
             );
         }
 
+        // Older remap runs flipped some unmatched rows to "error" via processInvoice.
+        // Put them back to unmapped before matching so they stay on the daily ledger.
+        $this->busyDailyInvoiceRepository->reopenErrorsAsUnmapped();
+
         $rows = $this->busyDailyInvoiceRepository->findRemapCandidates($filters);
         $details = [];
         $activeCompanyId = CompanyContext::getActiveCompanyId();
 
         foreach ($rows as $row) {
             $invoiceNo = (string)($row['invoice_no'] ?? '');
-            $invoiceData = $this->dailyRowToInvoiceData($row);
+            $rowId = (int)($row['id'] ?? 0);
             $rowCompanyId = !empty($row['company_id']) ? (int)$row['company_id'] : null;
 
             try {
-                $result = $this->processInvoice(
-                    $invoiceData,
-                    $processedByUserId,
-                    $rowCompanyId ?: $activeCompanyId
+                $match = $this->findOrderForDailyInvoiceRow($row, $activeCompanyId);
+                if ($match === null) {
+                    // No match: leave invoice data untouched. Only reopen prior remap
+                    // "error" rows so they stay visible as unmapped again.
+                    if (($row['mapping_status'] ?? '') === 'error') {
+                        $this->busyDailyInvoiceRepository->ensureStillUnmapped($rowId);
+                    }
+                    $details[] = [
+                        'status' => 'unmapped',
+                        'invoice_no' => $invoiceNo,
+                        'mapping_status' => 'unmapped',
+                        'error' => $row['error_message'] ?? 'No matching pending order found',
+                    ];
+                    continue;
+                }
+
+                /** @var Order $order */
+                $order = $match['order'];
+                $companyId = (int)$match['company_id'];
+                $mapped = $this->mapDailyRowForRemap($row);
+                $result = $this->upsertDispatchFromInvoice($order, $mapped, $processedByUserId);
+                $this->upsertDailyInvoiceRecord(
+                    $mapped,
+                    $companyId,
+                    'mapped',
+                    null,
+                    (int)$result['order_id'],
+                    (int)$result['dispatch_id'],
+                    $processedByUserId
                 );
 
-                // If still unmapped, retry with the currently selected company
-                if (
-                    ($result['mapping_status'] ?? '') === 'unmapped'
-                    && $activeCompanyId
-                    && $activeCompanyId !== $rowCompanyId
-                ) {
-                    $result = $this->processInvoice($invoiceData, $processedByUserId, $activeCompanyId);
-                }
-
-                // Last resort: try each active company
-                if (($result['mapping_status'] ?? '') === 'unmapped') {
-                    foreach ($this->companyRepository->findActive() as $company) {
-                        $cid = (int)$company->id;
-                        if ($cid === $rowCompanyId || $cid === $activeCompanyId) {
-                            continue;
-                        }
-                        $retry = $this->processInvoice($invoiceData, $processedByUserId, $cid);
-                        if (($retry['mapping_status'] ?? '') === 'mapped') {
-                            $result = $retry;
-                            break;
-                        }
-                    }
-                }
-
-                $status = ($result['mapping_status'] ?? '') === 'mapped' ? 'mapped' : 'unmapped';
-                $details[] = array_merge(['status' => $status, 'invoice_no' => $invoiceNo], $result);
-            } catch (\Throwable $e) {
-                $details[] = [
-                    'status' => 'error',
+                $details[] = array_merge([
+                    'status' => 'mapped',
                     'invoice_no' => $invoiceNo,
+                    'mapping_status' => 'mapped',
+                ], $result);
+            } catch (\Throwable $e) {
+                // Never flip a stored ledger row to error / never delete — leave as-is.
+                if (($row['mapping_status'] ?? '') === 'error') {
+                    $this->busyDailyInvoiceRepository->ensureStillUnmapped($rowId);
+                }
+                $details[] = [
+                    'status' => 'unmapped',
+                    'invoice_no' => $invoiceNo,
+                    'mapping_status' => 'unmapped',
                     'error' => $e->getMessage(),
                 ];
             }
@@ -233,33 +251,78 @@ class BusyIntegrationService
             'processed' => count($details),
             'mapped' => count(array_filter($details, fn($r) => $r['status'] === 'mapped')),
             'still_unmapped' => count(array_filter($details, fn($r) => $r['status'] === 'unmapped')),
-            'failed' => count(array_filter($details, fn($r) => $r['status'] === 'error')),
+            'failed' => 0,
             'details' => $details,
         ];
     }
 
     /**
+     * Read-only order search for remap. Does not write dispatches or daily rows.
+     *
+     * @param array<string, mixed> $row
+     * @return array{order: Order, company_id: int}|null
+     */
+    private function findOrderForDailyInvoiceRow(array $row, ?int $activeCompanyId): ?array
+    {
+        $mapped = $this->mapDailyRowForRemap($row);
+        $rowCompanyId = !empty($row['company_id']) ? (int)$row['company_id'] : null;
+
+        $companyIdsToTry = [];
+        if ($rowCompanyId) {
+            $companyIdsToTry[] = $rowCompanyId;
+        }
+        if ($activeCompanyId && $activeCompanyId !== $rowCompanyId) {
+            $companyIdsToTry[] = $activeCompanyId;
+        }
+        foreach ($this->companyRepository->findActive() as $company) {
+            $cid = (int)$company->id;
+            if (!in_array($cid, $companyIdsToTry, true)) {
+                $companyIdsToTry[] = $cid;
+            }
+        }
+
+        foreach ($companyIdsToTry as $companyId) {
+            try {
+                $order = $this->findMatchingOrder($mapped, $companyId);
+            } catch (\Throwable $ignored) {
+                // Party mismatch on explicit order_no, etc. — try next company.
+                continue;
+            }
+            if ($order) {
+                return ['order' => $order, 'company_id' => $companyId];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build processable invoice fields from a stored daily row without strict import validation.
+     *
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
-    private function dailyRowToInvoiceData(array $row): array
+    private function mapDailyRowForRemap(array $row): array
     {
+        $rate = $row['product_rate'] !== null && $row['product_rate'] !== ''
+            ? (float)$row['product_rate']
+            : 0.0;
+
         return [
-            'invoice_no' => (string)$row['invoice_no'],
+            'invoice_no' => trim((string)$row['invoice_no']),
             'invoice_date' => (string)$row['invoice_date'],
-            'party_name' => (string)$row['party_name'],
-            'product_name' => (string)($row['product_name'] ?? ''),
-            'product_rate' => $row['product_rate'] !== null && $row['product_rate'] !== ''
-                ? (float)$row['product_rate']
-                : null,
+            'party_name' => trim((string)$row['party_name']),
+            'product_name' => trim((string)($row['product_name'] ?? '')),
+            'product_rate' => $rate > 0 ? $rate : 0.01,
             'quantity' => max(1, (int)($row['quantity_trucks'] ?? 1)),
             'loading_weight_tons' => $row['loading_weight_tons'] !== null && $row['loading_weight_tons'] !== ''
                 ? (float)$row['loading_weight_tons']
                 : null,
-            'vehicle_no' => $row['vehicle_no'] ?? null,
-            'rawana_no' => $row['rawana_no'] ?? null,
-            'eway_bill_no' => $row['eway_bill_no'] ?? null,
-            'order_no' => $row['order_no_from_invoice'] ?? null,
+            'vehicle_no' => !empty($row['vehicle_no']) ? trim((string)$row['vehicle_no']) : null,
+            'rawana_no' => !empty($row['rawana_no']) ? trim((string)$row['rawana_no']) : null,
+            'eway_bill_no' => !empty($row['eway_bill_no']) ? trim((string)$row['eway_bill_no']) : null,
+            'order_no' => !empty($row['order_no_from_invoice']) ? trim((string)$row['order_no_from_invoice']) : null,
+            'remarks' => 'Remapped from Busy daily invoice #' . trim((string)$row['invoice_no']),
         ];
     }
 

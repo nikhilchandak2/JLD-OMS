@@ -109,6 +109,38 @@ class BusyDailyInvoiceRepository
     }
 
     /**
+     * Re-open a row that was wrongly flipped to error during an older remap run.
+     * Does not change party/product/invoice fields or company_id.
+     */
+    public function ensureStillUnmapped(int $id): void
+    {
+        if ($id <= 0) {
+            return;
+        }
+        $this->database->execute(
+            "UPDATE busy_daily_invoices
+             SET mapping_status = 'unmapped',
+                 order_id = NULL,
+                 dispatch_id = NULL
+             WHERE id = ?
+               AND mapping_status IN ('unmapped', 'error')",
+            [$id]
+        );
+    }
+
+    /** Bulk recovery: error → unmapped (invoice fields preserved). */
+    public function reopenErrorsAsUnmapped(): void
+    {
+        $this->database->execute(
+            "UPDATE busy_daily_invoices
+             SET mapping_status = 'unmapped',
+                 order_id = NULL,
+                 dispatch_id = NULL
+             WHERE mapping_status = 'error'"
+        );
+    }
+
+    /**
      * Unmapped / error rows eligible for remapping after orders are created later.
      *
      * @param array<string, mixed> $filters
@@ -187,8 +219,13 @@ class BusyDailyInvoiceRepository
         }
 
         if (!empty($filters['mapping_status'])) {
-            $where[] = 'bdi.mapping_status = ?';
-            $params[] = $filters['mapping_status'];
+            if ($filters['mapping_status'] === 'open') {
+                // Unmapped + import/remap errors — anything still needing an order
+                $where[] = "bdi.mapping_status IN ('unmapped', 'error')";
+            } else {
+                $where[] = 'bdi.mapping_status = ?';
+                $params[] = $filters['mapping_status'];
+            }
         }
 
         if (!empty($filters['company_id'])) {

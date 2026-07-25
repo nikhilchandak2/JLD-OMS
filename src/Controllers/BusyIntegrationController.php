@@ -195,26 +195,31 @@ class BusyIntegrationController
         $date = trim((string)($_GET['date'] ?? ''));
         $startDate = trim((string)($_GET['start_date'] ?? ''));
         $endDate = trim((string)($_GET['end_date'] ?? ''));
-        if ($date === '' && $startDate === '' && $endDate === '') {
+        $allDates = !empty($_GET['all_dates']);
+
+        // Default: today. all_dates=1 skips date filter (used for "all unmapped").
+        if (!$allDates && $date === '' && $startDate === '' && $endDate === '') {
             $date = date('Y-m-d');
         }
 
         $mappingStatus = trim((string)($_GET['mapping_status'] ?? ''));
-        if ($mappingStatus !== '' && !in_array($mappingStatus, ['mapped', 'unmapped', 'error'], true)) {
+        if ($mappingStatus !== '' && !in_array($mappingStatus, ['mapped', 'unmapped', 'error', 'open'], true)) {
             http_response_code(400);
-            echo json_encode(['error' => 'mapping_status must be mapped, unmapped, or error']);
+            echo json_encode(['error' => 'mapping_status must be mapped, unmapped, error, or open']);
             return;
         }
 
-        $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : CompanyContext::getActiveCompanyId();
+        // Ledger is cross-company by default — unmapped invoices must stay visible
+        // regardless of the header company switcher. Optional company_id still works.
+        $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
         $limit = isset($_GET['limit']) ? max(1, min(500, (int)$_GET['limit'])) : 100;
         $offset = isset($_GET['offset']) ? max(0, (int)$_GET['offset']) : 0;
 
         try {
             $result = $this->busyIntegrationService->listDailyInvoices([
-                'date' => $date !== '' ? $date : null,
-                'start_date' => $startDate !== '' ? $startDate : null,
-                'end_date' => $endDate !== '' ? $endDate : null,
+                'date' => (!$allDates && $date !== '') ? $date : null,
+                'start_date' => (!$allDates && $startDate !== '') ? $startDate : null,
+                'end_date' => (!$allDates && $endDate !== '') ? $endDate : null,
                 'mapping_status' => $mappingStatus !== '' ? $mappingStatus : null,
                 'company_id' => $companyId > 0 ? $companyId : null,
                 'search' => trim((string)($_GET['search'] ?? '')) ?: null,
