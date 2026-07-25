@@ -153,10 +153,11 @@
                             <th>Machines</th>
                             <th>Days saved</th>
                             <th>Uploaded on</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td colspan="6" class="text-center text-muted py-3">No uploads yet.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-3">No uploads yet.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -511,12 +512,13 @@ function filterMachineRows() {
 function renderUploads(uploads) {
     const tbody = document.querySelector('#uploadsTable tbody');
     if (!uploads.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No uploads yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No uploads yet.</td></tr>';
         return;
     }
     tbody.innerHTML = uploads.map(u => {
         const monthLabel = u.report_month ? fmtMonthLabel(String(u.report_month).slice(0, 7)) : '—';
         const uploaded = u.created_at ? fmtDate(String(u.created_at).slice(0, 10)) : '—';
+        const fileLabel = u.original_filename || ('upload #' + u.id);
         return `
         <tr>
             <td>${escapeHtml(u.original_filename)}</td>
@@ -525,8 +527,34 @@ function renderUploads(uploads) {
             <td>${escapeHtml(u.machines_found)}</td>
             <td>${escapeHtml(u.readings_saved)}</td>
             <td>${escapeHtml(uploaded)}${u.uploaded_by_name ? ' · ' + escapeHtml(u.uploaded_by_name) : ''}</td>
+            <td>
+                <button type="button" class="btn btn-sm btn-outline-danger"
+                    data-upload-id="${Number(u.id)}"
+                    data-upload-name="${escapeHtml(fileLabel)}"
+                    onclick="deleteUpload(Number(this.dataset.uploadId), this.dataset.uploadName)">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </td>
         </tr>`;
     }).join('');
+}
+
+async function deleteUpload(uploadId, fileName) {
+    if (!uploadId) return;
+    const label = fileName || ('upload #' + uploadId);
+    if (!confirm('Delete "' + label + '" and all daily readings imported from this file?')) {
+        return;
+    }
+    try {
+        const data = await apiCall('/api/fuel/reports/' + uploadId, { method: 'DELETE' });
+        showSuccess('Deleted ' + label
+            + (data.readings_deleted != null ? (' (' + data.readings_deleted + ' day(s) removed)') : '')
+            + '.');
+        loadMachines();
+        loadCategoryCounts();
+    } catch (err) {
+        showError(err.message || 'Failed to delete upload');
+    }
 }
 
 function viewReadings(machineId, label) {

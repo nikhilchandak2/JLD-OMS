@@ -134,6 +134,77 @@ class FuelReportRepository
         );
     }
 
+    public function findUploadById(int $uploadId): ?array
+    {
+        $row = $this->database->fetch(
+            "SELECT * FROM fuel_report_uploads WHERE id = ?",
+            [$uploadId]
+        );
+        return $row ?: null;
+    }
+
+    /**
+     * Delete an upload, its readings, orphaned machines, and stored file.
+     * @return array{success: bool, readings_deleted: int, machines_deleted: int, error?: string}
+     */
+    public function deleteUpload(int $uploadId): array
+    {
+        $upload = $this->findUploadById($uploadId);
+        if (!$upload) {
+            return ['success' => false, 'readings_deleted' => 0, 'machines_deleted' => 0, 'error' => 'Upload not found'];
+        }
+
+        $machineRows = $this->database->fetchAll(
+            "SELECT DISTINCT machine_id FROM fuel_daily_readings WHERE upload_id = ?",
+            [$uploadId]
+        );
+        $machineIds = array_map(static fn($r) => (int)$r['machine_id'], $machineRows);
+
+        $readingCountRow = $this->database->fetch(
+            "SELECT COUNT(*) AS c FROM fuel_daily_readings WHERE upload_id = ?",
+            [$uploadId]
+        );
+        $readingsDeleted = (int)($readingCountRow['c'] ?? 0);
+
+        $this->database->execute(
+            "DELETE FROM fuel_daily_readings WHERE upload_id = ?",
+            [$uploadId]
+        );
+
+        $machinesDeleted = 0;
+        foreach ($machineIds as $machineId) {
+            if ($machineId <= 0) {
+                continue;
+            }
+            $left = $this->database->fetch(
+                "SELECT COUNT(*) AS c FROM fuel_daily_readings WHERE machine_id = ?",
+                [$machineId]
+            );
+            if ((int)($left['c'] ?? 0) === 0) {
+                $this->database->execute("DELETE FROM fuel_machines WHERE id = ?", [$machineId]);
+                $machinesDeleted++;
+            }
+        }
+
+        $storedPath = trim((string)($upload['stored_path'] ?? ''));
+        if ($storedPath !== '') {
+            $fullPath = dirname(__DIR__, 2) . '/' . ltrim(str_replace('\\', '/', $storedPath), '/');
+            if (is_file($fullPath)) {
+                @unlink($fullPath);
+            }
+        }
+
+        $this->database->execute("DELETE FROM fuel_report_uploads WHERE id = ?", [$uploadId]);
+
+        return [
+            'success' => true,
+            'readings_deleted' => $readingsDeleted,
+            'machines_deleted' => $machinesDeleted,
+            'category' => (string)$upload['category'],
+            'original_filename' => (string)$upload['original_filename'],
+        ];
+    }
+
     public function findUploadsByCategory(string $category, int $limit = 20): array
     {
         $limit = max(1, min(100, $limit));

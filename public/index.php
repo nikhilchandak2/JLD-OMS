@@ -117,6 +117,7 @@ $router->group('/api', function($router) {
         $router->get('/fuel/machines', 'FuelController@machines');
         $router->get('/fuel/machines/{id}/readings', 'FuelController@machineReadings');
         $router->post('/fuel/reports/upload', 'FuelController@uploadReport');
+        $router->delete('/fuel/reports/{id}', 'FuelController@deleteUpload');
         // Excavating machines & daily dumper assignments
         $router->get('/excavating-machines', 'DumperAssignmentController@listMachines');
         $router->put('/excavating-machines/{id}', 'DumperAssignmentController@updateMachine');
@@ -151,6 +152,7 @@ $router->group('/api', function($router) {
         $router->get('/tds/uploads', 'TdsController@uploads');
         $router->get('/tds/uploads/{id}', 'TdsController@show');
         $router->get('/tds/uploads/{id}/export', 'TdsController@export');
+        $router->get('/tds/uploads/{id}/export-contractors', 'TdsController@exportContractors');
         $router->post('/tds/upload', 'TdsController@upload');
         $router->delete('/tds/uploads/{id}', 'TdsController@delete');
         

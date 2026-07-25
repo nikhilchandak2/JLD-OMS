@@ -250,6 +250,46 @@ class FuelController
         }
     }
 
+    /**
+     * DELETE /api/fuel/reports/{id}
+     */
+    public function deleteUpload(string $id): void
+    {
+        header('Content-Type: application/json');
+        if (!$this->requireFuelAccess()) {
+            return;
+        }
+
+        $uploadId = (int)$id;
+        if ($uploadId <= 0) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid upload id']);
+            return;
+        }
+
+        try {
+            $this->repository->ensureSchema();
+            $result = $this->repository->deleteUpload($uploadId);
+            if (!$result['success']) {
+                http_response_code(404);
+                echo json_encode(['error' => $result['error'] ?? 'Upload not found']);
+                return;
+            }
+            echo json_encode([
+                'success' => true,
+                'message' => 'Upload deleted',
+                'readings_deleted' => $result['readings_deleted'],
+                'machines_deleted' => $result['machines_deleted'],
+                'category' => $result['category'] ?? null,
+                'original_filename' => $result['original_filename'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('Fuel upload delete failed: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to delete upload']);
+        }
+    }
+
     private function uploadErrorMessage(int $code): string
     {
         return match ($code) {
