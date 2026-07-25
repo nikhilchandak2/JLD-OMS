@@ -163,6 +163,106 @@ class BusyIntegrationService
         ];
     }
 
+    /**
+     * Re-run order matching for previously unmapped / error Busy invoices
+     * (e.g. orders created after the CSV was uploaded).
+     *
+     * @param array<string, mixed> $filters
+     * @return array{processed: int, mapped: int, still_unmapped: int, failed: int, details: list<array<string, mixed>>}
+     */
+    public function remapUnmappedInvoices(array $filters, ?int $processedByUserId = null): array
+    {
+        if (!$this->busyDailyInvoicesTableExists()) {
+            throw new \RuntimeException(
+                'Daily invoices table is missing. Run: php scripts/migrate.php'
+            );
+        }
+
+        $rows = $this->busyDailyInvoiceRepository->findRemapCandidates($filters);
+        $details = [];
+        $activeCompanyId = CompanyContext::getActiveCompanyId();
+
+        foreach ($rows as $row) {
+            $invoiceNo = (string)($row['invoice_no'] ?? '');
+            $invoiceData = $this->dailyRowToInvoiceData($row);
+            $rowCompanyId = !empty($row['company_id']) ? (int)$row['company_id'] : null;
+
+            try {
+                $result = $this->processInvoice(
+                    $invoiceData,
+                    $processedByUserId,
+                    $rowCompanyId ?: $activeCompanyId
+                );
+
+                // If still unmapped, retry with the currently selected company
+                if (
+                    ($result['mapping_status'] ?? '') === 'unmapped'
+                    && $activeCompanyId
+                    && $activeCompanyId !== $rowCompanyId
+                ) {
+                    $result = $this->processInvoice($invoiceData, $processedByUserId, $activeCompanyId);
+                }
+
+                // Last resort: try each active company
+                if (($result['mapping_status'] ?? '') === 'unmapped') {
+                    foreach ($this->companyRepository->findActive() as $company) {
+                        $cid = (int)$company->id;
+                        if ($cid === $rowCompanyId || $cid === $activeCompanyId) {
+                            continue;
+                        }
+                        $retry = $this->processInvoice($invoiceData, $processedByUserId, $cid);
+                        if (($retry['mapping_status'] ?? '') === 'mapped') {
+                            $result = $retry;
+                            break;
+                        }
+                    }
+                }
+
+                $status = ($result['mapping_status'] ?? '') === 'mapped' ? 'mapped' : 'unmapped';
+                $details[] = array_merge(['status' => $status, 'invoice_no' => $invoiceNo], $result);
+            } catch (\Throwable $e) {
+                $details[] = [
+                    'status' => 'error',
+                    'invoice_no' => $invoiceNo,
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'processed' => count($details),
+            'mapped' => count(array_filter($details, fn($r) => $r['status'] === 'mapped')),
+            'still_unmapped' => count(array_filter($details, fn($r) => $r['status'] === 'unmapped')),
+            'failed' => count(array_filter($details, fn($r) => $r['status'] === 'error')),
+            'details' => $details,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function dailyRowToInvoiceData(array $row): array
+    {
+        return [
+            'invoice_no' => (string)$row['invoice_no'],
+            'invoice_date' => (string)$row['invoice_date'],
+            'party_name' => (string)$row['party_name'],
+            'product_name' => (string)($row['product_name'] ?? ''),
+            'product_rate' => $row['product_rate'] !== null && $row['product_rate'] !== ''
+                ? (float)$row['product_rate']
+                : null,
+            'quantity' => max(1, (int)($row['quantity_trucks'] ?? 1)),
+            'loading_weight_tons' => $row['loading_weight_tons'] !== null && $row['loading_weight_tons'] !== ''
+                ? (float)$row['loading_weight_tons']
+                : null,
+            'vehicle_no' => $row['vehicle_no'] ?? null,
+            'rawana_no' => $row['rawana_no'] ?? null,
+            'eway_bill_no' => $row['eway_bill_no'] ?? null,
+            'order_no' => $row['order_no_from_invoice'] ?? null,
+        ];
+    }
+
     /** @deprecated Use processInvoice() */
     public function processInvoiceWebhook(array $invoiceData): array
     {

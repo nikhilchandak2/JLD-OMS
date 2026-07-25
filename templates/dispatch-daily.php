@@ -28,14 +28,19 @@
                 <i class="bi bi-calendar3 me-2"></i>Daily Busy Dispatches
             </h1>
             <p class="page-subtitle">
-                Read-only view of invoices from Dispatch upload — including ones not mapped to a portal order.
-                Upload once on the <a href="/dispatch">Dispatch Dashboard</a>.
+                Invoices from Dispatch upload — including ones not mapped to a portal order.
+                After creating missing orders, use <strong>Remap unmapped</strong> (no need to re-upload CSV).
+                Upload CSV once on the <a href="/dispatch">Dispatch Dashboard</a>.
             </p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
             <a href="/dispatch" class="btn btn-outline-primary">
                 <i class="bi bi-upload me-1"></i> Go to Dispatch Upload
             </a>
+            <button type="button" class="btn btn-warning" id="remapUnmappedBtn" onclick="remapUnmappedInvoices()">
+                <span class="spinner-border spinner-border-sm d-none" id="remapSpinner"></span>
+                <i class="bi bi-link-45deg me-1"></i> Remap unmapped
+            </button>
             <button type="button" class="btn btn-primary" onclick="loadDailyBusyDispatches(true)">
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
@@ -200,6 +205,42 @@ async function loadDailyBusyDispatches(resetPage = false) {
     } catch (error) {
         tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger p-4">${escapeHtml(error.message || 'Failed to load')}</td></tr>`;
         showError(error.message || 'Failed to load daily dispatches');
+    }
+}
+
+async function remapUnmappedInvoices() {
+    const btn = document.getElementById('remapUnmappedBtn');
+    const spinner = document.getElementById('remapSpinner');
+
+    if (!confirm(
+        'Re-match ALL unmapped invoices against current portal orders?\n\n'
+        + 'Use this after creating missing orders. Dispatches will be created/updated for invoices that now match.\n'
+        + 'No CSV re-upload needed.'
+    )) {
+        return;
+    }
+
+    btn.disabled = true;
+    spinner.classList.remove('d-none');
+    showError('');
+
+    try {
+        const response = await apiCall('/api/busy/daily-invoices/remap', {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+
+        const data = response.data || {};
+        showSuccess(response.message || 'Remap finished.');
+        if ((data.details || []).length) {
+            console.log('Remap details', data.details);
+        }
+        await loadDailyBusyDispatches(true);
+    } catch (error) {
+        showError(error.message || 'Remap failed');
+    } finally {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
     }
 }
 

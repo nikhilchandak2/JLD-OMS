@@ -217,6 +217,7 @@ $router->group('/api', function($router) {
         $router->post('/busy/invoices/upload', 'BusyIntegrationController@uploadInvoicesFromCsv');
         $router->post('/busy/invoices/import', 'BusyIntegrationController@importInvoice');
         $router->get('/busy/daily-invoices', 'BusyIntegrationController@dailyInvoices');
+        $router->post('/busy/daily-invoices/remap', 'BusyIntegrationController@remapDailyInvoices');
         $router->post('/busy/sync', 'BusyIntegrationController@syncInvoices');
         $router->get('/busy/status', 'BusyIntegrationController@getIntegrationStatus');
         

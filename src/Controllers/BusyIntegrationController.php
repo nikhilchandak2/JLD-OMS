@@ -234,6 +234,73 @@ class BusyIntegrationController
         }
     }
 
+    /**
+     * POST /api/busy/daily-invoices/remap — re-match unmapped invoices to orders created later.
+     */
+    public function remapDailyInvoices(): void
+    {
+        header('Content-Type: application/json');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
+
+        if (!$this->requireDispatchImportAccess()) {
+            return;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($input)) {
+            $input = [];
+        }
+
+        // Optional scope: omit date to remap ALL unmapped/error invoices
+        $date = trim((string)($input['date'] ?? ''));
+        $startDate = trim((string)($input['start_date'] ?? ''));
+        $endDate = trim((string)($input['end_date'] ?? ''));
+        $onlySelectedDate = !empty($input['only_selected_date']);
+
+        $user = $this->authService->getCurrentUser();
+        $companyId = isset($input['company_id']) ? (int)$input['company_id'] : 0;
+
+        $filters = [
+            'company_id' => $companyId > 0 ? $companyId : null,
+            'invoice_nos' => $input['invoice_nos'] ?? null,
+        ];
+        if ($onlySelectedDate && $date !== '') {
+            $filters['date'] = $date;
+        } elseif ($startDate !== '' || $endDate !== '') {
+            $filters['start_date'] = $startDate !== '' ? $startDate : null;
+            $filters['end_date'] = $endDate !== '' ? $endDate : null;
+        }
+
+        try {
+            $result = $this->busyIntegrationService->remapUnmappedInvoices(
+                $filters,
+                $user ? (int)$user['id'] : null
+            );
+
+            $message = sprintf(
+                'Remap finished — %d processed, %d mapped, %d still unmapped, %d failed',
+                $result['processed'],
+                $result['mapped'],
+                $result['still_unmapped'],
+                $result['failed']
+            );
+
+            echo json_encode([
+                'success' => true,
+                'message' => $message,
+                'data' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
     /** POST JSON body — single invoice import (same shape as webhook). */
     public function importInvoice(): void
     {

@@ -109,6 +109,60 @@ class BusyDailyInvoiceRepository
     }
 
     /**
+     * Unmapped / error rows eligible for remapping after orders are created later.
+     *
+     * @param array<string, mixed> $filters
+     * @return list<array<string, mixed>>
+     */
+    public function findRemapCandidates(array $filters = []): array
+    {
+        $where = ["bdi.mapping_status IN ('unmapped', 'error')"];
+        $params = [];
+
+        $date = trim((string)($filters['date'] ?? ''));
+        if ($date !== '') {
+            $where[] = 'bdi.invoice_date = ?';
+            $params[] = $date;
+        } else {
+            if (!empty($filters['start_date'])) {
+                $where[] = 'bdi.invoice_date >= ?';
+                $params[] = $filters['start_date'];
+            }
+            if (!empty($filters['end_date'])) {
+                $where[] = 'bdi.invoice_date <= ?';
+                $params[] = $filters['end_date'];
+            }
+        }
+
+        if (!empty($filters['company_id'])) {
+            $where[] = 'bdi.company_id = ?';
+            $params[] = (int)$filters['company_id'];
+        }
+
+        if (!empty($filters['invoice_nos']) && is_array($filters['invoice_nos'])) {
+            $nos = array_values(array_filter(array_map('strval', $filters['invoice_nos'])));
+            if ($nos !== []) {
+                $placeholders = implode(',', array_fill(0, count($nos), '?'));
+                $where[] = "bdi.invoice_no IN ({$placeholders})";
+                foreach ($nos as $no) {
+                    $params[] = $no;
+                }
+            }
+        }
+
+        $whereSql = implode(' AND ', $where);
+        $sql = "
+            SELECT bdi.*
+            FROM busy_daily_invoices bdi
+            WHERE {$whereSql}
+            ORDER BY bdi.invoice_date ASC, bdi.id ASC
+            LIMIT 500
+        ";
+
+        return $this->database->fetchAll($sql, $params);
+    }
+
+    /**
      * @param array<string, mixed> $filters
      * @return array{rows: list<array<string, mixed>>, total: int, summary: array<string, int|float>}
      */
