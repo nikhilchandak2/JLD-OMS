@@ -119,6 +119,10 @@ class FuelReportImportService
                 if ($mapped['rows'] === [] && $category === 'jcb') {
                     $mapped = $this->parseJcbDiReport($tmpPath);
                 }
+                // Dumpers Fleet_Report_Details — Reg No daily fleet report
+                if ($mapped['rows'] === [] && $category === 'dumpers') {
+                    $mapped = $this->parseDumpersFleetReport($tmpPath);
+                }
                 if ($mapped['rows'] === []) {
                     $rows = $this->parseSpreadsheet($tmpPath);
                     if ($rows !== []) {
@@ -147,8 +151,9 @@ class FuelReportImportService
                 : '';
             return $this->fail([
                 'Could not map report columns to JLD format (machine + fuel/hours).' . $hint
-                . ' For Kobelco use EquipOperationReport .xls; for JCB use DI_*_Report .xlsx '
-                . '(Asset ID, TxnTime Slot, FuelUsedInWorking, Working Time, etc.).',
+                . ' For Kobelco use EquipOperationReport .xls; for JCB use DI_*_Report .xlsx; '
+                . 'for Dumpers use Fleet_Report_Details .xlsx '
+                . '(Date, Reg No, Fuel Consumed, Running Time, etc.).',
             ], $mapped['headers']);
         }
 
@@ -597,6 +602,201 @@ class FuelReportImportService
         ];
     }
 
+    /**
+     * Dumpers Fleet_Report_Details_*.xlsx — daily rows keyed by Reg No.
+     *
+     * Columns: Date, Reg No, Vehicle Model, Fuel Type, Distance Covered(KM),
+     * Fuel Consumed(ltr), Mileage, Idling Fuel Consumption(ltr),
+     * Running Time(hh:mm:ss), Idling Time, Halt Time, Start/End Odo.
+     *
+     * @return array{headers: list<string>, rows: list<array<string, mixed>>}
+     */
+    private function parseDumpersFleetReport(string $path): array
+    {
+        $spreadsheet = IOFactory::load($path);
+        $sheet = $spreadsheet->getSheetByName('Fleet Report') ?: $spreadsheet->getActiveSheet();
+
+        $headerRow = $this->findRowContainingNormalized($sheet, 'fuelconsumed', 1, 10);
+        if ($headerRow === null) {
+            $headerRow = $this->findRowContainingNormalized($sheet, 'regno', 1, 10);
+        }
+        if ($headerRow === null) {
+            return ['headers' => [], 'rows' => []];
+        }
+
+        $colDate = $this->findColumnInRowNormalized($sheet, $headerRow, ['date']);
+        $colReg = $this->findColumnInRowNormalized($sheet, $headerRow, ['regno', 'reg no', 'registration']);
+        $colModel = $this->findColumnInRowNormalized($sheet, $headerRow, ['vehiclemodel', 'vehicle model', 'model']);
+        $colFuelType = $this->findColumnInRowNormalized($sheet, $headerRow, ['fueltype', 'fuel type']);
+        $colDistance = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'distancecoveredkm', 'distancecovered', 'distance covered',
+        ]);
+        $colFuel = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'fuelconsumedltr', 'fuelconsumed', 'fuel consumed',
+        ]);
+        $colMileage = $this->findColumnInRowNormalized($sheet, $headerRow, ['mileage']);
+        $colIdleFuel = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'idlingfuelconsumptionltr', 'idlingfuelconsumption', 'idling fuel',
+        ]);
+        $colRunning = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'runningtimehhmmss', 'runningtime', 'running time',
+        ]);
+        $colIdling = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'idlingtimehhmmss', 'idlingtime', 'idling time',
+        ]);
+        $colHalt = $this->findColumnInRowNormalized($sheet, $headerRow, [
+            'halttimehhmmss', 'halttime', 'halt time',
+        ]);
+
+        if ($colDate === null || $colReg === null) {
+            return ['headers' => [], 'rows' => []];
+        }
+        if ($colFuel === null && $colRunning === null) {
+            return ['headers' => [], 'rows' => []];
+        }
+
+        $headerLabels = [];
+        $maxCol = min(80, Coordinate::columnIndexFromString($sheet->getHighestColumn()));
+        for ($c = 1; $c <= $maxCol; $c++) {
+            $col = Coordinate::stringFromColumnIndex($c);
+            $label = $this->sheetCell($sheet, $col . $headerRow);
+            if ($label !== '') {
+                $headerLabels[] = $label;
+            }
+        }
+
+        $fmt2 = static function (?string $v): ?string {
+            if ($v === null || trim($v) === '') {
+                return null;
+            }
+            $v = trim($v);
+            if (preg_match('/^\d{1,4}:\d{2}(:\d{2})?$/', $v)) {
+                return $v;
+            }
+            if (preg_match('/^(-?\d+(?:\.\d+)?)(.*)$/', $v, $m)) {
+                $num = round((float)$m[1], 2);
+                $formatted = rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
+                if ($formatted === '' || $formatted === '-') {
+                    $formatted = '0';
+                }
+                return $formatted . ($m[2] ?? '');
+            }
+            return $v;
+        };
+
+        $rows = [];
+        $maxRow = $sheet->getHighestRow();
+        for ($r = $headerRow + 1; $r <= $maxRow; $r++) {
+            $reg = $this->sheetCell($sheet, $colReg . $r);
+            if ($reg === '') {
+                continue;
+            }
+
+            $dateRaw = $sheet->getCell($colDate . $r)->getFormattedValue();
+            $dateCalc = $sheet->getCell($colDate . $r)->getCalculatedValue();
+            $readingDate = $this->normalizeDate(trim((string)($dateRaw ?? '')));
+            if ($readingDate === null && $dateCalc instanceof \DateTimeInterface) {
+                $readingDate = $dateCalc->format('Y-m-d');
+            } elseif ($readingDate === null && is_numeric($dateCalc)) {
+                try {
+                    $readingDate = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$dateCalc)->format('Y-m-d');
+                } catch (\Throwable $e) {
+                    $readingDate = null;
+                }
+            }
+            if ($readingDate === null) {
+                continue;
+            }
+
+            $model = $colModel ? $this->sheetCell($sheet, $colModel . $r) : '';
+            $fuelType = $colFuelType ? $this->sheetCell($sheet, $colFuelType . $r) : '';
+
+            $fuelDisplay = $colFuel ? $this->sheetCell($sheet, $colFuel . $r) : '';
+            $runningDisplay = $colRunning ? $this->sheetCell($sheet, $colRunning . $r) : '';
+            $distanceDisplay = $colDistance ? $this->sheetCell($sheet, $colDistance . $r) : '';
+            $mileageDisplay = $colMileage ? $this->sheetCell($sheet, $colMileage . $r) : '';
+            $idleFuelDisplay = $colIdleFuel ? $this->sheetCell($sheet, $colIdleFuel . $r) : '';
+            $idlingDisplay = $colIdling ? $this->sheetCell($sheet, $colIdling . $r) : '';
+            $haltDisplay = $colHalt ? $this->sheetCell($sheet, $colHalt . $r) : '';
+
+            $fuelLiters = $colFuel ? $this->cellNumeric($sheet, $colFuel . $r) : null;
+            $distanceKm = $colDistance ? $this->cellNumeric($sheet, $colDistance . $r) : null;
+            $mileage = $colMileage ? $this->cellNumeric($sheet, $colMileage . $r) : null;
+            $idleFuel = $colIdleFuel ? $this->cellNumeric($sheet, $colIdleFuel . $r) : null;
+
+            $workingHours = null;
+            if ($colRunning) {
+                $workingHours = $this->hhmmToDecimalHours($runningDisplay);
+                if ($workingHours === null) {
+                    $workingHours = $this->cellNumeric($sheet, $colRunning . $r);
+                }
+            }
+            $idleHours = null;
+            if ($colIdling) {
+                $idleHours = $this->hhmmToDecimalHours($idlingDisplay);
+                if ($idleHours === null) {
+                    $idleHours = $this->cellNumeric($sheet, $colIdling . $r);
+                }
+            }
+            $haltHours = null;
+            if ($colHalt) {
+                $haltHours = $this->hhmmToDecimalHours($haltDisplay);
+                if ($haltHours === null) {
+                    $haltHours = $this->cellNumeric($sheet, $colHalt . $r);
+                }
+            }
+
+            $avgUsage = $mileage !== null ? round($mileage, 2) : null;
+            $avgDisplay = $avgUsage !== null
+                ? number_format($avgUsage, 2, '.', '') . ' km/L'
+                : null;
+            if ($avgUsage === null && $fuelLiters !== null && $workingHours !== null && $workingHours > 0) {
+                $avgUsage = round($fuelLiters / $workingHours, 2);
+                $avgDisplay = number_format($avgUsage, 2, '.', '') . ' L/h';
+            }
+
+            $name = $reg . ($model !== '' ? ' (' . $model . ')' : '');
+
+            $rows[] = [
+                'name' => $name,
+                'serial_no' => null,
+                'chassis_no' => $reg,
+                'reading_date' => $readingDate,
+                'fuel_consumed_liters' => $fuelLiters !== null ? round($fuelLiters, 2) : null,
+                'working_hours' => $workingHours !== null ? round($workingHours, 4) : null,
+                'average_usage' => $avgUsage,
+                'extra' => array_filter([
+                    'vendor' => 'dumpers',
+                    'reg_no' => $reg,
+                    'vehicle_model' => $model !== '' ? $model : null,
+                    'fuel_type' => $fuelType !== '' ? $fuelType : null,
+                    'working_hrs_display' => $fmt2($runningDisplay !== '' ? $runningDisplay : null),
+                    'fuel_display' => $fmt2($fuelDisplay !== '' ? $fuelDisplay : null),
+                    'avg_display' => $avgDisplay,
+                    'distance_display' => $fmt2($distanceDisplay !== '' ? $distanceDisplay : null),
+                    'distance_km' => $distanceKm !== null ? round($distanceKm, 2) : null,
+                    'mileage_display' => $fmt2($mileageDisplay !== '' ? $mileageDisplay : null),
+                    'mileage' => $mileage !== null ? round($mileage, 2) : null,
+                    'idle_fuel_display' => $fmt2($idleFuelDisplay !== '' ? $idleFuelDisplay : null),
+                    'idle_fuel_liters' => $idleFuel !== null ? round($idleFuel, 2) : null,
+                    'idle_display' => $fmt2($idlingDisplay !== '' ? $idlingDisplay : null),
+                    'idle_hours' => $idleHours !== null ? round($idleHours, 4) : null,
+                    'halt_display' => $fmt2($haltDisplay !== '' ? $haltDisplay : null),
+                    'halt_hours' => $haltHours !== null ? round($haltHours, 4) : null,
+                ], static fn($v) => $v !== null),
+            ];
+        }
+
+        return [
+            'headers' => $headerLabels !== [] ? $headerLabels : [
+                'Date', 'Reg No', 'Vehicle Model', 'Fuel Type', 'Distance Covered(KM)',
+                'Fuel Consumed(ltr)', 'Mileage', 'Idling Fuel Consumption(ltr)',
+                'Running Time(hh:mm:ss)', 'Idling Time(hh:mm:ss)', 'Halt Time(hh:mm:ss)',
+            ],
+            'rows' => $rows,
+        ];
+    }
+
     private function normalizeHeaderKey(string $value): string
     {
         return strtolower(preg_replace('/[^a-z0-9]+/i', '', $value) ?? $value);
@@ -684,14 +884,17 @@ class FuelReportImportService
         return $this->normalizeDate($label);
     }
 
-    /** "11:02" (hours:minutes worked) → 11.0333… */
+    /** "11:02" or "03:15:00" (hours:minutes[:seconds]) → decimal hours */
     private function hhmmToDecimalHours(string $value): ?float
     {
         $value = trim($value);
         if ($value === '') {
             return null;
         }
-        if (preg_match('/^(\d{1,3}):(\d{2})$/', $value, $m)) {
+        if (preg_match('/^(\d{1,4}):(\d{2}):(\d{2})$/', $value, $m)) {
+            return round(((int)$m[1]) + ((int)$m[2]) / 60 + ((int)$m[3]) / 3600, 4);
+        }
+        if (preg_match('/^(\d{1,4}):(\d{2})$/', $value, $m)) {
             return round(((int)$m[1]) + ((int)$m[2]) / 60, 4);
         }
         return $this->toFloat($value);

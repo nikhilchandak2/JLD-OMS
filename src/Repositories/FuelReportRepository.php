@@ -483,7 +483,7 @@ class FuelReportRepository
             $vendor = strtolower((string)($extra['vendor'] ?? ''));
             $row['working_hrs_display'] = isset($extra['working_hrs_display'])
                 ? $this->formatMax2Decimals((string)$extra['working_hrs_display'])
-                : ($vendor === 'jcb'
+                : ($vendor === 'jcb' || $vendor === 'dumpers'
                     ? $this->formatMax2Decimals(isset($row['working_hours']) ? (string)$row['working_hours'] : null)
                     : $this->decimalHoursToHhmm(isset($row['working_hours']) ? (float)$row['working_hours'] : null));
             $row['fuel_display'] = isset($extra['fuel_display'])
@@ -500,6 +500,15 @@ class FuelReportRepository
                 : null;
             $row['distance_display'] = isset($extra['distance_display'])
                 ? $this->formatMax2Decimals((string)$extra['distance_display'])
+                : null;
+            $row['mileage_display'] = isset($extra['mileage_display'])
+                ? $this->formatMax2Decimals((string)$extra['mileage_display'])
+                : null;
+            $row['idle_fuel_display'] = isset($extra['idle_fuel_display'])
+                ? $this->formatMax2Decimals((string)$extra['idle_fuel_display'])
+                : null;
+            $row['halt_display'] = isset($extra['halt_display'])
+                ? $this->formatMax2Decimals((string)$extra['halt_display'])
                 : null;
             $row['vendor'] = $vendor !== '' ? $vendor : null;
         }
@@ -544,7 +553,7 @@ class FuelReportRepository
         if ($value === '') {
             return null;
         }
-        if (preg_match('/^\d{1,4}:\d{2}$/', $value)) {
+        if (preg_match('/^\d{1,4}:\d{2}(:\d{2})?$/', $value)) {
             return $value;
         }
         if (preg_match('/^(-?\d+(?:\.\d+)?)(.*)$/', $value, $m)) {

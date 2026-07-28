@@ -175,7 +175,7 @@
             </div>
             <form id="uploadForm">
                 <div class="modal-body">
-                    <p class="small text-muted mb-3">
+                    <p class="small text-muted mb-3" id="uploadHint">
                         Each file is typically one machine for one month (e.g. Kobelco EquipOperationReport).
                         Upload repeatedly for more machines / months. Same dates are replaced on re-upload.
                     </p>
@@ -321,7 +321,7 @@ function fmtNum(v) {
 function fmtDec2(v) {
     if (v === null || v === undefined || v === '') return '—';
     const s = String(v).trim();
-    if (/^\d{1,4}:\d{2}$/.test(s)) return s;
+    if (/^\d{1,4}:\d{2}(:\d{2})?$/.test(s)) return s;
     const m = s.match(/^(-?\d+(?:\.\d+)?)(.*)$/);
     if (!m) return s;
     const n = Number(m[1]);
@@ -372,6 +372,13 @@ function openCategory(category) {
     document.getElementById('detailTitle').textContent = CATEGORY_LABELS[category];
     document.getElementById('uploadCategory').value = category;
     document.getElementById('uploadCategoryLabel').value = CATEGORY_LABELS[category];
+    const hints = {
+        kobelco: 'Upload Kobelco EquipOperationReport (.xls) — one machine per file. Same dates are replaced on re-upload.',
+        jcb: 'Upload JCB DI_*_Report (.xlsx). Chassis/Asset ID identifies the machine. Same dates are replaced on re-upload.',
+        dumpers: 'Upload Dumpers Fleet_Report_Details (.xlsx). Reg No identifies each vehicle; one file may include multiple dumpers. Same dates are replaced on re-upload.'
+    };
+    const hintEl = document.getElementById('uploadHint');
+    if (hintEl) hintEl.textContent = hints[category] || hints.kobelco;
     document.getElementById('machineFilter').innerHTML = '<option value="all">All machines</option>';
     document.getElementById('machineFilter').value = 'all';
     document.getElementById('monthFilter').value = 'all';
@@ -622,6 +629,16 @@ function decimalHoursToHhmm(hours) {
     return hh + ':' + mm;
 }
 
+function decimalHoursToHhmmss(hours) {
+    const h = Number(hours);
+    if (!Number.isFinite(h)) return '—';
+    const totalSeconds = Math.round(h * 3600);
+    const hh = Math.floor(totalSeconds / 3600);
+    const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+    const ss = String(totalSeconds % 60).padStart(2, '0');
+    return hh + ':' + mm + ':' + ss;
+}
+
 function renderReadingRows(rows) {
     const tbody = document.getElementById('readingsBody');
     const thead = document.getElementById('readingsHead');
@@ -635,9 +652,41 @@ function renderReadingRows(rows) {
     }
 
     const isJcb = rows.some(r => (r.vendor || (r.extra && r.extra.vendor) || '') === 'jcb'
-        || r.engine_on_display != null || r.idle_display != null || r.distance_display != null);
+        || r.engine_on_display != null || (r.distance_display != null && (r.vendor || '') === 'jcb'));
+    const isDumpers = rows.some(r => (r.vendor || (r.extra && r.extra.vendor) || '') === 'dumpers'
+        || r.mileage_display != null || r.idle_fuel_display != null || r.halt_display != null);
 
-    if (isJcb) {
+    if (isDumpers) {
+        thead.innerHTML = `
+            <tr>
+                <th>Date</th>
+                <th>Fuel Consumed(ltr)</th>
+                <th>Running Time</th>
+                <th>Distance Covered(KM)</th>
+                <th>Mileage</th>
+                <th>Idling Fuel(ltr)</th>
+                <th>Idling Time</th>
+            </tr>`;
+        tbody.innerHTML = rows.map(r => {
+            const fuel = r.fuel_display != null && r.fuel_display !== '' ? r.fuel_display : (r.fuel_consumed_liters != null ? String(r.fuel_consumed_liters) : '—');
+            const hours = r.working_hrs_display != null && r.working_hrs_display !== '' ? r.working_hrs_display : (r.working_hours != null ? String(r.working_hours) : '—');
+            const dist = r.distance_display != null && r.distance_display !== '' ? r.distance_display : '—';
+            const mileage = r.mileage_display != null && r.mileage_display !== ''
+                ? r.mileage_display
+                : (r.avg_display != null && r.avg_display !== '' ? r.avg_display : '—');
+            const idleFuel = r.idle_fuel_display != null && r.idle_fuel_display !== '' ? r.idle_fuel_display : '—';
+            const idle = r.idle_display != null && r.idle_display !== '' ? r.idle_display : '—';
+            return `<tr>
+                <td>${fmtDate(r.reading_date)}</td>
+                <td>${escapeHtml(fmtDec2(fuel))}</td>
+                <td>${escapeHtml(fmtDec2(hours))}</td>
+                <td>${escapeHtml(fmtDec2(dist))}</td>
+                <td>${escapeHtml(fmtDec2(mileage))}</td>
+                <td>${escapeHtml(fmtDec2(idleFuel))}</td>
+                <td>${escapeHtml(fmtDec2(idle))}</td>
+            </tr>`;
+        }).join('');
+    } else if (isJcb) {
         thead.innerHTML = `
             <tr>
                 <th>Date</th>
@@ -686,8 +735,8 @@ function renderReadingRows(rows) {
         }).join('');
     }
 
-    let totalFuel = 0, totalHours = 0, totalEngine = 0, totalIdle = 0, totalDist = 0;
-    let hasEngine = false, hasIdle = false, hasDist = false;
+    let totalFuel = 0, totalHours = 0, totalEngine = 0, totalIdle = 0, totalDist = 0, totalIdleFuel = 0;
+    let hasEngine = false, hasIdle = false, hasDist = false, hasIdleFuel = false;
     rows.forEach(r => {
         const f = Number(r.fuel_consumed_liters);
         const h = Number(r.working_hours);
@@ -695,14 +744,27 @@ function renderReadingRows(rows) {
         if (Number.isFinite(h)) totalHours += h;
         const eng = Number(r.extra && r.extra.engine_on_hours);
         const idle = Number(r.extra && r.extra.idle_hours);
-        const dist = Number(r.extra && r.extra.distance_roading);
+        const dist = Number(r.extra && (r.extra.distance_km != null ? r.extra.distance_km : r.extra.distance_roading));
+        const idleFuel = Number(r.extra && r.extra.idle_fuel_liters);
         if (Number.isFinite(eng)) { totalEngine += eng; hasEngine = true; }
         if (Number.isFinite(idle)) { totalIdle += idle; hasIdle = true; }
         if (Number.isFinite(dist)) { totalDist += dist; hasDist = true; }
+        if (Number.isFinite(idleFuel)) { totalIdleFuel += idleFuel; hasIdleFuel = true; }
     });
     const overallAvg = totalHours > 0 ? totalFuel / totalHours : null;
+    const overallMileage = (hasDist && totalFuel > 0) ? (totalDist / totalFuel) : null;
 
-    if (isJcb) {
+    if (isDumpers) {
+        tfoot.innerHTML = `<tr class="fw-semibold table-light">
+            <td>Total</td>
+            <td>${escapeHtml(fmtDec2(totalFuel))}</td>
+            <td>${escapeHtml(decimalHoursToHhmmss(totalHours))}</td>
+            <td>${escapeHtml(hasDist ? fmtDec2(totalDist) : '—')}</td>
+            <td>${escapeHtml(overallMileage != null ? fmtDec2(overallMileage) : '—')}</td>
+            <td>${escapeHtml(hasIdleFuel ? fmtDec2(totalIdleFuel) : '—')}</td>
+            <td>${escapeHtml(hasIdle ? decimalHoursToHhmmss(totalIdle) : '—')}</td>
+        </tr>`;
+    } else if (isJcb) {
         tfoot.innerHTML = `<tr class="fw-semibold table-light">
             <td>Total</td>
             <td>${escapeHtml(fmtDec2(totalFuel))}</td>
