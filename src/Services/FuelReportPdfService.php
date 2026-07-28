@@ -31,7 +31,7 @@ class FuelReportPdfService
         $monthLabel = $this->formatMonthLabel($month);
         $title = $categoryLabel . ' — Monthly Fuel Report';
 
-        $pdf = new TCPDF('L', PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
+        $pdf = new TCPDF('P', PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
         $pdf->SetCreator('JLD OMS');
         $pdf->SetAuthor('JLD Order Processing');
         $pdf->SetTitle($title . ' — ' . $machineName);
