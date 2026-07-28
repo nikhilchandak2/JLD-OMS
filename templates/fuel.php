@@ -218,9 +218,17 @@
                         <label class="form-label small mb-1" for="readingsMonth">Month</label>
                         <select class="form-select form-select-sm" id="readingsMonth" style="min-width: 11rem;" onchange="onReadingsMonthChange()"></select>
                     </div>
+                    <div class="d-flex gap-2 ms-sm-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnPrintReadings" onclick="printReadings()" disabled>
+                            <i class="bi bi-printer me-1"></i> Print
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="btnPdfReadings" onclick="downloadReadingsPdf()" disabled>
+                            <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
+                        </button>
+                    </div>
                     <div class="ms-auto small text-muted" id="readingsMonthHint"></div>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive" id="readingsPrintArea">
                     <table class="table table-sm table-striped mb-0" id="readingsTable">
                         <thead id="readingsHead">
                             <tr>
@@ -571,10 +579,82 @@ function viewReadings(machineId, label) {
     document.getElementById('readingsBody').innerHTML = '<tr><td colspan="4" class="text-muted text-center">Loading...</td></tr>';
     document.getElementById('readingsFoot').style.display = 'none';
     document.getElementById('readingsMonth').innerHTML = '';
+    setReadingsExportEnabled(false);
     const preferredMonth = currentMonthFilter !== 'all' ? currentMonthFilter : '';
     const modal = new bootstrap.Modal(document.getElementById('readingsModal'));
     modal.show();
     fetchReadings(machineId, preferredMonth);
+}
+
+function setReadingsExportEnabled(enabled) {
+    const printBtn = document.getElementById('btnPrintReadings');
+    const pdfBtn = document.getElementById('btnPdfReadings');
+    if (printBtn) printBtn.disabled = !enabled;
+    if (pdfBtn) pdfBtn.disabled = !enabled;
+}
+
+function printReadings() {
+    const title = document.getElementById('readingsModalTitle').textContent || 'Monthly Fuel Report';
+    const meta = document.getElementById('readingsModalMeta').textContent || '';
+    const monthSel = document.getElementById('readingsMonth');
+    const monthLabel = monthSel && monthSel.selectedOptions[0]
+        ? monthSel.selectedOptions[0].textContent
+        : '';
+    const category = currentCategory ? (CATEGORY_LABELS[currentCategory] || currentCategory) : '';
+    const tableHtml = document.getElementById('readingsTable').outerHTML;
+    const w = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=800');
+    if (!w) {
+        showError('Pop-up blocked. Allow pop-ups to print.');
+        return;
+    }
+    w.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)} — ${escapeHtml(monthLabel)}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #222; margin: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; color: #2b235e; text-align: center; }
+  h2 { font-size: 15px; margin: 0 0 8px; text-align: center; font-weight: 600; }
+  .meta { text-align: center; font-size: 12px; color: #555; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; vertical-align: middle; }
+  thead th { background: #2b235e; color: #fff; }
+  tfoot td { font-weight: 700; background: #f3f3f3; }
+  @media print {
+    body { margin: 10mm; }
+    button { display: none !important; }
+  }
+</style>
+</head>
+<body>
+  <h1>${escapeHtml(category ? (category + ' — Monthly Fuel Report') : 'Monthly Fuel Report')}</h1>
+  <h2>${escapeHtml(title)}</h2>
+  <div class="meta">
+    ${escapeHtml(monthLabel ? ('Month: ' + monthLabel) : '')}
+    ${meta ? (' &nbsp;|&nbsp; ' + escapeHtml(meta)) : ''}
+  </div>
+  ${tableHtml}
+  <script>
+    window.onload = function () {
+      window.focus();
+      window.print();
+    };
+  <\/script>
+</body>
+</html>`);
+    w.document.close();
+}
+
+function downloadReadingsPdf() {
+    if (!currentMachineId) return;
+    const month = document.getElementById('readingsMonth').value;
+    if (!month) {
+        showError('Select a month first');
+        return;
+    }
+    const url = '/api/fuel/machines/' + currentMachineId + '/readings/pdf?month=' + encodeURIComponent(month);
+    window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function onReadingsMonthChange() {
@@ -591,6 +671,7 @@ function fetchReadings(machineId, month) {
             if (!data.success) {
                 document.getElementById('readingsBody').innerHTML =
                     '<tr><td colspan="4" class="text-danger text-center">' + escapeHtml(data.error || 'Failed') + '</td></tr>';
+                setReadingsExportEnabled(false);
                 return;
             }
             const machine = data.machine || {};
@@ -611,12 +692,15 @@ function fetchReadings(machineId, month) {
             document.getElementById('readingsMonthHint').textContent =
                 months.length > 1 ? (months.length + ' months on file — pick one to view') : '';
 
-            renderReadingRows(data.data || []);
+            const rows = data.data || [];
+            renderReadingRows(rows);
+            setReadingsExportEnabled(!!activeMonth && rows.length > 0);
         })
         .catch(e => {
             document.getElementById('readingsBody').innerHTML =
                 '<tr><td colspan="4" class="text-danger text-center">' + escapeHtml(e.message) + '</td></tr>';
             document.getElementById('readingsFoot').style.display = 'none';
+            setReadingsExportEnabled(false);
         });
 }
 
@@ -661,10 +745,10 @@ function renderReadingRows(rows) {
             <tr>
                 <th>Date</th>
                 <th>Fuel Consumed(ltr)</th>
-                <th>Running Time</th>
+                <th>Idling Fuel(ltr)</th>
                 <th>Distance Covered(KM)</th>
                 <th>Mileage</th>
-                <th>Idling Fuel(ltr)</th>
+                <th>Running Time</th>
                 <th>Idling Time</th>
             </tr>`;
         tbody.innerHTML = rows.map(r => {
@@ -679,10 +763,10 @@ function renderReadingRows(rows) {
             return `<tr>
                 <td>${fmtDate(r.reading_date)}</td>
                 <td>${escapeHtml(fmtDec2(fuel))}</td>
-                <td>${escapeHtml(fmtDec2(hours))}</td>
+                <td>${escapeHtml(fmtDec2(idleFuel))}</td>
                 <td>${escapeHtml(fmtDec2(dist))}</td>
                 <td>${escapeHtml(fmtDec2(mileage))}</td>
-                <td>${escapeHtml(fmtDec2(idleFuel))}</td>
+                <td>${escapeHtml(fmtDec2(hours))}</td>
                 <td>${escapeHtml(fmtDec2(idle))}</td>
             </tr>`;
         }).join('');
@@ -758,10 +842,10 @@ function renderReadingRows(rows) {
         tfoot.innerHTML = `<tr class="fw-semibold table-light">
             <td>Total</td>
             <td>${escapeHtml(fmtDec2(totalFuel))}</td>
-            <td>${escapeHtml(decimalHoursToHhmmss(totalHours))}</td>
+            <td>${escapeHtml(hasIdleFuel ? fmtDec2(totalIdleFuel) : '—')}</td>
             <td>${escapeHtml(hasDist ? fmtDec2(totalDist) : '—')}</td>
             <td>${escapeHtml(overallMileage != null ? fmtDec2(overallMileage) : '—')}</td>
-            <td>${escapeHtml(hasIdleFuel ? fmtDec2(totalIdleFuel) : '—')}</td>
+            <td>${escapeHtml(decimalHoursToHhmmss(totalHours))}</td>
             <td>${escapeHtml(hasIdle ? decimalHoursToHhmmss(totalIdle) : '—')}</td>
         </tr>`;
     } else if (isJcb) {

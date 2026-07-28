@@ -115,6 +115,7 @@ $router->group('/api', function($router) {
         // Fuel Management (monthly vendor reports — Kobelco / JCB / Dumpers)
         $router->get('/fuel/categories', 'FuelController@categories');
         $router->get('/fuel/machines', 'FuelController@machines');
+        $router->get('/fuel/machines/{id}/readings/pdf', 'FuelController@machineReadingsPdf');
         $router->get('/fuel/machines/{id}/readings', 'FuelController@machineReadings');
         $router->post('/fuel/reports/upload', 'FuelController@uploadReport');
         $router->delete('/fuel/reports/{id}', 'FuelController@deleteUpload');

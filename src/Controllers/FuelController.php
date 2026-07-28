@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use App\Services\FuelReportImportService;
+use App\Services\FuelReportPdfService;
 use App\Repositories\FuelReportRepository;
 
 class FuelController
@@ -132,6 +133,60 @@ class FuelController
             error_log('Fuel readings failed: ' . $e->getMessage());
             http_response_code(500);
             echo json_encode(['error' => 'Failed to load readings']);
+        }
+    }
+
+    /**
+     * GET /api/fuel/machines/{id}/readings/pdf?month=YYYY-MM
+     */
+    public function machineReadingsPdf(string $id): void
+    {
+        if (!$this->requireFuelAccess()) {
+            return;
+        }
+
+        $machineId = (int)$id;
+        if ($machineId <= 0) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Invalid machine id']);
+            return;
+        }
+
+        $month = $this->normalizeMonth($_GET['month'] ?? null);
+        if ($month === null) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'month is required (YYYY-MM)']);
+            return;
+        }
+
+        try {
+            $machine = $this->repository->findMachineById($machineId);
+            if (!$machine) {
+                http_response_code(404);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Machine not found']);
+                return;
+            }
+
+            $readings = $this->repository->getMachineDailyReadings($machineId, $month, 400);
+            $pdfService = new FuelReportPdfService();
+            $pdf = $pdfService->generateMachineMonthPdf($machine, $month, $readings);
+
+            $safeName = preg_replace('/[^a-zA-Z0-9._-]+/', '_', (string)($machine['name'] ?? 'machine')) ?: 'machine';
+            $filename = 'fuel_' . ($machine['category'] ?? 'report') . '_' . $safeName . '_' . $month . '.pdf';
+
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($pdf));
+            header('Cache-Control: private, max-age=0, must-revalidate');
+            echo $pdf;
+        } catch (\Throwable $e) {
+            error_log('Fuel readings PDF failed: ' . $e->getMessage());
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Failed to generate PDF']);
         }
     }
 
