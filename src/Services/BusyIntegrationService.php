@@ -607,6 +607,8 @@ class BusyIntegrationService
 
     private function findMatchingOrder(array $data, int $companyId): ?Order
     {
+        $invoiceDate = (string)($data['invoice_date'] ?? '');
+
         if (!empty($data['order_no'])) {
             $order = $this->orderRepository->findByOrderNo($data['order_no']);
             if ($order && (int)$order->companyId === $companyId) {
@@ -628,7 +630,7 @@ class BusyIntegrationService
                 $companyId,
                 (int)$data['quantity']
             );
-            if ($billingOrder) {
+            if ($billingOrder && $this->orderEligibleForInvoiceDate($billingOrder, $invoiceDate)) {
                 return $billingOrder;
             }
         }
@@ -646,12 +648,15 @@ class BusyIntegrationService
                 $companyId,
                 (int)$data['quantity']
             );
-            if ($order) {
+            if ($order && $this->orderEligibleForInvoiceDate($order, $invoiceDate)) {
                 return $order;
             }
         }
 
-        $pendingOrders = $this->findPendingOrdersForInvoiceParty((int)$party->id, $companyId, (int)$data['quantity']);
+        $pendingOrders = array_values(array_filter(
+            $this->findPendingOrdersForInvoiceParty((int)$party->id, $companyId, (int)$data['quantity']),
+            fn(Order $order) => $this->orderEligibleForInvoiceDate($order, $invoiceDate)
+        ));
         if (empty($pendingOrders)) {
             return null;
         }
@@ -667,6 +672,30 @@ class BusyIntegrationService
         }
 
         return null;
+    }
+
+    /**
+     * Prevent Busy invoices from attaching to a replacement order created after the invoice date
+     * (common when an earlier portal order was deleted and a fresh order was created later).
+     * Allows order_date up to 1 day after invoice_date for late entry.
+     */
+    private function orderEligibleForInvoiceDate(Order $order, string $invoiceDate): bool
+    {
+        $invoiceDate = trim($invoiceDate);
+        $orderDate = trim((string)$order->orderDate);
+        if ($invoiceDate === '' || $orderDate === '') {
+            return true;
+        }
+
+        try {
+            $invoice = new \DateTimeImmutable(substr($invoiceDate, 0, 10));
+            $orderDt = new \DateTimeImmutable(substr($orderDate, 0, 10));
+        } catch (\Exception $e) {
+            return true;
+        }
+
+        $latestAllowedOrderDate = $invoice->modify('+1 day');
+        return $orderDt <= $latestAllowedOrderDate;
     }
 
     /**
