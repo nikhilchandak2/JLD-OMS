@@ -59,11 +59,11 @@ class BusyIntegrationService
 
             if (!$order) {
                 $billingHint = OrderSchema::hasBillingPartyColumns()
-                    ? ' For bill-to-another-party orders, the Busy Party Name must match the billing party (e.g. Icon), not only the delivery party (e.g. Acecon), and the product must match.'
+                    ? ' For bill-to-another-party orders, Busy Party Name may match billing or delivery party; product and remaining trucks must also match.'
                     : '';
                 $message = 'No matching pending order found for billed-to "' . $mapped['party_name'] .
                     '", product "' . $mapped['product_name'] . '".'
-                    . ' Check company, product, remaining trucks, and billing party on the order.'
+                    . ' Check company, product, remaining trucks, and party on the order.'
                     . $billingHint;
 
                 $dailyId = $this->upsertDailyInvoiceRecord($mapped, $companyId, 'unmapped', $message, null, null, $processedByUserId);
@@ -668,8 +668,11 @@ class BusyIntegrationService
             return null;
         }
 
-        // Open orders for this company with capacity; filter by billed-to (delivery or billing party)
-        $pendingOrders = [];
+        // Open orders for this company with capacity; filter by billed-to (delivery or billing party).
+        // Prefer orders whose order_date is on/before the invoice (FIFO), but still allow
+        // later-created orders — remap exists exactly for "order after CSV upload".
+        $dateOk = [];
+        $dateFallback = [];
         foreach ($this->getOpenOrdersForCompany($companyId) as $order) {
             $remaining = max(0, (int)$order->orderQtyTrucks - (int)$order->totalDispatched);
             if ($remaining < $quantity) {
@@ -678,17 +681,34 @@ class BusyIntegrationService
             if (!$this->invoicePartyMatchesOrder($order, $invoicePartyName)) {
                 continue;
             }
-            if (!$this->orderEligibleForInvoiceDate($order, $invoiceDate)) {
+            if ($this->orderEligibleForInvoiceDate($order, $invoiceDate)) {
+                $dateOk[] = $order;
+            } else {
+                $dateFallback[] = $order;
+            }
+        }
+
+        foreach ([$dateOk, $dateFallback] as $pendingOrders) {
+            if ($pendingOrders === []) {
                 continue;
             }
-            $pendingOrders[] = $order;
+
+            $matched = $this->pickOrderByProduct($pendingOrders, $invoiceProduct);
+            if ($matched) {
+                return $matched;
+            }
         }
 
-        if ($pendingOrders === []) {
-            return null;
-        }
+        return null;
+    }
 
-        // Already loaded oldest-first; keep stable FIFO
+    /**
+     * Among party-matched open orders (oldest-first), pick by product id then loose name.
+     *
+     * @param list<Order> $pendingOrders
+     */
+    private function pickOrderByProduct(array $pendingOrders, string $invoiceProduct): ?Order
+    {
         $product = $this->findProductByName($invoiceProduct);
 
         if ($product) {
@@ -747,9 +767,8 @@ class BusyIntegrationService
     }
 
     /**
-     * Do not attach an invoice to an order whose order_date is clearly after the invoice
-     * (avoids filling a brand-new order while an older open order should take FIFO trucks).
-     * Allows order_date up to 1 day after invoice_date for late entry.
+     * Prefer orders whose order_date is on/before invoice_date (+1 day grace).
+     * Used as a preference bucket only — later-created orders remain eligible as fallback.
      */
     private function orderEligibleForInvoiceDate(Order $order, string $invoiceDate): bool
     {
@@ -771,9 +790,10 @@ class BusyIntegrationService
     }
 
     /**
-     * Busy "Party Name" / billed-to must match the party that appears on the invoice:
+     * Busy "Party Name" / billed-to must match:
      * - Normal order → delivery party
-     * - Bill-to-another-party → billing party (e.g. Acecon delivery, Icon on the bill)
+     * - Bill-to-another-party → billing party OR delivery party
+     *   (Busy may show Icon on the bill or Acecon as the site/party name)
      */
     private function invoicePartyMatchesOrder(Order $order, string $invoicePartyName): bool
     {
@@ -788,12 +808,15 @@ class BusyIntegrationService
             if ($invoiceParty && (int)$order->billingPartyId === (int)$invoiceParty->id) {
                 return true;
             }
-            // Name fallback when Busy spelling differs slightly from parties master
             if ($order->billingPartyName !== ''
                 && $this->partyNamesLooselyMatch($invoicePartyName, $order->billingPartyName)) {
                 return true;
             }
-            return false;
+            // Also accept delivery party when Busy lists the site, not the billed-to
+            if ($invoiceParty && (int)$order->partyId === (int)$invoiceParty->id) {
+                return true;
+            }
+            return $this->partyNamesLooselyMatch($invoicePartyName, $order->partyName);
         }
 
         if ($invoiceParty && (int)$order->partyId === (int)$invoiceParty->id) {
