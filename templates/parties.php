@@ -127,6 +127,7 @@
 </div>
 
 <script>
+const canDeleteParties = <?= !empty($can_delete_parties) ? 'true' : 'false' ?>;
 let parties = [];
 let editingPartyId = null;
 
@@ -164,7 +165,7 @@ function renderPartiesTable() {
             <td class="text-end">
                 <a href="/crm/parties/${Number(party.id) || 0}" class="btn btn-sm btn-outline-success me-1" title="CRM view (profile, samples, receivables)"><i class="bi bi-person-lines-fill"></i> CRM</a>
                 <button class="btn btn-sm btn-outline-primary me-1" onclick="editParty(${Number(party.id) || 0})"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteParty(${Number(party.id) || 0})"><i class="fas fa-trash"></i></button>
+                ${canDeleteParties ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteParty(${Number(party.id) || 0})" title="Delete party (admin only)"><i class="fas fa-trash"></i></button>` : ''}
             </td>
         `;
         tbody.appendChild(row);

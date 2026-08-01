@@ -76,11 +76,13 @@
                     <option value="below_1000">&lt; 1000</option>
                 </select>
             </div>
+            <?php if (!empty($can_delete_tds)): ?>
             <div class="col-md-1">
-                <button type="button" class="btn btn-outline-danger w-100" id="btnDelete" disabled title="Delete upload" onclick="deleteCurrent()">
+                <button type="button" class="btn btn-outline-danger w-100" id="btnDelete" disabled title="Delete upload (admin only)" onclick="deleteCurrent()">
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
+            <?php endif; ?>
         </div>
         <p class="small text-muted mb-0 mt-2" id="periodHint">Upload a Busy outward vouchers Excel to begin.</p>
     </div>
@@ -283,7 +285,8 @@ async function loadUploads(selectId = null) {
 
 function setControlsEnabled(on) {
     document.getElementById('btnExport').disabled = !on;
-    document.getElementById('btnDelete').disabled = !on;
+    const btnDelete = document.getElementById('btnDelete');
+    if (btnDelete) btnDelete.disabled = !on;
     document.getElementById('centreFilter').disabled = !on;
     document.getElementById('bandFilter').disabled = !on;
 }

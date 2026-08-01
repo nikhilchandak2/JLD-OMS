@@ -314,6 +314,11 @@ class FuelController
         if (!$this->requireFuelAccess()) {
             return;
         }
+        if (!$this->authService->hasRole('admin')) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Only an admin can delete fuel report uploads.']);
+            return;
+        }
 
         $uploadId = (int)$id;
         if ($uploadId <= 0) {

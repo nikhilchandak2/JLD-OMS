@@ -116,8 +116,9 @@ class WebController
             'user' => $user,
             'order_id' => $id,
             'can_edit_orders' => $this->authService->hasAnyRole(['admin', 'order_processing', 'entry', 'sales']),
-            'can_delete_orders' => $this->authService->hasAnyRole(['admin', 'order_processing', 'sales']),
-            'can_force_delete_orders' => $this->authService->hasAnyRole(['admin', 'order_processing']),
+            'can_delete_orders' => $this->authService->hasRole('admin'),
+            'can_force_delete_orders' => $this->authService->hasRole('admin'),
+            'can_delete_dispatches' => $this->authService->hasRole('admin'),
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
@@ -322,6 +323,7 @@ class WebController
         $this->renderTemplate('parties', [
             'title' => 'Party Management',
             'user' => $user,
+            'can_delete_parties' => $this->authService->hasRole('admin'),
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
@@ -569,6 +571,7 @@ class WebController
         $this->renderTemplate('fuel', [
             'title' => 'Fuel Management',
             'user' => $user,
+            'can_delete_fuel_uploads' => $this->authService->hasRole('admin'),
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }
@@ -623,6 +626,7 @@ class WebController
         $this->renderTemplate('admin/tds', [
             'title' => 'TDS',
             'user' => $this->authService->getCurrentUser(),
+            'can_delete_tds' => $this->authService->hasRole('admin'),
             'csrf_token' => CsrfMiddleware::getToken(),
         ]);
     }

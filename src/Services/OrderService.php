@@ -109,6 +109,10 @@ class OrderService
         return $this->orderRepository->count($filters);
     }
     
+    /**
+     * Create a new order. Insert-only: never deletes, cancels, or overwrites
+     * earlier orders for the same party. Multiple open orders per party are normal.
+     */
     public function createOrder(array $data): Order
     {
         // Validate that product and party exist

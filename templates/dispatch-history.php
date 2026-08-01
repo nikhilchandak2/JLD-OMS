@@ -207,6 +207,7 @@
 
 <script>
 const canEditDispatch = <?= in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch']) ? 'true' : 'false' ?>;
+const canDeleteDispatch = <?= ($user['role'] ?? '') === 'admin' ? 'true' : 'false' ?>;
 const historyColSpan = canEditDispatch ? 11 : 10;
 const historyPageSize = 25;
 let historyPage = 0;
@@ -280,7 +281,7 @@ function renderHistoryTable() {
         const isActive = (d.status || 'active') === 'active';
         const actions = canEditDispatch ? `<td class="text-end text-nowrap">
             ${isActive ? `<button type="button" class="btn btn-sm btn-outline-warning me-1" onclick="openRejectTransferModal(${d.id})" title="Party rejected — transfer or credit note"><i class="bi bi-arrow-left-right"></i></button>` : ''}
-            <button type="button" class="btn btn-sm btn-outline-danger me-1" onclick="deleteHistoryDispatch(${d.id}, ${d.dispatch_qty_trucks || 1}, '${escapeHtml(d.status || 'active')}')" title="Delete dispatch"><i class="bi bi-trash"></i></button>
+            ${canDeleteDispatch ? `<button type="button" class="btn btn-sm btn-outline-danger me-1" onclick="deleteHistoryDispatch(${d.id}, ${d.dispatch_qty_trucks || 1}, '${escapeHtml(d.status || 'active')}')" title="Delete dispatch (admin only)"><i class="bi bi-trash"></i></button>` : ''}
             <a href="/orders/${d.order_id}" class="btn btn-sm btn-outline-primary" title="View order"><i class="bi bi-eye"></i></a>
         </td>` : '';
         return `<tr class="${!isActive ? 'table-secondary' : ''}">

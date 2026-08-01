@@ -358,11 +358,11 @@ class DispatchController
             return;
         }
         
-        // Check permissions (same roles that can edit dispatches)
+        // Destructive: admin only — dispatch/ops must not hard-delete records.
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'order_processing', 'dispatch'])) {
+        if (!$user || !$this->authService->hasRole('admin')) {
             http_response_code(403);
-            echo json_encode(['error' => 'Insufficient permissions']);
+            echo json_encode(['error' => 'Only an admin can delete dispatches. Contact admin if deletion is required.']);
             return;
         }
         

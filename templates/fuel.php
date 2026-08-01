@@ -295,6 +295,7 @@
 </style>
 
 <script>
+const canDeleteFuelUploads = <?= !empty($can_delete_fuel_uploads) ? 'true' : 'false' ?>;
 const CATEGORY_LABELS = { kobelco: 'Kobelco', jcb: 'JCB', dumpers: 'Dumpers' };
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let currentCategory = null;
@@ -543,12 +544,13 @@ function renderUploads(uploads) {
             <td>${escapeHtml(u.readings_saved)}</td>
             <td>${escapeHtml(uploaded)}${u.uploaded_by_name ? ' · ' + escapeHtml(u.uploaded_by_name) : ''}</td>
             <td>
-                <button type="button" class="btn btn-sm btn-outline-danger"
+                ${canDeleteFuelUploads ? `<button type="button" class="btn btn-sm btn-outline-danger"
                     data-upload-id="${Number(u.id)}"
                     data-upload-name="${escapeHtml(fileLabel)}"
+                    title="Delete upload (admin only)"
                     onclick="deleteUpload(Number(this.dataset.uploadId), this.dataset.uploadName)">
                     <i class="bi bi-trash"></i> Delete
-                </button>
+                </button>` : '<span class="text-muted small">—</span>'}
             </td>
         </tr>`;
     }).join('');

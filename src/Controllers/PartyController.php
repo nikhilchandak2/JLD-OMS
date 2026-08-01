@@ -408,11 +408,11 @@ class PartyController
             return;
         }
         
-        // Restrict destructive action to admin/accounts roles.
+        // Destructive: admin only.
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['admin', 'accounts'])) {
+        if (!$user || !$this->authService->hasRole('admin')) {
             http_response_code(403);
-            echo json_encode(['error' => 'Admin or Accounts access required']);
+            echo json_encode(['error' => 'Only an admin can delete parties. Contact admin if deletion is required.']);
             return;
         }
         

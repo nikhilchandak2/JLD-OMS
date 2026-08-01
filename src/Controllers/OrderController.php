@@ -613,7 +613,7 @@ class OrderController
             return;
         }
         
-        // Admin and order processing can delete any order; sales can delete own pending orders without dispatches
+        // Destructive: admin only — no other role may delete portal orders.
         $user = $this->authService->getCurrentUser();
         if (!$user) {
             http_response_code(401);
@@ -621,11 +621,9 @@ class OrderController
             return;
         }
 
-        $isAdminOrOps = $this->authService->hasAnyRole(['admin', 'order_processing']);
-        $isSales = $this->authService->hasRole('sales');
-        if (!$isAdminOrOps && !$isSales) {
+        if (!$this->authService->hasRole('admin')) {
             http_response_code(403);
-            echo json_encode(['error' => 'Insufficient permissions to delete orders']);
+            echo json_encode(['error' => 'Only an admin can delete orders. Contact admin if deletion is required.']);
             return;
         }
         
@@ -636,19 +634,6 @@ class OrderController
                 http_response_code(404);
                 echo json_encode(['error' => 'Order not found']);
                 return;
-            }
-
-            if (!$isAdminOrOps) {
-                if ($order->totalDispatched > 0) {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Cannot delete an order that already has dispatches. Contact admin or order processing.']);
-                    return;
-                }
-                if ($order->status === 'completed') {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Completed orders cannot be deleted']);
-                    return;
-                }
             }
             
             $success = $this->orderService->deleteOrder($id, $user['id']);

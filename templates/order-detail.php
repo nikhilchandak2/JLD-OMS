@@ -603,6 +603,7 @@
 let currentOrder = null;
 const orderId = <?= (int)$order_id ?>;
 const canEditDispatch = <?= in_array($user['role'], ['entry', 'order_processing', 'admin', 'dispatch']) ? 'true' : 'false' ?>;
+const canDeleteDispatches = <?= !empty($can_delete_dispatches) ? 'true' : 'false' ?>;
 const canEditOrders = <?= !empty($can_edit_orders) ? 'true' : 'false' ?>;
 const canDeleteOrders = <?= !empty($can_delete_orders) ? 'true' : 'false' ?>;
 const canForceDeleteOrders = <?= !empty($can_force_delete_orders) ? 'true' : 'false' ?>;
@@ -1050,9 +1051,9 @@ function updateDispatchHistory(dispatches) {
                     <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="openWeightModal(${dispatch.id})" title="Edit weight / kanta parchi">
                         <i class="bi bi-scale"></i>
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteDispatch(${dispatch.id})" title="Delete dispatch">
+                    ${canDeleteDispatches ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteDispatch(${dispatch.id})" title="Delete dispatch (admin only)">
                         <i class="bi bi-trash"></i>
-                    </button>
+                    </button>` : ''}
                </td>`
             : '';
         return `
@@ -1327,10 +1328,14 @@ document.getElementById('rejectTransferForm').addEventListener('submit', async f
 
 async function deleteCurrentOrder() {
     if (!currentOrder) return;
+    if (!canDeleteOrders) {
+        showError('Only an admin can delete orders.');
+        return;
+    }
     const dispatched = Number(currentOrder.total_dispatched) || 0;
     const msg = dispatched > 0
-        ? `Delete order "${currentOrder.order_no}" and its ${dispatched} dispatch record(s)?\n\nThis cannot be undone.`
-        : `Delete order "${currentOrder.order_no}"?\n\nThis cannot be undone.`;
+        ? `Delete order "${currentOrder.order_no}" and its ${dispatched} dispatch record(s)?\n\nAdmin only. This cannot be undone.`
+        : `Delete order "${currentOrder.order_no}"?\n\nAdmin only. This cannot be undone.`;
     if (!confirm(msg)) return;
 
     try {

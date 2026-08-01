@@ -234,6 +234,11 @@ class TdsController
         if (!$this->requireAccess()) {
             return;
         }
+        if (!$this->authService->hasRole('admin')) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Only an admin can delete TDS uploads.']);
+            return;
+        }
 
         $uploadId = (int)$id;
         if ($uploadId <= 0) {
