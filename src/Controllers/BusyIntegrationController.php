@@ -282,6 +282,9 @@ class BusyIntegrationController
         }
 
         try {
+            @ini_set('max_execution_time', '300');
+            @set_time_limit(300);
+
             $result = $this->busyIntegrationService->remapUnmappedInvoices(
                 $filters,
                 $user ? (int)$user['id'] : null
@@ -301,7 +304,9 @@ class BusyIntegrationController
                 'data' => $result,
             ]);
         } catch (\Throwable $e) {
+            error_log('Busy remap failed: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             http_response_code(400);
+            header('Content-Type: application/json');
             echo json_encode(['error' => $e->getMessage()]);
         }
     }

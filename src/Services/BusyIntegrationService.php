@@ -25,6 +25,9 @@ class BusyIntegrationService
     private BusyDailyInvoiceRepository $busyDailyInvoiceRepository;
     private DispatchService $dispatchService;
 
+    /** @var array<int, list<Order>> open pending/partial orders keyed by company_id */
+    private array $openOrdersByCompanyCache = [];
+
     public function __construct()
     {
         $this->database = new Database();
@@ -179,6 +182,10 @@ class BusyIntegrationService
             );
         }
 
+        @ini_set('max_execution_time', '300');
+        @set_time_limit(300);
+        $this->openOrdersByCompanyCache = [];
+
         // Older remap runs flipped some unmatched rows to "error" via processInvoice.
         // Put them back to unmapped before matching so they stay on the daily ledger.
         $this->busyDailyInvoiceRepository->reopenErrorsAsUnmapped();
@@ -223,6 +230,8 @@ class BusyIntegrationService
                     (int)$result['dispatch_id'],
                     $processedByUserId
                 );
+                // Capacity changed — refresh that company's open-order cache
+                unset($this->openOrdersByCompanyCache[$companyId]);
 
                 $details[] = array_merge([
                     'status' => 'mapped',
@@ -243,6 +252,8 @@ class BusyIntegrationService
             }
         }
 
+        $this->openOrdersByCompanyCache = [];
+
         return [
             'processed' => count($details),
             'mapped' => count(array_filter($details, fn($r) => $r['status'] === 'mapped')),
@@ -254,6 +265,7 @@ class BusyIntegrationService
 
     /**
      * Read-only order search for remap. Does not write dispatches or daily rows.
+     * Iterates companies once; does not nest multi-company search inside each try.
      *
      * @param array<string, mixed> $row
      * @return array{order: Order, company_id: int}|null
@@ -279,13 +291,13 @@ class BusyIntegrationService
 
         foreach ($companyIdsToTry as $companyId) {
             try {
-                $order = $this->findMatchingOrder($mapped, $companyId);
+                // Single-company match only (avoids O(companies²) during remap)
+                $order = $this->findMatchingOrderForCompany($mapped, $companyId);
             } catch (\Throwable $ignored) {
-                // Party mismatch on explicit order_no, etc. — try next company.
                 continue;
             }
             if ($order) {
-                return ['order' => $order, 'company_id' => $companyId];
+                return ['order' => $order, 'company_id' => (int)$order->companyId];
             }
         }
 
@@ -658,7 +670,11 @@ class BusyIntegrationService
 
         // Open orders for this company with capacity; filter by billed-to (delivery or billing party)
         $pendingOrders = [];
-        foreach ($this->findOpenOrdersWithCapacity($companyId, $quantity) as $order) {
+        foreach ($this->getOpenOrdersForCompany($companyId) as $order) {
+            $remaining = max(0, (int)$order->orderQtyTrucks - (int)$order->totalDispatched);
+            if ($remaining < $quantity) {
+                continue;
+            }
             if (!$this->invoicePartyMatchesOrder($order, $invoicePartyName)) {
                 continue;
             }
@@ -672,11 +688,7 @@ class BusyIntegrationService
             return null;
         }
 
-        usort($pendingOrders, static function (Order $a, Order $b): int {
-            $dateCmp = strcmp((string)$a->orderDate, (string)$b->orderDate);
-            return $dateCmp !== 0 ? $dateCmp : ($a->id <=> $b->id);
-        });
-
+        // Already loaded oldest-first; keep stable FIFO
         $product = $this->findProductByName($invoiceProduct);
 
         if ($product) {
@@ -697,10 +709,16 @@ class BusyIntegrationService
     }
 
     /**
-     * @return Order[]
+     * Cached open orders for a company (pending/partial with any remaining trucks).
+     *
+     * @return list<Order>
      */
-    private function findOpenOrdersWithCapacity(int $companyId, int $quantity): array
+    private function getOpenOrdersForCompany(int $companyId): array
     {
+        if (isset($this->openOrdersByCompanyCache[$companyId])) {
+            return $this->openOrdersByCompanyCache[$companyId];
+        }
+
         $sql = "
             SELECT o.id
             FROM orders o
@@ -711,11 +729,11 @@ class BusyIntegrationService
             ) d ON d.order_id = o.id
             WHERE o.company_id = ?
               AND o.status IN ('pending', 'partial')
-              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
+              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= 1
             ORDER BY o.order_date ASC, o.id ASC
         ";
 
-        $rows = $this->database->fetchAll($sql, [$companyId, $quantity]);
+        $rows = $this->database->fetchAll($sql, [$companyId]);
         $orders = [];
         foreach ($rows as $row) {
             $order = $this->orderRepository->findById((int)$row['id']);
@@ -724,6 +742,7 @@ class BusyIntegrationService
             }
         }
 
+        $this->openOrdersByCompanyCache[$companyId] = $orders;
         return $orders;
     }
 

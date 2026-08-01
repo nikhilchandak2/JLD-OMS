@@ -1278,11 +1278,17 @@
             };
             
             const response = await fetch(url, { ...defaultOptions, ...options });
+            const rawText = await response.text();
             let data;
             try {
-                data = await response.json();
+                data = rawText ? JSON.parse(rawText) : {};
             } catch (e) {
-                throw new Error('Server error — check that database migrations are up to date (php scripts/migrate.php).');
+                const snippet = String(rawText || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+                throw new Error(
+                    snippet
+                        ? `Server error (HTTP ${response.status}): ${snippet}`
+                        : `Server error (HTTP ${response.status}) — check PHP error log or run: php scripts/migrate.php`
+                );
             }
             
             if (!response.ok) {
