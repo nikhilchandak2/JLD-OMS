@@ -55,18 +55,13 @@ class BusyIntegrationService
             $order = $this->findMatchingOrder($mapped, $companyId);
 
             if (!$order) {
-                $party = $this->findPartyByName($mapped['party_name']);
-                $pendingCount = $party
-                    ? count($this->findPendingOrdersForInvoiceParty((int)$party->id, $companyId, (int)$mapped['quantity']))
-                    : 0;
                 $billingHint = OrderSchema::hasBillingPartyColumns()
-                    ? ' If the order uses bill-to-another-party, ensure the invoice Billed-to name matches the billing party on the order.'
+                    ? ' For bill-to-another-party orders, the Busy Party Name must match the billing party (e.g. Icon), not only the delivery party (e.g. Acecon), and the product must match.'
                     : '';
-                $hint = $pendingCount > 1
-                    ? ' This party has multiple pending orders — include Order No in the invoice or ensure the product name matches.'
-                    : ' Create the order first or include Order No in the invoice export.';
-                $message = 'No matching pending order found for party "' . $mapped['party_name'] .
-                    '", product "' . $mapped['product_name'] . '".' . $hint . $billingHint;
+                $message = 'No matching pending order found for billed-to "' . $mapped['party_name'] .
+                    '", product "' . $mapped['product_name'] . '".'
+                    . ' Check company, product, remaining trucks, and billing party on the order.'
+                    . $billingHint;
 
                 $dailyId = $this->upsertDailyInvoiceRecord($mapped, $companyId, 'unmapped', $message, null, null, $processedByUserId);
                 $this->updateWebhookLog($logId, 'error', $message);
@@ -609,23 +604,47 @@ class BusyIntegrationService
     /**
      * Match a Busy invoice to an open portal order.
      *
-     * Same party often has multiple open orders for different products — product
-     * must match. Among matching open orders, use FIFO (oldest order_date / id).
-     * Never attach Product A trucks to a Product B order. Creating a new order
-     * never removes older ones — matching only attaches dispatches.
+     * Billed-to on the invoice must match:
+     *   - order party (normal), OR
+     *   - order billing party when "Bill to another party" is on (e.g. Acecon order, Icon invoice).
+     * Product must also match. Among matches, FIFO (oldest order_date / id).
      */
     private function findMatchingOrder(array $data, int $companyId): ?Order
     {
+        $matched = $this->findMatchingOrderForCompany($data, $companyId);
+        if ($matched) {
+            return $matched;
+        }
+
+        // Retry other companies — bill-to orders are often under a specific company
+        // while the upload uses the header company switcher.
+        foreach ($this->companyRepository->findActive() as $company) {
+            $cid = (int)$company->id;
+            if ($cid === $companyId) {
+                continue;
+            }
+            $matched = $this->findMatchingOrderForCompany($data, $cid);
+            if ($matched) {
+                return $matched;
+            }
+        }
+
+        return null;
+    }
+
+    private function findMatchingOrderForCompany(array $data, int $companyId): ?Order
+    {
         $invoiceDate = (string)($data['invoice_date'] ?? '');
         $invoiceProduct = trim((string)($data['product_name'] ?? ''));
+        $invoicePartyName = trim((string)($data['party_name'] ?? ''));
         $quantity = (int)$data['quantity'];
 
         if (!empty($data['order_no'])) {
             $order = $this->orderRepository->findByOrderNo($data['order_no']);
             if ($order && (int)$order->companyId === $companyId) {
-                if (!$this->invoicePartyMatchesOrder($order, $data['party_name'])) {
+                if (!$this->invoicePartyMatchesOrder($order, $invoicePartyName)) {
                     throw new \RuntimeException(
-                        'Invoice billed-to party "' . $data['party_name'] . '" does not match order ' .
+                        'Invoice billed-to party "' . $invoicePartyName . '" does not match order ' .
                         $order->orderNo . ' (expected "' . $this->expectedInvoicePartyName($order) . '")'
                     );
                 }
@@ -633,27 +652,33 @@ class BusyIntegrationService
             }
         }
 
-        if ($invoiceProduct === '') {
+        if ($invoiceProduct === '' || $invoicePartyName === '') {
             return null;
         }
 
-        $party = $this->findPartyByName($data['party_name']);
-        if (!$party) {
-            return null;
+        // Open orders for this company with capacity; filter by billed-to (delivery or billing party)
+        $pendingOrders = [];
+        foreach ($this->findOpenOrdersWithCapacity($companyId, $quantity) as $order) {
+            if (!$this->invoicePartyMatchesOrder($order, $invoicePartyName)) {
+                continue;
+            }
+            if (!$this->orderEligibleForInvoiceDate($order, $invoiceDate)) {
+                continue;
+            }
+            $pendingOrders[] = $order;
         }
 
-        // FIFO list: oldest open order first. Date-eligible only.
-        $pendingOrders = array_values(array_filter(
-            $this->findPendingOrdersForInvoiceParty((int)$party->id, $companyId, $quantity),
-            fn(Order $order) => $this->orderEligibleForInvoiceDate($order, $invoiceDate)
-        ));
         if ($pendingOrders === []) {
             return null;
         }
 
+        usort($pendingOrders, static function (Order $a, Order $b): int {
+            $dateCmp = strcmp((string)$a->orderDate, (string)$b->orderDate);
+            return $dateCmp !== 0 ? $dateCmp : ($a->id <=> $b->id);
+        });
+
         $product = $this->findProductByName($invoiceProduct);
 
-        // 1) Exact product_id — oldest matching order first
         if ($product) {
             foreach ($pendingOrders as $order) {
                 if ((int)$order->productId === (int)$product->id) {
@@ -662,15 +687,44 @@ class BusyIntegrationService
             }
         }
 
-        // 2) Loose product name — oldest matching order first
         foreach ($pendingOrders as $order) {
             if ($this->productNamesLooselyMatch($invoiceProduct, (string)$order->productName)) {
                 return $order;
             }
         }
 
-        // No product match → leave unmapped (do not fall back to another product's order)
         return null;
+    }
+
+    /**
+     * @return Order[]
+     */
+    private function findOpenOrdersWithCapacity(int $companyId, int $quantity): array
+    {
+        $sql = "
+            SELECT o.id
+            FROM orders o
+            LEFT JOIN (
+                SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
+                FROM dispatches
+                GROUP BY order_id
+            ) d ON d.order_id = o.id
+            WHERE o.company_id = ?
+              AND o.status IN ('pending', 'partial')
+              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
+            ORDER BY o.order_date ASC, o.id ASC
+        ";
+
+        $rows = $this->database->fetchAll($sql, [$companyId, $quantity]);
+        $orders = [];
+        foreach ($rows as $row) {
+            $order = $this->orderRepository->findById((int)$row['id']);
+            if ($order) {
+                $orders[] = $order;
+            }
+        }
+
+        return $orders;
     }
 
     /**
@@ -698,144 +752,58 @@ class BusyIntegrationService
     }
 
     /**
-     * Open orders for party with remaining capacity, oldest first (FIFO).
-     * Billing-party match is preferred in sort, then order_date / id.
-     *
-     * @return Order[]
+     * Busy "Party Name" / billed-to must match the party that appears on the invoice:
+     * - Normal order → delivery party
+     * - Bill-to-another-party → billing party (e.g. Acecon delivery, Icon on the bill)
      */
-    private function findPendingOrdersForInvoiceParty(int $partyId, int $companyId, int $quantity): array
-    {
-        $partyMatch = OrderSchema::invoicePartyMatchWhere('o');
-        $partyParams = OrderSchema::invoicePartyMatchParams($partyId);
-        [$billingOrderSql, $billingOrderParams] = $this->billingPartyOrderBy($partyId);
-        $sql = "
-            SELECT o.id
-            FROM orders o
-            LEFT JOIN (
-                SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
-                FROM dispatches
-                GROUP BY order_id
-            ) d ON d.order_id = o.id
-            WHERE o.company_id = ?
-              AND o.status IN ('pending', 'partial')
-              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
-              AND {$partyMatch}
-            ORDER BY
-                {$billingOrderSql}
-                o.order_date ASC,
-                o.id ASC
-        ";
-
-        $rows = $this->database->fetchAll($sql, array_merge([$companyId, $quantity], $partyParams, $billingOrderParams));
-        $orders = [];
-        foreach ($rows as $row) {
-            $order = $this->orderRepository->findById((int)$row['id']);
-            if ($order) {
-                $orders[] = $order;
-            }
-        }
-
-        return $orders;
-    }
-
-    /** @return array{0: string, 1: array<int, int>} */
-    private function billingPartyOrderBy(int $partyId): array
-    {
-        if (!OrderSchema::hasBillingPartyColumns()) {
-            return ['', []];
-        }
-
-        // Prefer billing-party match, then normal party — then FIFO by date in caller SQL.
-        return [
-            'CASE WHEN COALESCE(o.bill_to_other_party, 0) = 1 AND o.billing_party_id = ? THEN 0
-                  WHEN COALESCE(o.bill_to_other_party, 0) = 0 AND o.party_id = ? THEN 1
-                  ELSE 2 END,',
-            [$partyId, $partyId],
-        ];
-    }
-
     private function invoicePartyMatchesOrder(Order $order, string $invoicePartyName): bool
     {
-        $invoiceParty = $this->findPartyByName($invoicePartyName);
-        if (!$invoiceParty) {
+        $invoicePartyName = trim($invoicePartyName);
+        if ($invoicePartyName === '') {
             return false;
         }
 
+        $invoiceParty = $this->findPartyByName($invoicePartyName);
+
         if (OrderSchema::hasBillingPartyColumns() && $order->billToOtherParty && $order->billingPartyId) {
-            return (int)$order->billingPartyId === (int)$invoiceParty->id;
+            if ($invoiceParty && (int)$order->billingPartyId === (int)$invoiceParty->id) {
+                return true;
+            }
+            // Name fallback when Busy spelling differs slightly from parties master
+            if ($order->billingPartyName !== ''
+                && $this->partyNamesLooselyMatch($invoicePartyName, $order->billingPartyName)) {
+                return true;
+            }
+            return false;
         }
 
-        return (int)$order->partyId === (int)$invoiceParty->id;
+        if ($invoiceParty && (int)$order->partyId === (int)$invoiceParty->id) {
+            return true;
+        }
+
+        return $this->partyNamesLooselyMatch($invoicePartyName, $order->partyName);
     }
 
     private function expectedInvoicePartyName(Order $order): string
     {
         if (OrderSchema::hasBillingPartyColumns() && $order->billToOtherParty && $order->billingPartyName !== '') {
-            return $order->billingPartyName;
+            return $order->billingPartyName . ' (billing party; delivery: ' . $order->partyName . ')';
         }
 
         return $order->partyName;
     }
 
-    /**
-     * @return Order[]
-     */
-    private function findPendingOrdersForParty(int $partyId, int $companyId, int $quantity): array
+    private function partyNamesLooselyMatch(string $left, string $right): bool
     {
-        $sql = "
-            SELECT o.id
-            FROM orders o
-            LEFT JOIN (
-                SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
-                FROM dispatches
-                GROUP BY order_id
-            ) d ON d.order_id = o.id
-            WHERE o.party_id = ?
-              AND o.company_id = ?
-              AND o.status IN ('pending', 'partial')
-              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
-            ORDER BY
-                CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
-                o.order_date ASC,
-                o.id ASC
-        ";
-
-        $rows = $this->database->fetchAll($sql, [$partyId, $companyId, $quantity]);
-        $orders = [];
-        foreach ($rows as $row) {
-            $order = $this->orderRepository->findById((int)$row['id']);
-            if ($order) {
-                $orders[] = $order;
-            }
+        $a = $this->normalizePartyName($left);
+        $b = $this->normalizePartyName($right);
+        if ($a === '' || $b === '') {
+            return false;
         }
-
-        return $orders;
-    }
-
-    private function findPendingOrderForPartyProduct(int $partyId, int $productId, int $companyId, int $quantity): ?Order
-    {
-        $sql = "
-            SELECT o.id
-            FROM orders o
-            LEFT JOIN (
-                SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
-                FROM dispatches
-                GROUP BY order_id
-            ) d ON d.order_id = o.id
-            WHERE o.party_id = ?
-              AND o.product_id = ?
-              AND o.company_id = ?
-              AND o.status IN ('pending', 'partial')
-              AND (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) >= ?
-            ORDER BY
-                CASE WHEN o.priority = 'urgent' THEN 0 ELSE 1 END,
-                o.order_date ASC,
-                o.id ASC
-            LIMIT 1
-        ";
-
-        $row = $this->database->fetch($sql, [$partyId, $productId, $companyId, $quantity]);
-        return $row ? $this->orderRepository->findById((int)$row['id']) : null;
+        if ($a === $b) {
+            return true;
+        }
+        return str_contains($a, $b) || str_contains($b, $a);
     }
 
     private function findPartyByName(string $partyName): ?object
@@ -862,15 +830,26 @@ class BusyIntegrationService
             }
         }
 
+        // Prefer the most specific (longest) substring match — avoids short names
+        // stealing matches from e.g. ICON vs ICONIC / other parties.
+        $best = null;
+        $bestLen = 0;
         foreach ($this->partyRepository->findAll() as $party) {
             $normalizedDb = $this->normalizePartyName($party->name);
-            if ($normalizedDb !== ''
-                && (str_contains($normalizedDb, $normalizedInvoice) || str_contains($normalizedInvoice, $normalizedDb))) {
-                return $party;
+            if ($normalizedDb === '') {
+                continue;
+            }
+            if (!str_contains($normalizedDb, $normalizedInvoice) && !str_contains($normalizedInvoice, $normalizedDb)) {
+                continue;
+            }
+            $len = strlen($normalizedDb);
+            if ($len > $bestLen) {
+                $best = $party;
+                $bestLen = $len;
             }
         }
 
-        return null;
+        return $best;
     }
 
     private function normalizePartyName(string $name): string
