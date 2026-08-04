@@ -41,15 +41,24 @@
                     <option value="completed">Completed</option>
                 </select>
             </div>
-            <div class="col-md-2">
-                <label for="filterParty" class="form-label">Party</label>
+            <div class="col-md-4">
+                <label for="filterPartySearch" class="form-label">Search party</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="search" class="form-control" id="filterPartySearch"
+                           placeholder="Type party name (e.g. Acecon, Icon)…"
+                           autocomplete="off">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label for="filterParty" class="form-label">Party (list)</label>
                 <select class="form-select" id="filterParty">
                     <option value="">All Parties</option>
                 </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label">&nbsp;</label>
-                <button class="btn btn-primary d-block w-100" onclick="loadOrders()">
+                <button type="button" class="btn btn-primary d-block w-100" onclick="loadOrders(0)">
                     <i class="bi bi-search"></i> Filter
                 </button>
             </div>
@@ -110,6 +119,7 @@ function saveFiltersState() {
         endDate: document.getElementById('filterEndDate').value,
         status: document.getElementById('filterStatus').value,
         party: document.getElementById('filterParty').value,
+        partySearch: document.getElementById('filterPartySearch').value.trim(),
         page: currentPage
     };
     
@@ -119,8 +129,14 @@ function saveFiltersState() {
     url.searchParams.set('end_date', state.endDate);
     if (state.status) url.searchParams.set('status', state.status);
     else url.searchParams.delete('status');
-    if (state.party) url.searchParams.set('party_id', state.party);
-    else url.searchParams.delete('party_id');
+    if (state.partySearch) {
+        url.searchParams.set('party_search', state.partySearch);
+        url.searchParams.delete('party_id');
+    } else {
+        url.searchParams.delete('party_search');
+        if (state.party) url.searchParams.set('party_id', state.party);
+        else url.searchParams.delete('party_id');
+    }
     if (state.page > 0) url.searchParams.set('page', state.page);
     else url.searchParams.delete('page');
     
@@ -132,7 +148,8 @@ function restoreFiltersState() {
     
     // Check if we have URL parameters (indicating we're coming back from order details)
     const hasUrlParams = urlParams.has('start_date') || urlParams.has('end_date') || 
-                         urlParams.has('status') || urlParams.has('party_id') || urlParams.has('page');
+                         urlParams.has('status') || urlParams.has('party_id') ||
+                         urlParams.has('party_search') || urlParams.has('page');
     
     if (hasUrlParams) {
         // We're coming back from order details - restore from URL parameters
@@ -140,25 +157,28 @@ function restoreFiltersState() {
         const endDate = urlParams.get('end_date') || '<?= date('Y-m-d') ?>';
         const status = urlParams.get('status') || '';
         const party = urlParams.get('party_id') || '';
+        const partySearch = urlParams.get('party_search') || '';
         const page = parseInt(urlParams.get('page') || '0');
         
         document.getElementById('filterStartDate').value = startDate;
         document.getElementById('filterEndDate').value = endDate;
         document.getElementById('filterStatus').value = status;
-        document.getElementById('filterParty').value = party;
+        document.getElementById('filterPartySearch').value = partySearch;
+        document.getElementById('filterParty').value = partySearch ? '' : party;
         
         return page;
-    } else {
-        // Fresh navigation from dashboard/menu - use default values and clear localStorage
-        localStorage.removeItem('ordersFilters');
-        
-        document.getElementById('filterStartDate').value = '<?= date('Y-m-d', strtotime('-30 days')) ?>';
-        document.getElementById('filterEndDate').value = '<?= date('Y-m-d') ?>';
-        document.getElementById('filterStatus').value = '';
-        document.getElementById('filterParty').value = '';
-        
-        return 0; // Start from page 0
     }
+
+    // Fresh navigation from dashboard/menu - use default values and clear localStorage
+    localStorage.removeItem('ordersFilters');
+    
+    document.getElementById('filterStartDate').value = '<?= date('Y-m-d', strtotime('-30 days')) ?>';
+    document.getElementById('filterEndDate').value = '<?= date('Y-m-d') ?>';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterParty').value = '';
+    document.getElementById('filterPartySearch').value = '';
+    
+    return 0; // Start from page 0
 }
 
 async function loadOrders(page = 0) {
@@ -175,9 +195,14 @@ async function loadOrders(page = 0) {
         
         const status = document.getElementById('filterStatus').value;
         if (status) params.append('status', status);
-        
-        const party = document.getElementById('filterParty').value;
-        if (party) params.append('party_id', party);
+
+        const partySearch = document.getElementById('filterPartySearch').value.trim();
+        if (partySearch) {
+            params.append('party_search', partySearch);
+        } else {
+            const party = document.getElementById('filterParty').value;
+            if (party) params.append('party_id', party);
+        }
         
         const response = await apiCall(`/api/orders?${params}`);
         
@@ -307,14 +332,31 @@ async function loadParties() {
     try {
         const response = await apiCall('/api/reports/parties');
         const select = document.getElementById('filterParty');
+        const previous = select.value;
         
         select.innerHTML = '<option value="">All Parties</option>';
-        response.data.forEach((party) => {
+        (response.data || []).forEach((party) => {
             const option = document.createElement('option');
             option.value = String(party.id ?? '');
             option.textContent = String(party.name ?? '');
             select.appendChild(option);
         });
+        if (previous) {
+            select.value = previous;
+        }
+
+        if (window.jQuery && $.fn.select2) {
+            const $party = $('#filterParty');
+            if ($party.hasClass('select2-hidden-accessible')) {
+                $party.select2('destroy');
+            }
+            $party.select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                placeholder: 'Search / select party…',
+                allowClear: true,
+            });
+        }
     } catch (error) {
         console.error('Failed to load parties:', error);
     }
@@ -322,18 +364,14 @@ async function loadParties() {
 
 // Clean up URL parameters when navigating away (except to order details)
 function cleanupUrlOnNavigation() {
-    // Clean up URL parameters when leaving the orders page
-    // (except when going to order details which needs the return URL)
     const currentUrl = new URL(window.location);
     if (currentUrl.searchParams.has('start_date') || currentUrl.searchParams.has('end_date') || 
-        currentUrl.searchParams.has('status') || currentUrl.searchParams.has('party_id') || 
-        currentUrl.searchParams.has('page')) {
+        currentUrl.searchParams.has('status') || currentUrl.searchParams.has('party_id') ||
+        currentUrl.searchParams.has('party_search') || currentUrl.searchParams.has('page')) {
         
-        // Only clean up if we're not going to an order detail page
         const links = document.querySelectorAll('a:not([href*="/orders/"]):not([href="#"])');
         links.forEach(link => {
             link.addEventListener('click', function() {
-                // Clean the URL when navigating to non-order pages
                 const cleanUrl = new URL(window.location);
                 cleanUrl.search = '';
                 window.history.replaceState({}, '', cleanUrl);
@@ -344,22 +382,56 @@ function cleanupUrlOnNavigation() {
 
 // Load data on page load
 document.addEventListener('DOMContentLoaded', function() {
-    loadParties();
-    
-    // Restore saved state first
     const savedPage = restoreFiltersState();
+    loadParties().then(() => {
+        const urlParty = new URLSearchParams(window.location.search).get('party_id') || '';
+        if (urlParty && !document.getElementById('filterPartySearch').value.trim()) {
+            document.getElementById('filterParty').value = urlParty;
+            if (window.jQuery) {
+                $('#filterParty').val(urlParty).trigger('change.select2');
+            }
+        }
+    });
     
-    // Add event listeners for filter changes
     document.getElementById('filterStartDate').addEventListener('change', () => loadOrders(0));
     document.getElementById('filterEndDate').addEventListener('change', () => loadOrders(0));
     document.getElementById('filterStatus').addEventListener('change', () => loadOrders(0));
-    document.getElementById('filterParty').addEventListener('change', () => loadOrders(0));
+
+    let suppressPartyListChange = false;
+    document.getElementById('filterParty').addEventListener('change', () => {
+        if (suppressPartyListChange) return;
+        if (document.getElementById('filterParty').value) {
+            document.getElementById('filterPartySearch').value = '';
+        }
+        loadOrders(0);
+    });
+
+    let partySearchTimer = null;
+    const partySearchInput = document.getElementById('filterPartySearch');
+    partySearchInput.addEventListener('input', () => {
+        clearTimeout(partySearchTimer);
+        partySearchTimer = setTimeout(() => {
+            if (partySearchInput.value.trim()) {
+                suppressPartyListChange = true;
+                if (window.jQuery) {
+                    $('#filterParty').val(null).trigger('change.select2');
+                } else {
+                    document.getElementById('filterParty').value = '';
+                }
+                suppressPartyListChange = false;
+            }
+            loadOrders(0);
+        }, 350);
+    });
+    partySearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            clearTimeout(partySearchTimer);
+            loadOrders(0);
+        }
+    });
     
-    // Setup URL cleanup for navigation
     cleanupUrlOnNavigation();
-    
-    // Load orders with restored state
     loadOrders(savedPage);
 });
 </script>
-

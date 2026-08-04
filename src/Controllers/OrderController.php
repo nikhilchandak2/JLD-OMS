@@ -48,11 +48,20 @@ class OrderController
             'start_date' => $_GET['start_date'] ?? null,
             'end_date' => $_GET['end_date'] ?? null,
             'party_id' => isset($_GET['party_id']) ? max(0, (int)$_GET['party_id']) : null,
+            'party_search' => isset($_GET['party_search']) ? mb_substr(trim((string)$_GET['party_search']), 0, 100) : null,
             'product_id' => isset($_GET['product_id']) ? max(0, (int)$_GET['product_id']) : null,
             'status' => $status,
             'limit' => $limit,
             'offset' => $offset
         ]);
+
+        if ($filters['party_search'] === '') {
+            $filters['party_search'] = null;
+        }
+        // Free-text party search takes precedence over exact party_id
+        if (!empty($filters['party_search'])) {
+            $filters['party_id'] = null;
+        }
         
         try {
             $orders = $this->orderService->getOrders($filters);

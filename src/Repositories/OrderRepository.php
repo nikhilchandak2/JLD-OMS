@@ -19,6 +19,11 @@ class OrderRepository
     public function findAll(array $filters = []): array
     {
         $activeWhere = DispatchSchema::activeDispatchWhere();
+        $billingJoin = '';
+        if (!empty($filters['party_search']) && OrderSchema::hasBillingPartyColumns()) {
+            $billingJoin = OrderSchema::billingPartyJoin();
+        }
+
         $sql = "
             SELECT o.*, 
                    c.name as company_name,
@@ -31,6 +36,7 @@ class OrderRepository
             JOIN companies c ON o.company_id = c.id
             JOIN products p ON o.product_id = p.id
             JOIN parties pt ON o.party_id = pt.id
+            {$billingJoin}
             LEFT JOIN users u ON o.created_by = u.id
             LEFT JOIN (
                 SELECT order_id,
@@ -59,6 +65,18 @@ class OrderRepository
         if (!empty($filters['party_id'])) {
             $sql .= " AND o.party_id = ?";
             $params[] = $filters['party_id'];
+        }
+
+        if (!empty($filters['party_search'])) {
+            $like = '%' . $filters['party_search'] . '%';
+            if (OrderSchema::hasBillingPartyColumns()) {
+                $sql .= " AND (pt.name LIKE ? OR bp.name LIKE ?)";
+                $params[] = $like;
+                $params[] = $like;
+            } else {
+                $sql .= " AND pt.name LIKE ?";
+                $params[] = $like;
+            }
         }
         
         if (!empty($filters['product_id'])) {
@@ -359,7 +377,16 @@ class OrderRepository
     
     public function count(array $filters = []): int
     {
-        $sql = "SELECT COUNT(*) as count FROM orders o WHERE 1=1";
+        $billingJoin = '';
+        $partyJoin = '';
+        if (!empty($filters['party_search'])) {
+            $partyJoin = ' JOIN parties pt ON o.party_id = pt.id';
+            if (OrderSchema::hasBillingPartyColumns()) {
+                $billingJoin = ' ' . OrderSchema::billingPartyJoin();
+            }
+        }
+
+        $sql = "SELECT COUNT(*) as count FROM orders o{$partyJoin}{$billingJoin} WHERE 1=1";
         $params = [];
         
         // Apply same filters as findAll
@@ -376,6 +403,18 @@ class OrderRepository
         if (!empty($filters['party_id'])) {
             $sql .= " AND o.party_id = ?";
             $params[] = $filters['party_id'];
+        }
+
+        if (!empty($filters['party_search'])) {
+            $like = '%' . $filters['party_search'] . '%';
+            if (OrderSchema::hasBillingPartyColumns()) {
+                $sql .= " AND (pt.name LIKE ? OR bp.name LIKE ?)";
+                $params[] = $like;
+                $params[] = $like;
+            } else {
+                $sql .= " AND pt.name LIKE ?";
+                $params[] = $like;
+            }
         }
         
         if (!empty($filters['product_id'])) {
