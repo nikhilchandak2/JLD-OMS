@@ -12,6 +12,9 @@
             <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#busyUploadModal">
                 <i class="bi bi-upload me-1"></i><span class="d-none d-sm-inline">Upload Busy Invoice</span><span class="d-inline d-sm-none">Upload</span>
             </button>
+            <a href="/dispatch/uploads" class="btn btn-outline-secondary">
+                <i class="bi bi-cloud-upload me-1"></i><span class="d-none d-sm-inline">Upload history</span><span class="d-inline d-sm-none">History</span>
+            </a>
             <button class="btn btn-primary" onclick="loadDispatchQueue()">
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
@@ -525,7 +528,10 @@ document.getElementById('busyUploadForm').addEventListener('submit', async funct
 
         const hasIssues = (data.data?.failed > 0) || (data.data?.unmapped > 0);
         resultBox.className = 'alert ' + (hasIssues ? 'alert-warning' : 'alert-success');
-        resultBox.innerHTML = `<strong>${escapeHtml(data.message || 'Done')}</strong><ul class="mb-0 mt-2">${details}</ul>`;
+        const historyLink = data.upload_id
+            ? `<div class="mt-2"><a href="/dispatch/uploads">View in upload history</a></div>`
+            : `<div class="mt-2"><a href="/dispatch/uploads">View upload history</a></div>`;
+        resultBox.innerHTML = `<strong>${escapeHtml(data.message || 'Done')}</strong><ul class="mb-0 mt-2">${details}</ul>${historyLink}`;
         resultBox.classList.remove('d-none');
 
         if ((data.data?.successful > 0) || (data.data?.unmapped > 0)) {

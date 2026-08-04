@@ -5,7 +5,9 @@ namespace App\Controllers;
 use App\Services\AuthService;
 use App\Services\BusyIntegrationService;
 use App\Services\BusyInvoiceImportService;
+use App\Repositories\BusyInvoiceUploadRepository;
 use App\Support\CompanyContext;
+use App\Support\IndianDate;
 
 class BusyIntegrationController
 {
@@ -14,12 +16,14 @@ class BusyIntegrationController
     private AuthService $authService;
     private BusyIntegrationService $busyIntegrationService;
     private BusyInvoiceImportService $busyInvoiceImportService;
+    private BusyInvoiceUploadRepository $busyInvoiceUploadRepository;
 
     public function __construct()
     {
         $this->authService = new AuthService();
         $this->busyIntegrationService = new BusyIntegrationService();
         $this->busyInvoiceImportService = new BusyInvoiceImportService();
+        $this->busyInvoiceUploadRepository = new BusyInvoiceUploadRepository();
     }
 
     /** Public webhook — Busy pushes invoice JSON after bill is raised. */
@@ -131,13 +135,41 @@ class BusyIntegrationController
         }
 
         $parsed = $this->busyInvoiceImportService->parseUpload($content, $ext, $tmpName);
+        $user = $this->authService->getCurrentUser();
+        $companyId = isset($_POST['company_id']) ? (int)$_POST['company_id'] : CompanyContext::getActiveCompanyId();
+        $companyId = $companyId > 0 ? $companyId : null;
+        $originalName = (string)($file['name'] ?? ('busy_invoice.' . $ext));
+
+        $storedPath = null;
+        try {
+            $storedPath = $this->busyInvoiceUploadRepository->storeUploadedFile($tmpName, $originalName, $ext);
+        } catch (\Throwable $e) {
+            error_log('Busy upload store failed: ' . $e->getMessage());
+        }
+
         if (!empty($parsed['errors']) && empty($parsed['invoices'])) {
             $details = $parsed['errors'];
             $summary = $details[0] ?? 'Unknown parse error';
+            $uploadId = $this->busyInvoiceUploadRepository->create([
+                'original_filename' => $originalName,
+                'file_type' => $ext,
+                'stored_path' => $storedPath,
+                'file_size' => $size,
+                'company_id' => $companyId,
+                'invoice_count' => 0,
+                'mapped_count' => 0,
+                'unmapped_count' => 0,
+                'failed_count' => 1,
+                'status' => 'failed',
+                'parse_notes' => $summary,
+                'uploaded_by' => $user ? (int)$user['id'] : null,
+            ]);
+
             $payload = [
                 'error' => 'Could not parse invoice file: ' . $summary,
                 'details' => $details,
                 'preview' => $parsed['preview'],
+                'upload_id' => $uploadId,
             ];
             if (filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
                 $payload['file_type'] = $ext;
@@ -148,37 +180,182 @@ class BusyIntegrationController
             return;
         }
 
-        $user = $this->authService->getCurrentUser();
-        $companyId = isset($_POST['company_id']) ? (int)$_POST['company_id'] : CompanyContext::getActiveCompanyId();
+        $uploadId = $this->busyInvoiceUploadRepository->create([
+            'original_filename' => $originalName,
+            'file_type' => $ext,
+            'stored_path' => $storedPath,
+            'file_size' => $size,
+            'company_id' => $companyId,
+            'invoice_count' => count($parsed['invoices']),
+            'status' => 'processed',
+            'parse_notes' => !empty($parsed['errors']) ? implode('; ', $parsed['errors']) : null,
+            'uploaded_by' => $user ? (int)$user['id'] : null,
+        ]);
 
         $result = $this->busyIntegrationService->processInvoicesBatch(
             $parsed['invoices'],
             $user ? (int)$user['id'] : null,
-            $companyId > 0 ? $companyId : null
+            $companyId
         );
 
+        $mapped = (int)($result['successful'] ?? 0);
         $unmapped = (int)($result['unmapped'] ?? 0);
+        $failed = (int)($result['failed'] ?? 0);
+        $status = 'processed';
+        if ($failed > 0 && $mapped === 0 && $unmapped === 0) {
+            $status = 'failed';
+        } elseif ($failed > 0 || $unmapped > 0) {
+            $status = 'partial';
+        }
+
+        $this->busyInvoiceUploadRepository->updateStats($uploadId, [
+            'invoice_count' => (int)($result['processed'] ?? count($parsed['invoices'])),
+            'mapped_count' => $mapped,
+            'unmapped_count' => $unmapped,
+            'failed_count' => $failed,
+            'status' => $status,
+            'parse_notes' => !empty($parsed['errors']) ? implode('; ', $parsed['errors']) : null,
+        ]);
+
+        $invoiceNos = array_map(
+            static fn($inv) => (string)($inv['invoice_no'] ?? ''),
+            $parsed['invoices']
+        );
+        $this->busyInvoiceUploadRepository->linkInvoices($uploadId, $invoiceNos);
+
         $parts = [
-            sprintf('%d succeeded', $result['successful']),
+            sprintf('%d succeeded', $mapped),
         ];
         if ($unmapped > 0) {
             $parts[] = sprintf('%d unmapped (no order)', $unmapped);
         }
-        if ($result['failed'] > 0) {
-            $parts[] = sprintf('%d failed', $result['failed']);
+        if ($failed > 0) {
+            $parts[] = sprintf('%d failed', $failed);
         }
 
         echo json_encode([
-            'success' => $result['failed'] === 0,
+            'success' => $failed === 0,
             'message' => sprintf(
                 '%d invoice(s) processed — %s',
                 $result['processed'],
                 implode(', ', $parts)
             ),
             'data' => $result,
+            'upload_id' => $uploadId,
             'parse_warnings' => $parsed['errors'],
             'preview' => $parsed['preview'],
         ]);
+    }
+
+    /**
+     * GET /api/busy/invoice-uploads — CSV/PDF upload history.
+     */
+    public function listInvoiceUploads(): void
+    {
+        header('Content-Type: application/json');
+
+        if (!$this->requireDispatchImportAccess()) {
+            return;
+        }
+
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+        $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+
+        try {
+            $result = $this->busyInvoiceUploadRepository->findAll([
+                'start_date' => trim((string)($_GET['start_date'] ?? '')) ?: null,
+                'end_date' => trim((string)($_GET['end_date'] ?? '')) ?: null,
+                'company_id' => isset($_GET['company_id']) ? (int)$_GET['company_id'] : null,
+                'q' => trim((string)($_GET['q'] ?? '')) ?: null,
+                'limit' => $limit,
+                'offset' => $offset,
+            ]);
+
+            $rows = array_map(function (array $row): array {
+                return [
+                    'id' => (int)$row['id'],
+                    'original_filename' => $row['original_filename'],
+                    'file_type' => $row['file_type'],
+                    'file_size' => $row['file_size'] !== null ? (int)$row['file_size'] : null,
+                    'has_file' => !empty($row['stored_path']),
+                    'company_id' => $row['company_id'] !== null ? (int)$row['company_id'] : null,
+                    'company_name' => $row['company_name'] ?? null,
+                    'invoice_count' => (int)$row['invoice_count'],
+                    'mapped_count' => (int)$row['mapped_count'],
+                    'unmapped_count' => (int)$row['unmapped_count'],
+                    'failed_count' => (int)$row['failed_count'],
+                    'status' => $row['status'],
+                    'parse_notes' => $row['parse_notes'],
+                    'uploaded_by' => $row['uploaded_by'] !== null ? (int)$row['uploaded_by'] : null,
+                    'uploaded_by_name' => $row['uploaded_by_name'] ?? null,
+                    'created_at' => !empty($row['created_at'])
+                        ? IndianDate::formatDateTime((string)$row['created_at'])
+                        : null,
+                    'created_at_raw' => $row['created_at'] ?? null,
+                ];
+            }, $result['rows']);
+
+            echo json_encode([
+                'success' => true,
+                'data' => $rows,
+                'pagination' => [
+                    'total' => $result['total'],
+                    'limit' => max(1, min(200, $limit)),
+                    'offset' => max(0, $offset),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * GET /api/busy/invoice-uploads/{id}/download — download stored CSV/PDF.
+     */
+    public function downloadInvoiceUpload(int $id): void
+    {
+        if (!$this->requireDispatchImportAccess()) {
+            return;
+        }
+
+        $row = $this->busyInvoiceUploadRepository->findById($id);
+        if (!$row) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Upload not found']);
+            return;
+        }
+
+        $stored = trim((string)($row['stored_path'] ?? ''));
+        if ($stored === '') {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Original file was not retained for this upload']);
+            return;
+        }
+
+        $fullPath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $stored);
+        // Also try relative to project root via repository storage
+        if (!is_file($fullPath)) {
+            $fullPath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . $stored;
+        }
+        if (!is_file($fullPath)) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Stored file missing on disk']);
+            return;
+        }
+
+        $filename = (string)($row['original_filename'] ?? basename($fullPath));
+        $ext = strtolower((string)($row['file_type'] ?? pathinfo($filename, PATHINFO_EXTENSION)));
+        $mime = $ext === 'pdf' ? 'application/pdf' : 'text/csv';
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
+        header('Content-Length: ' . (string)filesize($fullPath));
+        readfile($fullPath);
+        exit;
     }
 
     /**

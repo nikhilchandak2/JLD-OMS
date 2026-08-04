@@ -193,6 +193,23 @@ class WebController
         ]);
     }
 
+    /** Busy invoice CSV/PDF upload history. */
+    public function dispatchUploads(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing', 'entry'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Dispatch access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('dispatch-uploads', [
+            'title' => 'Busy Invoice Uploads',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
     /**
      * Visit requests – marketing raises client visit requests, technical team executes them.
      */

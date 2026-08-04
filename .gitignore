@@ -5,12 +5,14 @@ composer.phar
 # Environment
 .env
 .env.local
+scripts/reminders_runner.env
 
 # Storage
 /storage/documents/
 /storage/export_documents/
 /storage/export_templates/
 /storage/fuel-reports/
+/storage/busy-invoice-uploads/
 /storage/logs/
 
 # IDE

@@ -1,10 +1,12 @@
 <?php
 $dispatchUri = $_SERVER['REQUEST_URI'] ?? '';
 $onDaily = strpos($dispatchUri, '/dispatch/daily') === 0;
+$onUploads = strpos($dispatchUri, '/dispatch/uploads') === 0;
 $onHistory = strpos($dispatchUri, '/dispatch/history') === 0;
 $onRejectTransfers = strpos($dispatchUri, '/dispatch/reject-transfers') === 0;
 $onQueue = strpos($dispatchUri, '/dispatch') === 0
     && !$onDaily
+    && !$onUploads
     && !$onHistory
     && !$onRejectTransfers;
 ?>
@@ -17,6 +19,11 @@ $onQueue = strpos($dispatchUri, '/dispatch') === 0
     <li class="nav-item">
         <a class="nav-link <?= $onDaily ? 'active' : '' ?>" href="/dispatch/daily">
             <i class="bi bi-calendar3 me-1"></i> Daily Busy Dispatches
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?= $onUploads ? 'active' : '' ?>" href="/dispatch/uploads">
+            <i class="bi bi-cloud-upload me-1"></i> Invoice Uploads
         </a>
     </li>
     <li class="nav-item">
