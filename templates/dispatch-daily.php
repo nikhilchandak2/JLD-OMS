@@ -259,9 +259,23 @@ async function remapUnmappedInvoices() {
         });
 
         const data = response.data || {};
-        showSuccess(response.message || 'Remap finished.');
-        if ((data.details || []).length) {
-            console.log('Remap details', data.details);
+        const details = data.details || [];
+        const unmappedErrors = details
+            .filter((d) => d.status === 'unmapped' && d.error)
+            .map((d) => `#${d.invoice_no}: ${d.error}`);
+        const uniqueHints = [...new Set(unmappedErrors)].slice(0, 3);
+        let msg = response.message || 'Remap finished.';
+        if (uniqueHints.length && (data.mapped || 0) === 0) {
+            msg += '\n\nWhy (examples):\n' + uniqueHints.join('\n');
+            showError(msg);
+        } else {
+            showSuccess(msg);
+            if (uniqueHints.length) {
+                console.warn('Remap still-unmapped examples', uniqueHints);
+            }
+        }
+        if (details.length) {
+            console.log('Remap details', details);
         }
         await loadDailyBusyDispatches(true);
     } catch (error) {

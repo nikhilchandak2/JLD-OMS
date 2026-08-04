@@ -1306,7 +1306,7 @@
                     container.style.display = 'none';
                     return;
                 }
-                const safeMessage = escapeHtml(message);
+                const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
                 container.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         ${safeMessage}
@@ -1325,7 +1325,7 @@
                     container.style.display = 'none';
                     return;
                 }
-                const safeMessage = escapeHtml(message);
+                const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
                 container.innerHTML = `
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         ${safeMessage}

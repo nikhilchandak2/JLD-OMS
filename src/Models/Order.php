@@ -69,7 +69,7 @@ class Order
             : 40.0;
         $this->partyId = $data['party_id'] ?? 0;
         $this->partyName = $data['party_name'] ?? '';
-        $this->billToOtherParty = (bool)($data['bill_to_other_party'] ?? false);
+        $this->billToOtherParty = filter_var($data['bill_to_other_party'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $this->billingPartyId = isset($data['billing_party_id']) && $data['billing_party_id'] !== '' && $data['billing_party_id'] !== null
             ? (int)$data['billing_party_id']
             : null;

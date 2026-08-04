@@ -112,9 +112,22 @@ class BusyDailyInvoiceRepository
      * Re-open a row that was wrongly flipped to error during an older remap run.
      * Does not change party/product/invoice fields or company_id.
      */
-    public function ensureStillUnmapped(int $id): void
+    public function ensureStillUnmapped(int $id, ?string $errorMessage = null): void
     {
         if ($id <= 0) {
+            return;
+        }
+        if ($errorMessage !== null && $errorMessage !== '') {
+            $this->database->execute(
+                "UPDATE busy_daily_invoices
+                 SET mapping_status = 'unmapped',
+                     order_id = NULL,
+                     dispatch_id = NULL,
+                     error_message = ?
+                 WHERE id = ?
+                   AND mapping_status IN ('unmapped', 'error')",
+                [$errorMessage, $id]
+            );
             return;
         }
         $this->database->execute(

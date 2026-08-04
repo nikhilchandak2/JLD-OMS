@@ -11,6 +11,7 @@ use App\Repositories\CompanyRepository;
 use App\Repositories\DispatchRepository;
 use App\Repositories\BusyDailyInvoiceRepository;
 use App\Support\CompanyContext;
+use App\Support\DispatchSchema;
 use App\Support\IndianDate;
 use App\Support\OrderSchema;
 
@@ -202,16 +203,13 @@ class BusyIntegrationService
             try {
                 $match = $this->findOrderForDailyInvoiceRow($row, $activeCompanyId);
                 if ($match === null) {
-                    // No match: leave invoice data untouched. Only reopen prior remap
-                    // "error" rows so they stay visible as unmapped again.
-                    if (($row['mapping_status'] ?? '') === 'error') {
-                        $this->busyDailyInvoiceRepository->ensureStillUnmapped($rowId);
-                    }
+                    $reason = $this->explainNoMatch($this->mapDailyRowForRemap($row));
+                    $this->busyDailyInvoiceRepository->ensureStillUnmapped($rowId, $reason);
                     $details[] = [
                         'status' => 'unmapped',
                         'invoice_no' => $invoiceNo,
                         'mapping_status' => 'unmapped',
-                        'error' => $row['error_message'] ?? 'No matching pending order found',
+                        'error' => $reason,
                     ];
                     continue;
                 }
@@ -240,9 +238,7 @@ class BusyIntegrationService
                 ], $result);
             } catch (\Throwable $e) {
                 // Never flip a stored ledger row to error / never delete — leave as-is.
-                if (($row['mapping_status'] ?? '') === 'error') {
-                    $this->busyDailyInvoiceRepository->ensureStillUnmapped($rowId);
-                }
+                $this->busyDailyInvoiceRepository->ensureStillUnmapped($rowId, $e->getMessage());
                 $details[] = [
                     'status' => 'unmapped',
                     'invoice_no' => $invoiceNo,
@@ -282,7 +278,8 @@ class BusyIntegrationService
         if ($activeCompanyId && $activeCompanyId !== $rowCompanyId) {
             $companyIdsToTry[] = $activeCompanyId;
         }
-        foreach ($this->companyRepository->findActive() as $company) {
+        // Include inactive companies too — orders may still sit there
+        foreach ($this->companyRepository->findAll() as $company) {
             $cid = (int)$company->id;
             if (!in_array($cid, $companyIdsToTry, true)) {
                 $companyIdsToTry[] = $cid;
@@ -630,7 +627,7 @@ class BusyIntegrationService
 
         // Retry other companies — bill-to orders are often under a specific company
         // while the upload uses the header company switcher.
-        foreach ($this->companyRepository->findActive() as $company) {
+        foreach ($this->companyRepository->findAll() as $company) {
             $cid = (int)$company->id;
             if ($cid === $companyId) {
                 continue;
@@ -704,6 +701,7 @@ class BusyIntegrationService
 
     /**
      * Among party-matched open orders (oldest-first), pick by product id then loose name.
+     * If only one open order remains for this billed-to party, use it (product labels often differ slightly).
      *
      * @param list<Order> $pendingOrders
      */
@@ -725,6 +723,11 @@ class BusyIntegrationService
             }
         }
 
+        // Sole open order for this party (e.g. Acecon+Icon with one Ball Clay order)
+        if (count($pendingOrders) === 1) {
+            return $pendingOrders[0];
+        }
+
         return null;
     }
 
@@ -739,12 +742,14 @@ class BusyIntegrationService
             return $this->openOrdersByCompanyCache[$companyId];
         }
 
+        $activeWhere = DispatchSchema::activeDispatchWhere('d');
         $sql = "
             SELECT o.id
             FROM orders o
             LEFT JOIN (
                 SELECT order_id, COALESCE(SUM(dispatch_qty_trucks), 0) AS total_dispatched
-                FROM dispatches
+                FROM dispatches d
+                WHERE {$activeWhere}
                 GROUP BY order_id
             ) d ON d.order_id = o.id
             WHERE o.company_id = ?
@@ -790,10 +795,8 @@ class BusyIntegrationService
     }
 
     /**
-     * Busy "Party Name" / billed-to must match:
-     * - Normal order → delivery party
-     * - Bill-to-another-party → billing party OR delivery party
-     *   (Busy may show Icon on the bill or Acecon as the site/party name)
+     * Busy "Party Name" (billed-to) must match the order's delivery party and/or billing party.
+     * Example: Acecon delivery order billed to Icon → Busy party "ICON GRANITO" matches via billing_party_id.
      */
     private function invoicePartyMatchesOrder(Order $order, string $invoicePartyName): bool
     {
@@ -804,7 +807,16 @@ class BusyIntegrationService
 
         $invoiceParty = $this->findPartyByName($invoicePartyName);
 
-        if (OrderSchema::hasBillingPartyColumns() && $order->billToOtherParty && $order->billingPartyId) {
+        // Delivery party (site)
+        if ($invoiceParty && (int)$order->partyId === (int)$invoiceParty->id) {
+            return true;
+        }
+        if ($this->partyNamesLooselyMatch($invoicePartyName, $order->partyName)) {
+            return true;
+        }
+
+        // Billing party (Busy often shows Icon even when delivery is Acecon)
+        if (OrderSchema::hasBillingPartyColumns() && $order->billingPartyId) {
             if ($invoiceParty && (int)$order->billingPartyId === (int)$invoiceParty->id) {
                 return true;
             }
@@ -812,27 +824,92 @@ class BusyIntegrationService
                 && $this->partyNamesLooselyMatch($invoicePartyName, $order->billingPartyName)) {
                 return true;
             }
-            // Also accept delivery party when Busy lists the site, not the billed-to
-            if ($invoiceParty && (int)$order->partyId === (int)$invoiceParty->id) {
-                return true;
-            }
-            return $this->partyNamesLooselyMatch($invoicePartyName, $order->partyName);
         }
 
-        if ($invoiceParty && (int)$order->partyId === (int)$invoiceParty->id) {
-            return true;
-        }
-
-        return $this->partyNamesLooselyMatch($invoicePartyName, $order->partyName);
+        return false;
     }
 
     private function expectedInvoicePartyName(Order $order): string
     {
-        if (OrderSchema::hasBillingPartyColumns() && $order->billToOtherParty && $order->billingPartyName !== '') {
+        if (OrderSchema::hasBillingPartyColumns() && $order->billingPartyId && $order->billingPartyName !== '') {
             return $order->billingPartyName . ' (billing party; delivery: ' . $order->partyName . ')';
         }
 
         return $order->partyName;
+    }
+
+    /**
+     * Human-readable why an invoice did not match any open order (shown on daily ledger).
+     *
+     * @param array<string, mixed> $mapped
+     */
+    private function explainNoMatch(array $mapped): string
+    {
+        $party = trim((string)($mapped['party_name'] ?? ''));
+        $product = trim((string)($mapped['product_name'] ?? ''));
+        $qty = max(1, (int)($mapped['quantity'] ?? 1));
+
+        if ($party === '' || $product === '') {
+            return 'Invoice missing party or product name — cannot match an order.';
+        }
+
+        $partyHits = 0;
+        $productMiss = 0;
+        $capacityMiss = 0;
+        $sampleOrders = [];
+
+        foreach ($this->companyRepository->findAll() as $company) {
+            foreach ($this->getOpenOrdersForCompany((int)$company->id) as $order) {
+                $remaining = max(0, (int)$order->orderQtyTrucks - (int)$order->totalDispatched);
+                if (!$this->invoicePartyMatchesOrder($order, $party)) {
+                    // Tip: Acecon open orders while Busy shows Icon
+                    if (count($sampleOrders) < 3
+                        && $this->productNamesLooselyMatch($product, (string)$order->productName)
+                        && $remaining >= $qty) {
+                        $billing = $order->billingPartyName !== '' ? $order->billingPartyName : '(none)';
+                        $sampleOrders[] = $order->orderNo . ' delivery=' . $order->partyName
+                            . ' billing=' . $billing . ' product=' . $order->productName;
+                    }
+                    continue;
+                }
+                $partyHits++;
+                if ($remaining < $qty) {
+                    $capacityMiss++;
+                    continue;
+                }
+                if (!$this->productNamesLooselyMatch($product, (string)$order->productName)) {
+                    $resolved = $this->findProductByName($product);
+                    if (!$resolved || (int)$order->productId !== (int)$resolved->id) {
+                        $productMiss++;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if ($partyHits === 0) {
+            $tip = ' No open order uses this billed-to party as delivery or billing party.';
+            if ($sampleOrders !== []) {
+                $tip .= ' Nearby open order(s): ' . implode('; ', $sampleOrders)
+                    . '. Confirm that order shows billing="' . $party . '", product matches, status pending/partial, and has remaining trucks; then Remap.';
+            } else {
+                $tip .= ' Create/open a pending order for this party (or Acecon with billing party "'
+                    . $party . '") and matching product "' . $product . '", then Remap.';
+            }
+            return 'No match for billed-to "' . $party . '", product "' . $product . '".' . $tip;
+        }
+
+        if ($partyHits > 0 && $productMiss >= $partyHits) {
+            return 'Found open order(s) for "' . $party . '" but product "' . $product
+                . '" does not match. Align the order product name, then Remap.';
+        }
+
+        if ($capacityMiss > 0) {
+            return 'Found order(s) for "' . $party . '" / "' . $product
+                . '" but remaining trucks are less than invoice qty (' . $qty . ').';
+        }
+
+        return 'No matching pending order found for billed-to "' . $party . '", product "' . $product . '".';
     }
 
     private function partyNamesLooselyMatch(string $left, string $right): bool
@@ -916,18 +993,32 @@ class BusyIntegrationService
         }
 
         $normalizedInvoice = $this->normalizeProductLabel($productName);
+        if ($normalizedInvoice === '') {
+            return null;
+        }
+
+        // Prefer longest / most specific product name (avoid "Ball Clay" beating "Ball Clay MJ-1")
+        $best = null;
+        $bestScore = 0;
         foreach ($this->productRepository->findAll() as $product) {
             $normalizedDb = $this->normalizeProductLabel($product->name);
+            if ($normalizedDb === '') {
+                continue;
+            }
             if ($normalizedInvoice === $normalizedDb) {
                 return $product;
             }
-            if ($normalizedInvoice !== '' && $normalizedDb !== ''
-                && (str_contains($normalizedDb, $normalizedInvoice) || str_contains($normalizedInvoice, $normalizedDb))) {
-                return $product;
+            if (!str_contains($normalizedDb, $normalizedInvoice) && !str_contains($normalizedInvoice, $normalizedDb)) {
+                continue;
+            }
+            $score = strlen($normalizedDb);
+            if ($score > $bestScore) {
+                $best = $product;
+                $bestScore = $score;
             }
         }
 
-        return null;
+        return $best;
     }
 
     private function productNamesLooselyMatch(string $invoiceProduct, string $orderProduct): bool
@@ -947,6 +1038,8 @@ class BusyIntegrationService
     {
         $name = preg_replace('/\bP\d+\s+\d+\b/iu', '', $name) ?? $name;
         $name = preg_replace('/\s*\((PROCESSED|LOOSE)\)\s*/iu', '', $name) ?? $name;
+        // MJ-1 / MJ1 / MJ 1 → MJ1
+        $name = preg_replace('/([A-Z]+)\s*[\-\.]?\s*(\d+)/iu', '$1$2', $name) ?? $name;
         $name = preg_replace('/[.\-]+$/', '', trim($name)) ?? trim($name);
         $name = preg_replace('/\s+/', ' ', trim($name)) ?? trim($name);
         return strtoupper($name);
