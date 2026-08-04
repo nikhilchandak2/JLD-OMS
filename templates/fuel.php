@@ -122,7 +122,6 @@
                             <th>#</th>
                             <th>Machine</th>
                             <th>Serial No.</th>
-                            <th>Chassis No.</th>
                             <th>Months</th>
                             <th>Last date</th>
                             <th>Days</th>
@@ -133,7 +132,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td colspan="11" class="text-center text-muted py-4">No machines yet. Upload a monthly report.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4">No machines yet. Upload a monthly report.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -481,7 +480,7 @@ function populateMachineFilter(machines) {
 function renderMachines(machines) {
     const tbody = document.querySelector('#machinesTable tbody');
     if (!machines.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No machines for this filter. Upload a monthly report.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No machines for this filter. Upload a monthly report.</td></tr>';
         return;
     }
     tbody.innerHTML = machines.map((m, i) => {
@@ -491,7 +490,6 @@ function renderMachines(machines) {
             <td>${i + 1}</td>
             <td class="fw-medium">${escapeHtml(m.name || '—')}</td>
             <td>${escapeHtml(m.serial_no || '—')}</td>
-            <td>${escapeHtml(m.chassis_no || '—')}</td>
             <td>${escapeHtml(m.months_count || 0)}</td>
             <td>${fmtDate(m.last_reading_date)}</td>
             <td>${escapeHtml(m.reading_count || 0)}</td>

@@ -33,6 +33,7 @@ class FuelReportRepository
             if ((int)($row['c'] ?? 0) > 0) {
                 self::$schemaReady = true;
                 $this->syncKnownKobelcoNames();
+                $this->syncKnownJcbNames();
                 return;
             }
         } catch (\Throwable $e) {
@@ -88,21 +89,31 @@ class FuelReportRepository
         }
         self::$schemaReady = true;
         $this->syncKnownKobelcoNames();
+        $this->syncKnownJcbNames();
     }
 
     /** Apply fixed site names for known Kobelco serial numbers. */
     public function syncKnownKobelcoNames(): void
     {
         foreach (\App\Services\FuelReportImportService::KOBELCO_MACHINE_NAMES as $serial => $label) {
-            $display = \App\Services\FuelReportImportService::kobelcoDisplayName($serial);
-            if ($display === null) {
-                continue;
-            }
             $this->database->execute(
                 "UPDATE fuel_machines
                  SET name = ?, updated_at = NOW()
                  WHERE category = 'kobelco' AND UPPER(TRIM(serial_no)) = ?",
-                [$display, strtoupper($serial)]
+                [$label, strtoupper($serial)]
+            );
+        }
+    }
+
+    /** Apply fixed site names for known JCB chassis / Asset IDs. */
+    public function syncKnownJcbNames(): void
+    {
+        foreach (\App\Services\FuelReportImportService::JCB_MACHINE_NAMES as $chassis => $label) {
+            $this->database->execute(
+                "UPDATE fuel_machines
+                 SET name = ?, updated_at = NOW()
+                 WHERE category = 'jcb' AND UPPER(TRIM(chassis_no)) = ?",
+                [$label, strtoupper($chassis)]
             );
         }
     }

@@ -26,15 +26,40 @@ class FuelReportImportService
         'YC14505319' => '6 No. Machine',
     ];
 
+    /** Friendly site names keyed by JCB chassis / Asset ID. */
+    public const JCB_MACHINE_NAMES = [
+        'RAJ3DXX4C03116941' => '2 No. JCB',
+        'RAJ3DXS4A03329981' => '3 No. JCB',
+        'RAJ3DXX4E03363304' => '4 No. JCB',
+        'RAJ3DXX5C03305016' => '5 No. JCB',
+        'PUN4ATBWJN4307308' => 'Gajner Loader',
+        'RAJ3DXX5J03305015' => 'JP Mines JCB',
+        'HAR3DXL5C03523255' => 'RD Mines JCB Loader',
+    ];
+
     /**
-     * Full display label including serial, e.g. "8 No. Machine (Serial No. YQ15514877)".
+     * Friendly machine name only (serial is shown in its own column), e.g. "8 No. Machine".
      */
     public static function kobelcoDisplayName(string $serial): ?string
     {
         $serialKey = strtoupper(trim($serial));
         foreach (self::KOBELCO_MACHINE_NAMES as $key => $label) {
             if (strtoupper($key) === $serialKey) {
-                return $label . ' (Serial No. ' . $key . ')';
+                return $label;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Friendly machine name only (chassis is shown in its own column), e.g. "2 No. JCB".
+     */
+    public static function jcbDisplayName(string $chassis): ?string
+    {
+        $chassisKey = strtoupper(trim($chassis));
+        foreach (self::JCB_MACHINE_NAMES as $key => $label) {
+            if (strtoupper($key) === $chassisKey) {
+                return $label;
             }
         }
         return null;
@@ -548,7 +573,7 @@ class FuelReportImportService
                 $avgDisplay = number_format($avgUsage, 2, '.', '') . ' L/h';
             }
 
-            $name = $model !== '' ? $model : ($profile !== '' ? $profile : ('JCB ' . $asset));
+            $name = self::resolveJcbMachineName($asset, $model !== '' ? $model : ($profile !== '' ? $profile : null));
 
             $fmt2 = static function (?string $v): ?string {
                 if ($v === null || trim($v) === '') {
@@ -868,6 +893,26 @@ class FuelReportImportService
             return 'Kobelco ' . $serialKey;
         }
         return 'Kobelco';
+    }
+
+    /**
+     * Map known JCB chassis / Asset IDs to site machine names; fall back to model / chassis.
+     */
+    public static function resolveJcbMachineName(?string $chassis, ?string $model = null): string
+    {
+        $mapped = self::jcbDisplayName((string)$chassis);
+        if ($mapped !== null) {
+            return $mapped;
+        }
+        $model = trim((string)$model);
+        if ($model !== '') {
+            return $model;
+        }
+        $chassisKey = trim((string)$chassis);
+        if ($chassisKey !== '') {
+            return 'JCB ' . $chassisKey;
+        }
+        return 'JCB';
     }
 
     /**
