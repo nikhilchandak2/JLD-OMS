@@ -117,7 +117,7 @@
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover mb-0" id="machinesTable">
-                    <thead>
+                    <thead id="machinesHead">
                         <tr>
                             <th>#</th>
                             <th>Machine</th>
@@ -468,7 +468,9 @@ function populateMachineFilter(machines) {
     const prev = sel.value || 'all';
     const opts = ['<option value="all">All machines</option>'];
     machines.forEach(m => {
-        const labelParts = [m.name, m.serial_no, m.chassis_no].filter(Boolean);
+        const labelParts = currentCategory === 'jcb'
+            ? [m.name, m.chassis_no].filter(Boolean)
+            : [m.name, m.serial_no, currentCategory === 'dumpers' ? m.chassis_no : null].filter(Boolean);
         const label = labelParts.length ? labelParts.join(' · ') : ('Machine #' + m.id);
         opts.push('<option value="' + Number(m.id) + '">' + escapeHtml(label) + '</option>');
     });
@@ -478,18 +480,37 @@ function populateMachineFilter(machines) {
 }
 
 function renderMachines(machines) {
+    const thead = document.getElementById('machinesHead');
     const tbody = document.querySelector('#machinesTable tbody');
+    const isJcb = currentCategory === 'jcb';
+    const idHeader = isJcb ? 'Chassis No.' : 'Serial No.';
+
+    thead.innerHTML = `
+        <tr>
+            <th>#</th>
+            <th>Machine</th>
+            <th>${idHeader}</th>
+            <th>Months</th>
+            <th>Last date</th>
+            <th>Days</th>
+            <th>Fuel (L)</th>
+            <th>Hours</th>
+            <th>Avg L/h</th>
+            <th></th>
+        </tr>`;
+
     if (!machines.length) {
         tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No machines for this filter. Upload a monthly report.</td></tr>';
         return;
     }
     tbody.innerHTML = machines.map((m, i) => {
         const label = m.name || m.serial_no || m.chassis_no || 'Machine';
+        const idValue = isJcb ? (m.chassis_no || '—') : (m.serial_no || '—');
         return `
         <tr data-machine-id="${Number(m.id)}">
             <td>${i + 1}</td>
             <td class="fw-medium">${escapeHtml(m.name || '—')}</td>
-            <td>${escapeHtml(m.serial_no || '—')}</td>
+            <td>${escapeHtml(idValue)}</td>
             <td>${escapeHtml(m.months_count || 0)}</td>
             <td>${fmtDate(m.last_reading_date)}</td>
             <td>${escapeHtml(m.reading_count || 0)}</td>
@@ -675,10 +696,12 @@ function fetchReadings(machineId, month) {
                 return;
             }
             const machine = data.machine || {};
-            const meta = [
-                machine.serial_no ? 'Serial: ' + machine.serial_no : null,
-                machine.chassis_no ? 'Chassis: ' + machine.chassis_no : null,
-            ].filter(Boolean).join(' · ');
+            const meta = currentCategory === 'jcb'
+                ? [machine.chassis_no ? 'Chassis: ' + machine.chassis_no : null].filter(Boolean).join(' · ')
+                : [
+                    machine.serial_no ? 'Serial: ' + machine.serial_no : null,
+                    currentCategory === 'dumpers' && machine.chassis_no ? 'Reg: ' + machine.chassis_no : null,
+                ].filter(Boolean).join(' · ');
             document.getElementById('readingsModalMeta').textContent = meta;
 
             const months = data.months || [];
