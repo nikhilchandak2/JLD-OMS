@@ -258,10 +258,13 @@ class BusyIntegrationController
             return;
         }
 
-        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
-        $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+        $limit = isset($_GET['limit']) ? max(1, min(500, (int)$_GET['limit'])) : 100;
+        $offset = isset($_GET['offset']) ? max(0, (int)$_GET['offset']) : 0;
 
         try {
+            // Ensure legacy batches from the daily ledger are filled in
+            $this->busyInvoiceUploadRepository->ensureSchema();
+
             $result = $this->busyInvoiceUploadRepository->findAll([
                 'start_date' => trim((string)($_GET['start_date'] ?? '')) ?: null,
                 'end_date' => trim((string)($_GET['end_date'] ?? '')) ?: null,
@@ -300,8 +303,8 @@ class BusyIntegrationController
                 'data' => $rows,
                 'pagination' => [
                     'total' => $result['total'],
-                    'limit' => max(1, min(200, $limit)),
-                    'offset' => max(0, $offset),
+                    'limit' => $limit,
+                    'offset' => $offset,
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -587,8 +590,9 @@ class BusyIntegrationController
         }
 
         try {
+            $logLimit = isset($_GET['log_limit']) ? (int)$_GET['log_limit'] : 50;
             $status = $this->busyIntegrationService->getIntegrationStatus();
-            $status['recent_logs'] = $this->busyIntegrationService->getRecentLogs(15);
+            $status['recent_logs'] = $this->busyIntegrationService->getRecentLogs($logLimit);
 
             echo json_encode([
                 'success' => true,

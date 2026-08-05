@@ -1,9 +1,6 @@
-<?php
-$title = 'Busy Integration';
-include 'layout.php';
-?>
-
 <div class="container-fluid">
+<div id="error-container" class="error-message"></div>
+<div id="success-container" class="error-message"></div>
     <!-- Page Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800">
@@ -166,8 +163,18 @@ include 'layout.php';
     <div class="row">
         <div class="col-xl-12">
             <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Recent Webhook Activity</h6>
+                <div class="card-header py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h6 class="m-0 font-weight-bold text-primary">Invoice Import / Webhook Activity</h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <label for="logLimit" class="form-label mb-0 small text-muted">Show</label>
+                        <select class="form-select form-select-sm" id="logLimit" style="width: auto;" onchange="loadWebhookLogs()">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -202,9 +209,27 @@ document.addEventListener('DOMContentLoaded', function() {
     loadWebhookLogs();
 });
 
+function showAlert(message, type = 'info') {
+    if (type === 'success' && typeof showSuccess === 'function') {
+        showSuccess(message);
+        return;
+    }
+    if (typeof showError === 'function') {
+        showError(message);
+        return;
+    }
+    console.log(`[${type}] ${message}`);
+}
+
+function selectedLogLimit() {
+    const select = document.getElementById('logLimit');
+    const value = select ? parseInt(select.value, 10) : 50;
+    return Number.isFinite(value) && value > 0 ? value : 50;
+}
+
 async function loadIntegrationStatus() {
     try {
-        const response = await apiCall('/api/busy/status');
+        const response = await apiCall(`/api/busy/status?log_limit=${selectedLogLimit()}`);
         const data = response.data;
         
         document.getElementById('webhookUrl').value = data.webhook_url;
@@ -213,13 +238,16 @@ async function loadIntegrationStatus() {
         document.getElementById('failedWebhooks').textContent = data.last_30_days.failed;
         
         const lastWebhook = data.last_30_days.last_webhook;
-        document.getElementById('lastWebhook').textContent = lastWebhook ? 
-            lastWebhook ? formatDateTime(lastWebhook) : 'Never';
+        document.getElementById('lastWebhook').textContent = lastWebhook ? formatDateTime(lastWebhook) : 'Never';
 
         renderWebhookLogs(data.recent_logs || []);
             
     } catch (error) {
         console.error('Failed to load integration status:', error);
+        const tbody = document.querySelector('#webhookLogsTable tbody');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">${escapeHtml(error.message || 'Failed to load activity')}</td></tr>`;
+        }
         showAlert('Failed to load integration status', 'danger');
     }
 }
@@ -231,18 +259,18 @@ async function loadWebhookLogs() {
 function renderWebhookLogs(logs) {
     const tbody = document.querySelector('#webhookLogsTable tbody');
     if (!logs.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent invoice import activity</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No invoice import activity yet</td></tr>';
         return;
     }
     tbody.innerHTML = logs.map(log => {
         const statusClass = log.status === 'success' ? 'success' : log.status === 'error' ? 'danger' : 'secondary';
         return `<tr>
             <td>${escapeHtml(log.invoice_no || '—')}</td>
-            <td><span class="badge bg-${statusClass}">${escapeHtml(log.status)}</span></td>
+            <td><span class="badge bg-${statusClass}">${escapeHtml(log.status || '—')}</span></td>
+            <td>${log.created_at ? formatDateTime(log.created_at) : '—'}</td>
+            <td>${log.processed_at ? formatDateTime(log.processed_at) : '—'}</td>
             <td>${log.error_message ? escapeHtml(log.error_message) : '—'}</td>
-            <td>${log.created_at ? new Date(log.created_at).toLocaleString() : '—'}</td>
-            <td>${log.processed_at ? new Date(log.processed_at).toLocaleString() : '—'}</td>
-            <td>—</td>
+            <td><a href="/dispatch/daily?all_dates=1" class="btn btn-sm btn-outline-secondary">Ledger</a></td>
         </tr>`;
     }).join('');
 }
@@ -333,7 +361,5 @@ document.getElementById('syncForm').addEventListener('submit', function(e) {
     syncInvoices();
 });
 </script>
-
-<?php include 'layout_footer.php'; ?>
 
 

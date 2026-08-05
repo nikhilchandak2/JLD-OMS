@@ -80,16 +80,12 @@ class BusyInvoiceUploadRepository
     }
 
     /**
-     * Create synthetic history rows from existing daily invoices so older uploads appear.
+     * Reconstruct upload history from daily invoices that were never linked to a batch.
+     * Safe to re-run: only processes rows with upload_id IS NULL.
      */
     private function backfillLegacyUploads(): void
     {
         try {
-            $existing = $this->database->fetch('SELECT COUNT(*) AS c FROM busy_invoice_uploads');
-            if ((int)($existing['c'] ?? 0) > 0) {
-                return;
-            }
-
             $dailyExists = $this->database->fetch(
                 "SELECT COUNT(*) AS c
                  FROM information_schema.tables
@@ -100,19 +96,56 @@ class BusyInvoiceUploadRepository
                 return;
             }
 
-            $batches = $this->database->fetchAll(
-                "SELECT DATE(created_at) AS upload_day,
-                        uploaded_by,
-                        company_id,
-                        COUNT(*) AS invoice_count,
-                        SUM(CASE WHEN mapping_status = 'mapped' THEN 1 ELSE 0 END) AS mapped_count,
-                        SUM(CASE WHEN mapping_status = 'unmapped' THEN 1 ELSE 0 END) AS unmapped_count,
-                        SUM(CASE WHEN mapping_status = 'error' THEN 1 ELSE 0 END) AS failed_count,
-                        MIN(created_at) AS first_at
-                 FROM busy_daily_invoices
-                 GROUP BY DATE(created_at), uploaded_by, company_id
-                 ORDER BY first_at ASC"
+            $col = $this->database->fetch(
+                "SELECT COUNT(*) AS c
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'busy_daily_invoices'
+                   AND column_name = 'upload_id'"
             );
+            $hasUploadId = ((int)($col['c'] ?? 0)) > 0;
+
+            // Prefer unlinked invoices; if column missing, fall back only when table empty.
+            if ($hasUploadId) {
+                $unlinked = $this->database->fetch(
+                    'SELECT COUNT(*) AS c FROM busy_daily_invoices WHERE upload_id IS NULL'
+                );
+                if ((int)($unlinked['c'] ?? 0) === 0) {
+                    return;
+                }
+                $batches = $this->database->fetchAll(
+                    "SELECT DATE(created_at) AS upload_day,
+                            uploaded_by,
+                            company_id,
+                            COUNT(*) AS invoice_count,
+                            SUM(CASE WHEN mapping_status = 'mapped' THEN 1 ELSE 0 END) AS mapped_count,
+                            SUM(CASE WHEN mapping_status = 'unmapped' THEN 1 ELSE 0 END) AS unmapped_count,
+                            SUM(CASE WHEN mapping_status = 'error' THEN 1 ELSE 0 END) AS failed_count,
+                            MIN(created_at) AS first_at
+                     FROM busy_daily_invoices
+                     WHERE upload_id IS NULL
+                     GROUP BY DATE(created_at), uploaded_by, company_id
+                     ORDER BY first_at ASC"
+                );
+            } else {
+                $existing = $this->database->fetch('SELECT COUNT(*) AS c FROM busy_invoice_uploads');
+                if ((int)($existing['c'] ?? 0) > 0) {
+                    return;
+                }
+                $batches = $this->database->fetchAll(
+                    "SELECT DATE(created_at) AS upload_day,
+                            uploaded_by,
+                            company_id,
+                            COUNT(*) AS invoice_count,
+                            SUM(CASE WHEN mapping_status = 'mapped' THEN 1 ELSE 0 END) AS mapped_count,
+                            SUM(CASE WHEN mapping_status = 'unmapped' THEN 1 ELSE 0 END) AS unmapped_count,
+                            SUM(CASE WHEN mapping_status = 'error' THEN 1 ELSE 0 END) AS failed_count,
+                            MIN(created_at) AS first_at
+                     FROM busy_daily_invoices
+                     GROUP BY DATE(created_at), uploaded_by, company_id
+                     ORDER BY first_at ASC"
+                );
+            }
 
             foreach ($batches as $batch) {
                 $day = (string)($batch['upload_day'] ?? '');
@@ -120,6 +153,7 @@ class BusyInvoiceUploadRepository
                 if ($day === '' || $count <= 0) {
                     continue;
                 }
+
                 $this->database->execute(
                     "INSERT INTO busy_invoice_uploads
                         (original_filename, file_type, stored_path, file_size, company_id,
@@ -138,6 +172,30 @@ class BusyInvoiceUploadRepository
                         (string)($batch['first_at'] ?? $day . ' 00:00:00'),
                     ]
                 );
+                $uploadId = (int)$this->database->lastInsertId();
+                if ($uploadId <= 0 || !$hasUploadId) {
+                    continue;
+                }
+
+                // Link the invoices in this batch so we don't recreate it next time
+                $params = [$uploadId, $day];
+                $sql = "UPDATE busy_daily_invoices
+                        SET upload_id = ?
+                        WHERE upload_id IS NULL
+                          AND DATE(created_at) = ?";
+                if (!empty($batch['uploaded_by'])) {
+                    $sql .= ' AND uploaded_by = ?';
+                    $params[] = (int)$batch['uploaded_by'];
+                } else {
+                    $sql .= ' AND uploaded_by IS NULL';
+                }
+                if (!empty($batch['company_id'])) {
+                    $sql .= ' AND company_id = ?';
+                    $params[] = (int)$batch['company_id'];
+                } else {
+                    $sql .= ' AND company_id IS NULL';
+                }
+                $this->database->execute($sql, $params);
             }
         } catch (\Throwable $ignored) {
             // Backfill is best-effort
@@ -283,7 +341,7 @@ class BusyInvoiceUploadRepository
         );
         $total = (int)($totalRow['c'] ?? 0);
 
-        $limit = isset($filters['limit']) ? max(1, min(200, (int)$filters['limit'])) : 50;
+        $limit = isset($filters['limit']) ? max(1, min(500, (int)$filters['limit'])) : 100;
         $offset = isset($filters['offset']) ? max(0, (int)$filters['offset']) : 0;
 
         $rows = $this->database->fetchAll(

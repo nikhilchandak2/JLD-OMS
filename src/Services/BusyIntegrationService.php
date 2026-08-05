@@ -374,9 +374,9 @@ class BusyIntegrationService
         ];
     }
 
-    public function getRecentLogs(int $limit = 20): array
+    public function getRecentLogs(int $limit = 50): array
     {
-        $limit = max(1, min($limit, 100));
+        $limit = max(1, min($limit, 500));
         $sql = "
             SELECT id, invoice_no, status, error_message, processed_at, created_at
             FROM busy_webhook_logs

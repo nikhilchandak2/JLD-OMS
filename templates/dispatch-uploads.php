@@ -49,7 +49,21 @@
         <p class="text-muted small mt-3 mb-0">
             New uploads keep the original CSV/PDF for download. Older batches reconstructed from the daily ledger
             show as <span class="badge bg-secondary">legacy</span> (file not retained).
+            History is rebuilt automatically from any ledger invoices that were never linked to an upload.
         </p>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+    <div class="text-muted small" id="uploadsSummary">—</div>
+    <div class="d-flex align-items-center gap-2">
+        <label for="pageSize" class="form-label mb-0 small text-muted">Show</label>
+        <select class="form-select form-select-sm" id="pageSize" style="width: auto;">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+        </select>
     </div>
 </div>
 
@@ -84,7 +98,12 @@
 
 <script>
 let uploadPage = 0;
-const uploadPageSize = 30;
+
+function pageSize() {
+    const el = document.getElementById('pageSize');
+    const n = el ? parseInt(el.value, 10) : 100;
+    return Number.isFinite(n) && n > 0 ? n : 100;
+}
 
 function statusBadge(status) {
     const map = {
@@ -112,9 +131,10 @@ async function loadUploads(page = 0) {
     showError('');
 
     try {
+        const size = pageSize();
         const params = new URLSearchParams({
-            limit: String(uploadPageSize),
-            offset: String(page * uploadPageSize),
+            limit: String(size),
+            offset: String(page * size),
         });
         const start = document.getElementById('filterStartDate').value;
         const end = document.getElementById('filterEndDate').value;
@@ -125,8 +145,14 @@ async function loadUploads(page = 0) {
 
         const response = await apiCall('/api/busy/invoice-uploads?' + params.toString());
         const rows = response.data || [];
-        const pagination = response.pagination || { total: 0, limit: uploadPageSize, offset: 0 };
+        const pagination = response.pagination || { total: 0, limit: size, offset: 0 };
         uploadPage = page;
+
+        const total = Number(pagination.total) || 0;
+        const from = total === 0 ? 0 : (pagination.offset || 0) + 1;
+        const to = Math.min((pagination.offset || 0) + rows.length, total);
+        document.getElementById('uploadsSummary').textContent =
+            total === 0 ? 'No uploads' : `Showing ${from}–${to} of ${total} uploads`;
 
         if (!rows.length) {
             tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No uploads found</td></tr>';
@@ -171,6 +197,7 @@ async function loadUploads(page = 0) {
         renderPagination(pagination);
     } catch (error) {
         tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">${escapeHtml(error.message || 'Failed to load')}</td></tr>`;
+        document.getElementById('uploadsSummary').textContent = '—';
         showError(error.message || 'Failed to load uploads');
     }
 }
@@ -207,6 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadUploads(0);
         }
     });
+    document.getElementById('pageSize').addEventListener('change', () => loadUploads(0));
     loadUploads(0);
 });
 </script>
