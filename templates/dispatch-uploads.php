@@ -29,11 +29,11 @@
     <div class="card-body">
         <div class="row g-3 align-items-end">
             <div class="col-md-3">
-                <label for="filterStartDate" class="form-label">From</label>
+                <label for="filterStartDate" class="form-label">Invoice date from</label>
                 <input type="date" class="form-control" id="filterStartDate">
             </div>
             <div class="col-md-3">
-                <label for="filterEndDate" class="form-label">To</label>
+                <label for="filterEndDate" class="form-label">Invoice date to</label>
                 <input type="date" class="form-control" id="filterEndDate">
             </div>
             <div class="col-md-4">
@@ -47,9 +47,9 @@
             </div>
         </div>
         <p class="text-muted small mt-3 mb-0">
-            New uploads keep the original CSV/PDF for download. Older batches reconstructed from the daily ledger
-            show as <span class="badge bg-secondary">legacy</span> (file not retained).
-            History is rebuilt automatically from any ledger invoices that were never linked to an upload.
+            Filter by <strong>invoice date</strong> (e.g. 1 Jul 2026), not the day the file was uploaded.
+            New uploads keep the CSV/PDF for download. Older batches show as
+            <span class="badge bg-secondary">legacy</span> (file not retained).
         </p>
     </div>
 </div>
@@ -74,6 +74,7 @@
                 <thead>
                     <tr>
                         <th>Uploaded</th>
+                        <th>Invoice dates</th>
                         <th>File</th>
                         <th>Type</th>
                         <th>By</th>
@@ -86,7 +87,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="10" class="text-center text-muted">Loading…</td></tr>
+                    <tr><td colspan="11" class="text-center text-muted">Loading…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -127,7 +128,7 @@ function formatBytes(n) {
 
 async function loadUploads(page = 0) {
     const tbody = document.querySelector('#uploadsTable tbody');
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Loading…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Loading…</td></tr>';
     showError('');
 
     try {
@@ -155,7 +156,7 @@ async function loadUploads(page = 0) {
             total === 0 ? 'No uploads' : `Showing ${from}–${to} of ${total} uploads`;
 
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No uploads found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">No uploads found for this filter</td></tr>';
             document.getElementById('pagination').innerHTML = '';
             return;
         }
@@ -172,10 +173,16 @@ async function loadUploads(page = 0) {
                         <i class="bi bi-download"></i> Download
                    </a>`
                 : `<span class="text-muted small">No file</span>`;
-            const dailyLink = `/dispatch/daily?all_dates=1`;
+            const invDates = row.invoice_date_from
+                ? (row.invoice_date_label || row.invoice_date_from)
+                : '—';
+            const dailyLink = row.invoice_date_from
+                ? `/dispatch/daily?start_date=${encodeURIComponent(row.invoice_date_from)}&end_date=${encodeURIComponent(row.invoice_date_to || row.invoice_date_from)}`
+                : `/dispatch/daily?all_dates=1`;
             return `
                 <tr>
                     <td class="text-nowrap">${escapeHtml(row.created_at || '—')}</td>
+                    <td class="text-nowrap fw-semibold">${escapeHtml(invDates)}</td>
                     <td>${fileCell}</td>
                     <td><span class="badge bg-light text-dark text-uppercase">${escapeHtml(row.file_type || '—')}</span></td>
                     <td>${escapeHtml(row.uploaded_by_name || '—')}</td>
@@ -196,7 +203,7 @@ async function loadUploads(page = 0) {
 
         renderPagination(pagination);
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">${escapeHtml(error.message || 'Failed to load')}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger">${escapeHtml(error.message || 'Failed to load')}</td></tr>`;
         document.getElementById('uploadsSummary').textContent = '—';
         showError(error.message || 'Failed to load uploads');
     }

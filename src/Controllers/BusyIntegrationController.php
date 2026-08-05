@@ -140,6 +140,17 @@ class BusyIntegrationController
         $companyId = $companyId > 0 ? $companyId : null;
         $originalName = (string)($file['name'] ?? ('busy_invoice.' . $ext));
 
+        $invoiceDates = [];
+        foreach ($parsed['invoices'] ?? [] as $inv) {
+            $d = trim((string)($inv['invoice_date'] ?? ''));
+            if ($d !== '') {
+                $invoiceDates[] = substr($d, 0, 10);
+            }
+        }
+        sort($invoiceDates);
+        $invoiceDateFrom = $invoiceDates[0] ?? null;
+        $invoiceDateTo = $invoiceDates !== [] ? $invoiceDates[count($invoiceDates) - 1] : null;
+
         $storedPath = null;
         try {
             $storedPath = $this->busyInvoiceUploadRepository->storeUploadedFile($tmpName, $originalName, $ext);
@@ -156,6 +167,8 @@ class BusyIntegrationController
                 'stored_path' => $storedPath,
                 'file_size' => $size,
                 'company_id' => $companyId,
+                'invoice_date_from' => $invoiceDateFrom,
+                'invoice_date_to' => $invoiceDateTo,
                 'invoice_count' => 0,
                 'mapped_count' => 0,
                 'unmapped_count' => 0,
@@ -186,6 +199,8 @@ class BusyIntegrationController
             'stored_path' => $storedPath,
             'file_size' => $size,
             'company_id' => $companyId,
+            'invoice_date_from' => $invoiceDateFrom,
+            'invoice_date_to' => $invoiceDateTo,
             'invoice_count' => count($parsed['invoices']),
             'status' => 'processed',
             'parse_notes' => !empty($parsed['errors']) ? implode('; ', $parsed['errors']) : null,
@@ -215,6 +230,8 @@ class BusyIntegrationController
             'failed_count' => $failed,
             'status' => $status,
             'parse_notes' => !empty($parsed['errors']) ? implode('; ', $parsed['errors']) : null,
+            'invoice_date_from' => $invoiceDateFrom,
+            'invoice_date_to' => $invoiceDateTo,
         ]);
 
         $invoiceNos = array_map(
@@ -275,6 +292,8 @@ class BusyIntegrationController
             ]);
 
             $rows = array_map(function (array $row): array {
+                $invFrom = $row['invoice_date_from'] ?? null;
+                $invTo = $row['invoice_date_to'] ?? null;
                 return [
                     'id' => (int)$row['id'],
                     'original_filename' => $row['original_filename'],
@@ -283,6 +302,12 @@ class BusyIntegrationController
                     'has_file' => !empty($row['stored_path']),
                     'company_id' => $row['company_id'] !== null ? (int)$row['company_id'] : null,
                     'company_name' => $row['company_name'] ?? null,
+                    'invoice_date_from' => $invFrom,
+                    'invoice_date_to' => $invTo,
+                    'invoice_date_label' => $invFrom
+                        ? IndianDate::format((string)$invFrom)
+                            . ($invTo && $invTo !== $invFrom ? ' – ' . IndianDate::format((string)$invTo) : '')
+                        : null,
                     'invoice_count' => (int)$row['invoice_count'],
                     'mapped_count' => (int)$row['mapped_count'],
                     'unmapped_count' => (int)$row['unmapped_count'],

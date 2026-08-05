@@ -16,67 +16,156 @@ class BusyInvoiceUploadRepository
 
     public function ensureSchema(): void
     {
-        if (self::$schemaReady) {
-            return;
-        }
-
-        try {
-            $row = $this->database->fetch(
-                "SELECT COUNT(*) AS c
-                 FROM information_schema.tables
-                 WHERE table_schema = DATABASE()
-                   AND table_name = 'busy_invoice_uploads'"
-            );
-            if ((int)($row['c'] ?? 0) === 0) {
-                $this->database->getConnection()->exec(
-                    "CREATE TABLE IF NOT EXISTS busy_invoice_uploads (
-                      id INT AUTO_INCREMENT PRIMARY KEY,
-                      original_filename VARCHAR(255) NOT NULL,
-                      file_type VARCHAR(20) NOT NULL DEFAULT 'csv',
-                      stored_path VARCHAR(500) NULL,
-                      file_size INT NULL,
-                      company_id INT NULL,
-                      invoice_count INT NOT NULL DEFAULT 0,
-                      mapped_count INT NOT NULL DEFAULT 0,
-                      unmapped_count INT NOT NULL DEFAULT 0,
-                      failed_count INT NOT NULL DEFAULT 0,
-                      status ENUM('processed', 'partial', 'failed', 'legacy') NOT NULL DEFAULT 'processed',
-                      parse_notes TEXT NULL,
-                      uploaded_by INT NULL,
-                      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                      INDEX idx_busy_uploads_created (created_at),
-                      INDEX idx_busy_uploads_status (status),
-                      INDEX idx_busy_uploads_company (company_id)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        if (!self::$schemaReady) {
+            try {
+                $row = $this->database->fetch(
+                    "SELECT COUNT(*) AS c
+                     FROM information_schema.tables
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'busy_invoice_uploads'"
                 );
+                if ((int)($row['c'] ?? 0) === 0) {
+                    $this->database->getConnection()->exec(
+                        "CREATE TABLE IF NOT EXISTS busy_invoice_uploads (
+                          id INT AUTO_INCREMENT PRIMARY KEY,
+                          original_filename VARCHAR(255) NOT NULL,
+                          file_type VARCHAR(20) NOT NULL DEFAULT 'csv',
+                          stored_path VARCHAR(500) NULL,
+                          file_size INT NULL,
+                          company_id INT NULL,
+                          invoice_date_from DATE NULL,
+                          invoice_date_to DATE NULL,
+                          invoice_count INT NOT NULL DEFAULT 0,
+                          mapped_count INT NOT NULL DEFAULT 0,
+                          unmapped_count INT NOT NULL DEFAULT 0,
+                          failed_count INT NOT NULL DEFAULT 0,
+                          status ENUM('processed', 'partial', 'failed', 'legacy') NOT NULL DEFAULT 'processed',
+                          parse_notes TEXT NULL,
+                          uploaded_by INT NULL,
+                          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                          INDEX idx_busy_uploads_created (created_at),
+                          INDEX idx_busy_uploads_status (status),
+                          INDEX idx_busy_uploads_company (company_id)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+                    );
+                }
+
+                $col = $this->database->fetch(
+                    "SELECT COUNT(*) AS c
+                     FROM information_schema.columns
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'busy_daily_invoices'
+                       AND column_name = 'upload_id'"
+                );
+                if ((int)($col['c'] ?? 0) === 0) {
+                    try {
+                        $this->database->getConnection()->exec(
+                            'ALTER TABLE busy_daily_invoices ADD COLUMN upload_id INT NULL AFTER uploaded_by'
+                        );
+                        $this->database->getConnection()->exec(
+                            'ALTER TABLE busy_daily_invoices ADD INDEX idx_busy_daily_upload (upload_id)'
+                        );
+                    } catch (\Throwable $ignored) {
+                        // Column may already exist under race
+                    }
+                }
+
+                $this->ensureUploadColumn(
+                    'invoice_date_from',
+                    'ALTER TABLE busy_invoice_uploads ADD COLUMN invoice_date_from DATE NULL AFTER company_id'
+                );
+                $this->ensureUploadColumn(
+                    'invoice_date_to',
+                    'ALTER TABLE busy_invoice_uploads ADD COLUMN invoice_date_to DATE NULL AFTER invoice_date_from'
+                );
+            } catch (\Throwable $e) {
+                error_log('BusyInvoiceUploadRepository::ensureSchema failed: ' . $e->getMessage());
+                return;
             }
 
-            $col = $this->database->fetch(
-                "SELECT COUNT(*) AS c
-                 FROM information_schema.columns
-                 WHERE table_schema = DATABASE()
-                   AND table_name = 'busy_daily_invoices'
-                   AND column_name = 'upload_id'"
-            );
-            if ((int)($col['c'] ?? 0) === 0) {
-                try {
-                    $this->database->getConnection()->exec(
-                        'ALTER TABLE busy_daily_invoices ADD COLUMN upload_id INT NULL AFTER uploaded_by'
-                    );
-                    $this->database->getConnection()->exec(
-                        'ALTER TABLE busy_daily_invoices ADD INDEX idx_busy_daily_upload (upload_id)'
-                    );
-                } catch (\Throwable $ignored) {
-                    // Column may already exist under race
-                }
-            }
-        } catch (\Throwable $e) {
-            // Leave schemaReady false so next call retries
-            return;
+            self::$schemaReady = true;
         }
 
-        self::$schemaReady = true;
+        // Always safe to re-run: only unlinked invoices + refresh date ranges
         $this->backfillLegacyUploads();
+        $this->syncAllInvoiceDateRanges();
+    }
+
+    private function ensureUploadColumn(string $column, string $alterSql): void
+    {
+        $col = $this->database->fetch(
+            "SELECT COUNT(*) AS c
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'busy_invoice_uploads'
+               AND column_name = ?",
+            [$column]
+        );
+        if ((int)($col['c'] ?? 0) > 0) {
+            return;
+        }
+        try {
+            $this->database->getConnection()->exec($alterSql);
+        } catch (\Throwable $ignored) {
+            // race / already exists
+        }
+    }
+
+    private function hasUploadInvoiceDateColumns(): bool
+    {
+        $col = $this->database->fetch(
+            "SELECT COUNT(*) AS c
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'busy_invoice_uploads'
+               AND column_name = 'invoice_date_from'"
+        );
+        return ((int)($col['c'] ?? 0)) > 0;
+    }
+
+    /** Fill invoice_date_from/to on every upload from linked daily invoices. */
+    public function syncAllInvoiceDateRanges(): void
+    {
+        if (!$this->hasUploadInvoiceDateColumns()) {
+            return;
+        }
+        try {
+            $this->database->execute(
+                "UPDATE busy_invoice_uploads u
+                 INNER JOIN (
+                    SELECT upload_id,
+                           MIN(invoice_date) AS dfrom,
+                           MAX(invoice_date) AS dto
+                    FROM busy_daily_invoices
+                    WHERE upload_id IS NOT NULL
+                    GROUP BY upload_id
+                 ) x ON x.upload_id = u.id
+                 SET u.invoice_date_from = x.dfrom,
+                     u.invoice_date_to = x.dto"
+            );
+        } catch (\Throwable $e) {
+            error_log('syncAllInvoiceDateRanges failed: ' . $e->getMessage());
+        }
+    }
+
+    public function refreshInvoiceDatesForUpload(int $uploadId): void
+    {
+        if ($uploadId <= 0 || !$this->hasUploadInvoiceDateColumns()) {
+            return;
+        }
+        $row = $this->database->fetch(
+            "SELECT MIN(invoice_date) AS dfrom, MAX(invoice_date) AS dto
+             FROM busy_daily_invoices
+             WHERE upload_id = ?",
+            [$uploadId]
+        );
+        if (!$row || empty($row['dfrom'])) {
+            return;
+        }
+        $this->database->execute(
+            'UPDATE busy_invoice_uploads SET invoice_date_from = ?, invoice_date_to = ? WHERE id = ?',
+            [$row['dfrom'], $row['dto'], $uploadId]
+        );
     }
 
     /**
@@ -121,7 +210,9 @@ class BusyInvoiceUploadRepository
                             SUM(CASE WHEN mapping_status = 'mapped' THEN 1 ELSE 0 END) AS mapped_count,
                             SUM(CASE WHEN mapping_status = 'unmapped' THEN 1 ELSE 0 END) AS unmapped_count,
                             SUM(CASE WHEN mapping_status = 'error' THEN 1 ELSE 0 END) AS failed_count,
-                            MIN(created_at) AS first_at
+                            MIN(created_at) AS first_at,
+                            MIN(invoice_date) AS invoice_date_from,
+                            MAX(invoice_date) AS invoice_date_to
                      FROM busy_daily_invoices
                      WHERE upload_id IS NULL
                      GROUP BY DATE(created_at), uploaded_by, company_id
@@ -140,12 +231,16 @@ class BusyInvoiceUploadRepository
                             SUM(CASE WHEN mapping_status = 'mapped' THEN 1 ELSE 0 END) AS mapped_count,
                             SUM(CASE WHEN mapping_status = 'unmapped' THEN 1 ELSE 0 END) AS unmapped_count,
                             SUM(CASE WHEN mapping_status = 'error' THEN 1 ELSE 0 END) AS failed_count,
-                            MIN(created_at) AS first_at
+                            MIN(created_at) AS first_at,
+                            MIN(invoice_date) AS invoice_date_from,
+                            MAX(invoice_date) AS invoice_date_to
                      FROM busy_daily_invoices
                      GROUP BY DATE(created_at), uploaded_by, company_id
                      ORDER BY first_at ASC"
                 );
             }
+
+            $hasDateCols = $this->hasUploadInvoiceDateColumns();
 
             foreach ($batches as $batch) {
                 $day = (string)($batch['upload_day'] ?? '');
@@ -154,24 +249,57 @@ class BusyInvoiceUploadRepository
                     continue;
                 }
 
-                $this->database->execute(
-                    "INSERT INTO busy_invoice_uploads
-                        (original_filename, file_type, stored_path, file_size, company_id,
-                         invoice_count, mapped_count, unmapped_count, failed_count,
-                         status, parse_notes, uploaded_by, created_at)
-                     VALUES (?, 'legacy', NULL, NULL, ?, ?, ?, ?, ?, 'legacy', ?, ?, ?)",
-                    [
-                        'Earlier upload on ' . $day . ' (file not retained)',
-                        !empty($batch['company_id']) ? (int)$batch['company_id'] : null,
-                        $count,
-                        (int)($batch['mapped_count'] ?? 0),
-                        (int)($batch['unmapped_count'] ?? 0),
-                        (int)($batch['failed_count'] ?? 0),
-                        'Reconstructed from daily invoice ledger — original CSV/PDF was not stored.',
-                        !empty($batch['uploaded_by']) ? (int)$batch['uploaded_by'] : null,
-                        (string)($batch['first_at'] ?? $day . ' 00:00:00'),
-                    ]
-                );
+                $invFrom = !empty($batch['invoice_date_from']) ? (string)$batch['invoice_date_from'] : null;
+                $invTo = !empty($batch['invoice_date_to']) ? (string)$batch['invoice_date_to'] : null;
+                $label = 'Earlier upload on ' . $day . ' (file not retained)';
+                if ($invFrom && $invTo) {
+                    $label = $invFrom === $invTo
+                        ? 'Invoices dated ' . $invFrom . ' (file not retained)'
+                        : 'Invoices ' . $invFrom . ' to ' . $invTo . ' (file not retained)';
+                }
+
+                if ($hasDateCols) {
+                    $this->database->execute(
+                        "INSERT INTO busy_invoice_uploads
+                            (original_filename, file_type, stored_path, file_size, company_id,
+                             invoice_date_from, invoice_date_to,
+                             invoice_count, mapped_count, unmapped_count, failed_count,
+                             status, parse_notes, uploaded_by, created_at)
+                         VALUES (?, 'legacy', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, 'legacy', ?, ?, ?)",
+                        [
+                            $label,
+                            !empty($batch['company_id']) ? (int)$batch['company_id'] : null,
+                            $invFrom,
+                            $invTo,
+                            $count,
+                            (int)($batch['mapped_count'] ?? 0),
+                            (int)($batch['unmapped_count'] ?? 0),
+                            (int)($batch['failed_count'] ?? 0),
+                            'Reconstructed from daily invoice ledger — original CSV/PDF was not stored.',
+                            !empty($batch['uploaded_by']) ? (int)$batch['uploaded_by'] : null,
+                            (string)($batch['first_at'] ?? $day . ' 00:00:00'),
+                        ]
+                    );
+                } else {
+                    $this->database->execute(
+                        "INSERT INTO busy_invoice_uploads
+                            (original_filename, file_type, stored_path, file_size, company_id,
+                             invoice_count, mapped_count, unmapped_count, failed_count,
+                             status, parse_notes, uploaded_by, created_at)
+                         VALUES (?, 'legacy', NULL, NULL, ?, ?, ?, ?, ?, 'legacy', ?, ?, ?)",
+                        [
+                            $label,
+                            !empty($batch['company_id']) ? (int)$batch['company_id'] : null,
+                            $count,
+                            (int)($batch['mapped_count'] ?? 0),
+                            (int)($batch['unmapped_count'] ?? 0),
+                            (int)($batch['failed_count'] ?? 0),
+                            'Reconstructed from daily invoice ledger — original CSV/PDF was not stored.',
+                            !empty($batch['uploaded_by']) ? (int)$batch['uploaded_by'] : null,
+                            (string)($batch['first_at'] ?? $day . ' 00:00:00'),
+                        ]
+                    );
+                }
                 $uploadId = (int)$this->database->lastInsertId();
                 if ($uploadId <= 0 || !$hasUploadId) {
                     continue;
@@ -197,8 +325,8 @@ class BusyInvoiceUploadRepository
                 }
                 $this->database->execute($sql, $params);
             }
-        } catch (\Throwable $ignored) {
-            // Backfill is best-effort
+        } catch (\Throwable $e) {
+            error_log('backfillLegacyUploads failed: ' . $e->getMessage());
         }
     }
 
@@ -208,27 +336,54 @@ class BusyInvoiceUploadRepository
     public function create(array $data): int
     {
         $this->ensureSchema();
-        $this->database->execute(
-            "INSERT INTO busy_invoice_uploads
-                (original_filename, file_type, stored_path, file_size, company_id,
-                 invoice_count, mapped_count, unmapped_count, failed_count,
-                 status, parse_notes, uploaded_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                $data['original_filename'],
-                $data['file_type'] ?? 'csv',
-                $data['stored_path'] ?? null,
-                $data['file_size'] ?? null,
-                $data['company_id'] ?? null,
-                (int)($data['invoice_count'] ?? 0),
-                (int)($data['mapped_count'] ?? 0),
-                (int)($data['unmapped_count'] ?? 0),
-                (int)($data['failed_count'] ?? 0),
-                $data['status'] ?? 'processed',
-                $data['parse_notes'] ?? null,
-                $data['uploaded_by'] ?? null,
-            ]
-        );
+        if ($this->hasUploadInvoiceDateColumns()) {
+            $this->database->execute(
+                "INSERT INTO busy_invoice_uploads
+                    (original_filename, file_type, stored_path, file_size, company_id,
+                     invoice_date_from, invoice_date_to,
+                     invoice_count, mapped_count, unmapped_count, failed_count,
+                     status, parse_notes, uploaded_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    $data['original_filename'],
+                    $data['file_type'] ?? 'csv',
+                    $data['stored_path'] ?? null,
+                    $data['file_size'] ?? null,
+                    $data['company_id'] ?? null,
+                    $data['invoice_date_from'] ?? null,
+                    $data['invoice_date_to'] ?? null,
+                    (int)($data['invoice_count'] ?? 0),
+                    (int)($data['mapped_count'] ?? 0),
+                    (int)($data['unmapped_count'] ?? 0),
+                    (int)($data['failed_count'] ?? 0),
+                    $data['status'] ?? 'processed',
+                    $data['parse_notes'] ?? null,
+                    $data['uploaded_by'] ?? null,
+                ]
+            );
+        } else {
+            $this->database->execute(
+                "INSERT INTO busy_invoice_uploads
+                    (original_filename, file_type, stored_path, file_size, company_id,
+                     invoice_count, mapped_count, unmapped_count, failed_count,
+                     status, parse_notes, uploaded_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    $data['original_filename'],
+                    $data['file_type'] ?? 'csv',
+                    $data['stored_path'] ?? null,
+                    $data['file_size'] ?? null,
+                    $data['company_id'] ?? null,
+                    (int)($data['invoice_count'] ?? 0),
+                    (int)($data['mapped_count'] ?? 0),
+                    (int)($data['unmapped_count'] ?? 0),
+                    (int)($data['failed_count'] ?? 0),
+                    $data['status'] ?? 'processed',
+                    $data['parse_notes'] ?? null,
+                    $data['uploaded_by'] ?? null,
+                ]
+            );
+        }
 
         return (int)$this->database->lastInsertId();
     }
@@ -236,6 +391,34 @@ class BusyInvoiceUploadRepository
     public function updateStats(int $uploadId, array $stats): void
     {
         $this->ensureSchema();
+        if ($this->hasUploadInvoiceDateColumns()
+            && (array_key_exists('invoice_date_from', $stats) || array_key_exists('invoice_date_to', $stats))) {
+            $this->database->execute(
+                "UPDATE busy_invoice_uploads
+                 SET invoice_count = ?,
+                     mapped_count = ?,
+                     unmapped_count = ?,
+                     failed_count = ?,
+                     status = ?,
+                     parse_notes = COALESCE(?, parse_notes),
+                     invoice_date_from = COALESCE(?, invoice_date_from),
+                     invoice_date_to = COALESCE(?, invoice_date_to)
+                 WHERE id = ?",
+                [
+                    (int)($stats['invoice_count'] ?? 0),
+                    (int)($stats['mapped_count'] ?? 0),
+                    (int)($stats['unmapped_count'] ?? 0),
+                    (int)($stats['failed_count'] ?? 0),
+                    $stats['status'] ?? 'processed',
+                    $stats['parse_notes'] ?? null,
+                    $stats['invoice_date_from'] ?? null,
+                    $stats['invoice_date_to'] ?? null,
+                    $uploadId,
+                ]
+            );
+            return;
+        }
+
         $this->database->execute(
             "UPDATE busy_invoice_uploads
              SET invoice_count = ?,
@@ -288,6 +471,7 @@ class BusyInvoiceUploadRepository
             "UPDATE busy_daily_invoices SET upload_id = ? WHERE invoice_no IN ({$placeholders})",
             $params
         );
+        $this->refreshInvoiceDatesForUpload($uploadId);
     }
 
     public function findById(int $id): ?array
@@ -316,21 +500,55 @@ class BusyInvoiceUploadRepository
         $this->ensureSchema();
         $where = ['1=1'];
         $params = [];
+        $hasDateCols = $this->hasUploadInvoiceDateColumns();
 
         if (!empty($filters['company_id'])) {
             $where[] = 'u.company_id = ?';
             $params[] = (int)$filters['company_id'];
         }
-        if (!empty($filters['start_date'])) {
-            $where[] = 'DATE(u.created_at) >= ?';
-            $params[] = $filters['start_date'];
+
+        // Date filters mean invoice dates (with upload-time fallback for older rows)
+        $start = !empty($filters['start_date']) ? (string)$filters['start_date'] : '';
+        $end = !empty($filters['end_date']) ? (string)$filters['end_date'] : '';
+        if ($start !== '' || $end !== '') {
+            if ($hasDateCols) {
+                $parts = [];
+                if ($start !== '' && $end !== '') {
+                    // Overlap: invoice range intersects [start, end]
+                    $parts[] = '(u.invoice_date_from IS NOT NULL AND u.invoice_date_to IS NOT NULL
+                        AND u.invoice_date_from <= ? AND u.invoice_date_to >= ?)';
+                    $params[] = $end;
+                    $params[] = $start;
+                    $parts[] = '(u.invoice_date_from IS NULL AND DATE(u.created_at) >= ? AND DATE(u.created_at) <= ?)';
+                    $params[] = $start;
+                    $params[] = $end;
+                } elseif ($start !== '') {
+                    $parts[] = '(u.invoice_date_to IS NOT NULL AND u.invoice_date_to >= ?)';
+                    $params[] = $start;
+                    $parts[] = '(u.invoice_date_to IS NULL AND DATE(u.created_at) >= ?)';
+                    $params[] = $start;
+                } else {
+                    $parts[] = '(u.invoice_date_from IS NOT NULL AND u.invoice_date_from <= ?)';
+                    $params[] = $end;
+                    $parts[] = '(u.invoice_date_from IS NULL AND DATE(u.created_at) <= ?)';
+                    $params[] = $end;
+                }
+                $where[] = '(' . implode(' OR ', $parts) . ')';
+            } else {
+                if ($start !== '') {
+                    $where[] = 'DATE(u.created_at) >= ?';
+                    $params[] = $start;
+                }
+                if ($end !== '') {
+                    $where[] = 'DATE(u.created_at) <= ?';
+                    $params[] = $end;
+                }
+            }
         }
-        if (!empty($filters['end_date'])) {
-            $where[] = 'DATE(u.created_at) <= ?';
-            $params[] = $filters['end_date'];
-        }
+
         if (!empty($filters['q'])) {
-            $where[] = 'u.original_filename LIKE ?';
+            $where[] = '(u.original_filename LIKE ? OR CAST(u.id AS CHAR) LIKE ?)';
+            $params[] = '%' . $filters['q'] . '%';
             $params[] = '%' . $filters['q'] . '%';
         }
 
@@ -344,6 +562,10 @@ class BusyInvoiceUploadRepository
         $limit = isset($filters['limit']) ? max(1, min(500, (int)$filters['limit'])) : 100;
         $offset = isset($filters['offset']) ? max(0, (int)$filters['offset']) : 0;
 
+        $orderBy = $hasDateCols
+            ? 'COALESCE(u.invoice_date_from, DATE(u.created_at)) DESC, u.created_at DESC, u.id DESC'
+            : 'u.created_at DESC, u.id DESC';
+
         $rows = $this->database->fetchAll(
             "SELECT u.*,
                     usr.name AS uploaded_by_name,
@@ -352,7 +574,7 @@ class BusyInvoiceUploadRepository
              LEFT JOIN users usr ON usr.id = u.uploaded_by
              LEFT JOIN companies c ON c.id = u.company_id
              WHERE {$whereSql}
-             ORDER BY u.created_at DESC, u.id DESC
+             ORDER BY {$orderBy}
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
