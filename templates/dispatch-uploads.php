@@ -15,6 +15,9 @@
             <a href="/dispatch/daily" class="btn btn-outline-secondary">
                 <i class="bi bi-calendar3 me-1"></i> Daily ledger
             </a>
+            <a href="/dispatch/invoices" class="btn btn-outline-info">
+                <i class="bi bi-list-ul me-1"></i> All invoices
+            </a>
         </div>
     </div>
 </div>
@@ -174,15 +177,34 @@ async function loadUploads(page = 0) {
                    </a>`
                 : `<span class="text-muted small">No file</span>`;
             const invDates = row.invoice_date_from
-                ? (row.invoice_date_label || row.invoice_date_from)
+                ? (row.invoice_date_label || `${row.invoice_date_from} – ${row.invoice_date_to || row.invoice_date_from}`)
                 : '—';
+            
+            // Add invoice count and date count for better context
+            let dateInfo = '';
+            if (row.invoice_date_from) {
+                const invoiceCount = row.invoice_count || 0;
+                // Use date_count if available, otherwise estimate from date range
+                let dateCount = 1;
+                if (typeof row.date_count === 'number' && row.date_count > 0) {
+                    dateCount = row.date_count;
+                } else if (row.invoice_date_to && row.invoice_date_from !== row.invoice_date_to) {
+                    dateCount = 2; // At least 2 different dates if from != to
+                }
+                
+                if (dateCount > 1) {
+                    dateInfo = `<span class="small text-muted">(${invoiceCount} invoices, ${dateCount} different dates)</span>`;
+                } else {
+                    dateInfo = `<span class="small text-muted">(${invoiceCount} invoice${invoiceCount !== 1 ? 's' : ''})</span>`;
+                }
+            }
             const dailyLink = row.invoice_date_from
                 ? `/dispatch/daily?start_date=${encodeURIComponent(row.invoice_date_from)}&end_date=${encodeURIComponent(row.invoice_date_to || row.invoice_date_from)}`
                 : `/dispatch/daily?all_dates=1`;
             return `
                 <tr>
                     <td class="text-nowrap">${escapeHtml(row.created_at || '—')}</td>
-                    <td class="text-nowrap fw-semibold">${escapeHtml(invDates)}</td>
+                    <td class="text-nowrap fw-semibold">${escapeHtml(invDates)}${dateInfo}</td>
                     <td>${fileCell}</td>
                     <td><span class="badge bg-light text-dark text-uppercase">${escapeHtml(row.file_type || '—')}</span></td>
                     <td>${escapeHtml(row.uploaded_by_name || '—')}</td>

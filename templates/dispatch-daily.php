@@ -38,6 +38,9 @@
             <a href="/dispatch" class="btn btn-outline-primary">
                 <i class="bi bi-upload me-1"></i> Go to Dispatch Upload
             </a>
+            <a href="/dispatch/invoices" class="btn btn-outline-info">
+                <i class="bi bi-list-ul me-1"></i> All invoices
+            </a>
             <button type="button" class="btn btn-warning" id="remapUnmappedBtn" onclick="remapUnmappedInvoices()">
                 <span class="spinner-border spinner-border-sm d-none" id="remapSpinner"></span>
                 <i class="bi bi-link-45deg me-1"></i> Remap unmapped

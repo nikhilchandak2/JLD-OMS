@@ -210,6 +210,23 @@ class WebController
         ]);
     }
 
+    /** All individual invoices list (alternative to grouped upload view). */
+    public function dispatchInvoices(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing', 'entry'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Dispatch access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('dispatch-invoices', [
+            'title' => 'All Busy Invoices',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken()
+        ]);
+    }
+
     /**
      * Visit requests – marketing raises client visit requests, technical team executes them.
      */

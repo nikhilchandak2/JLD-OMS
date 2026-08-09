@@ -290,6 +290,7 @@ $router->get('/dispatch/history', 'WebController@dispatchHistory');
 $router->get('/dispatch/reject-transfers', 'WebController@dispatchRejectTransfers');
 $router->get('/dispatch/daily', 'WebController@dispatchDaily');
 $router->get('/dispatch/uploads', 'WebController@dispatchUploads');
+$router->get('/dispatch/invoices', 'WebController@dispatchInvoices');
 $router->get('/dispatch', 'WebController@dispatchDashboard');
 $router->get('/visit-requests', 'WebController@visitRequests');
 $router->get('/reports', 'WebController@reports');

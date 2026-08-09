@@ -488,6 +488,20 @@ class BusyInvoiceUploadRepository
              LIMIT 1",
             [$id]
         );
+        
+        if ($row && $this->hasUploadInvoiceDateColumns()) {
+            // Get distinct invoice dates for this upload
+            $dates = $this->database->fetchAll(
+                "SELECT DISTINCT invoice_date 
+                 FROM busy_daily_invoices 
+                 WHERE upload_id = ? 
+                 ORDER BY invoice_date",
+                [$id]
+            );
+            $row['distinct_dates'] = array_column($dates, 'invoice_date');
+            $row['date_count'] = count($row['distinct_dates']);
+        }
+        
         return $row ?: null;
     }
 
@@ -578,6 +592,23 @@ class BusyInvoiceUploadRepository
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
+
+        // Add distinct date count for each upload if date columns exist
+        if ($hasDateCols && !empty($rows)) {
+            foreach ($rows as &$row) {
+                if ($row['id']) {
+                    $dates = $this->database->fetchAll(
+                        "SELECT DISTINCT invoice_date 
+                         FROM busy_daily_invoices 
+                         WHERE upload_id = ? 
+                         ORDER BY invoice_date",
+                        [$row['id']]
+                    );
+                    $row['distinct_dates'] = array_column($dates, 'invoice_date');
+                    $row['date_count'] = count($row['distinct_dates']);
+                }
+            }
+        }
 
         return ['rows' => $rows, 'total' => $total];
     }
