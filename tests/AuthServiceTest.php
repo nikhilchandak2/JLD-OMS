@@ -2,223 +2,200 @@
 
 namespace Tests;
 
-use PHPUnit\Framework\TestCase;
 use App\Services\AuthService;
-use App\Core\Database;
 
-class AuthServiceTest extends TestCase
+class AuthServiceTest extends DatabaseTestCase
 {
     private AuthService $authService;
-    private Database $database;
-    
+    private array $user;
+
     protected function setUp(): void
     {
-        // Load test environment
-        $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-        $dotenv->load();
-        
-        $this->database = new Database();
+        parent::setUp();
+
         $this->authService = new AuthService();
-        
-        // Start session for testing
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
-        
-        // Start transaction for test isolation
-        $this->database->beginTransaction();
+        $this->user = $this->createUser('admin');
     }
-    
-    protected function tearDown(): void
-    {
-        // Clear session
-        session_destroy();
-        
-        // Rollback transaction to clean up test data
-        $this->database->rollback();
-    }
-    
+
     public function testSuccessfulLogin(): void
     {
-        // Use existing seed user
-        $result = $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
-        
+        $result = $this->authService->login($this->user['email'], $this->user['password']);
+
         $this->assertTrue($result['success']);
         $this->assertEquals('Login successful', $result['message']);
         $this->assertArrayHasKey('user', $result);
-        $this->assertEquals('admin@jldminerals.com', $result['user']['email']);
+        $this->assertEquals($this->user['email'], $result['user']['email']);
         $this->assertEquals('admin', $result['user']['role']);
     }
-    
+
     public function testLoginWithInvalidEmail(): void
     {
         $result = $this->authService->login('nonexistent@jldminerals.com', 'password');
-        
+
         $this->assertFalse($result['success']);
         $this->assertEquals('Invalid credentials', $result['message']);
     }
-    
+
     public function testLoginWithInvalidPassword(): void
     {
-        $result = $this->authService->login('admin@jldminerals.com', 'wrongpassword');
-        
+        $result = $this->authService->login($this->user['email'], 'wrongpassword');
+
         $this->assertFalse($result['success']);
         $this->assertEquals('Invalid credentials', $result['message']);
     }
-    
+
     public function testLoginWithInactiveUser(): void
     {
-        // First, deactivate the user
-        $this->database->execute(
-            "UPDATE users SET is_active = 0 WHERE email = ?",
-            ['admin@jldminerals.com']
-        );
-        
-        $result = $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
-        
+        $inactive = $this->createUser('entry', 'Test@Passw0rd!', false);
+
+        $result = $this->authService->login($inactive['email'], $inactive['password']);
+
         $this->assertFalse($result['success']);
         $this->assertEquals('Account is disabled', $result['message']);
     }
-    
+
     public function testAccountLockoutAfterFailedAttempts(): void
     {
-        // Make 5 failed login attempts
         for ($i = 0; $i < 5; $i++) {
-            $result = $this->authService->login('admin@jldminerals.com', 'wrongpassword');
+            $result = $this->authService->login($this->user['email'], 'wrongpassword');
             $this->assertFalse($result['success']);
         }
-        
-        // 6th attempt should be locked
-        $result = $this->authService->login('admin@jldminerals.com', 'wrongpassword');
+
+        $result = $this->authService->login($this->user['email'], 'wrongpassword');
         $this->assertFalse($result['success']);
-        $this->assertStringContains('Account temporarily locked', $result['message']);
+        $this->assertStringContainsString('Account temporarily locked', $result['message']);
     }
-    
+
+    public function testLockedAccountRejectsTheCorrectPassword(): void
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $this->authService->login($this->user['email'], 'wrongpassword');
+        }
+
+        $result = $this->authService->login($this->user['email'], $this->user['password']);
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('Account temporarily locked', $result['message']);
+    }
+
     public function testSuccessfulLoginResetsFailedAttempts(): void
     {
-        // Make some failed attempts
         for ($i = 0; $i < 3; $i++) {
-            $this->authService->login('admin@jldminerals.com', 'wrongpassword');
+            $this->authService->login($this->user['email'], 'wrongpassword');
         }
-        
-        // Successful login should reset counter
-        $result = $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
+
+        $result = $this->authService->login($this->user['email'], $this->user['password']);
         $this->assertTrue($result['success']);
-        
-        // Check that failed attempts were reset
-        $user = $this->database->fetch(
+
+        $row = $this->database->fetch(
             "SELECT failed_login_attempts FROM users WHERE email = ?",
-            ['admin@jldminerals.com']
+            [$this->user['email']]
         );
-        $this->assertEquals(0, $user['failed_login_attempts']);
+        $this->assertEquals(0, $row['failed_login_attempts']);
     }
-    
+
     public function testIsAuthenticated(): void
     {
-        // Should not be authenticated initially
         $this->assertFalse($this->authService->isAuthenticated());
-        
-        // Login
-        $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
-        
-        // Should now be authenticated
+
+        $this->authService->login($this->user['email'], $this->user['password']);
+
         $this->assertTrue($this->authService->isAuthenticated());
     }
-    
+
     public function testGetCurrentUser(): void
     {
-        // Should return null when not authenticated
         $this->assertNull($this->authService->getCurrentUser());
-        
-        // Login
-        $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
-        
-        // Should return user data
-        $user = $this->authService->getCurrentUser();
-        $this->assertNotNull($user);
-        $this->assertEquals('admin@jldminerals.com', $user['email']);
-        $this->assertEquals('admin', $user['role']);
+
+        $this->authService->login($this->user['email'], $this->user['password']);
+
+        $current = $this->authService->getCurrentUser();
+        $this->assertNotNull($current);
+        $this->assertEquals($this->user['email'], $current['email']);
+        $this->assertEquals('admin', $current['role']);
     }
-    
+
     public function testHasRole(): void
     {
-        // Login as admin
-        $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
-        
+        $this->authService->login($this->user['email'], $this->user['password']);
+
         $this->assertTrue($this->authService->hasRole('admin'));
         $this->assertFalse($this->authService->hasRole('entry'));
         $this->assertFalse($this->authService->hasRole('view'));
     }
-    
+
     public function testHasAnyRole(): void
     {
-        // Login as admin
-        $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
-        
+        $this->authService->login($this->user['email'], $this->user['password']);
+
         $this->assertTrue($this->authService->hasAnyRole(['admin', 'entry']));
         $this->assertTrue($this->authService->hasAnyRole(['view', 'admin']));
         $this->assertFalse($this->authService->hasAnyRole(['entry', 'view']));
     }
-    
+
+    public function testRoleChecksFailWhenNotLoggedIn(): void
+    {
+        $this->assertFalse($this->authService->hasRole('admin'));
+        $this->assertFalse($this->authService->hasAnyRole(['admin', 'entry']));
+    }
+
     public function testLogout(): void
     {
-        // Login first
-        $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
+        $this->authService->login($this->user['email'], $this->user['password']);
         $this->assertTrue($this->authService->isAuthenticated());
-        
-        // Logout
+
         $result = $this->authService->logout();
         $this->assertTrue($result);
-        
-        // Should no longer be authenticated
+
         $this->assertFalse($this->authService->isAuthenticated());
     }
-    
+
     public function testPasswordResetToken(): void
     {
-        $token = $this->authService->generatePasswordResetToken('admin@jldminerals.com');
-        
+        $token = $this->authService->generatePasswordResetToken($this->user['email']);
+
         $this->assertNotNull($token);
         $this->assertIsString($token);
         $this->assertEquals(64, strlen($token)); // 32 bytes = 64 hex chars
-        
-        // Verify token was stored in database
-        $user = $this->database->fetch(
+
+        $row = $this->database->fetch(
             "SELECT password_reset_token, password_reset_expires FROM users WHERE email = ?",
-            ['admin@jldminerals.com']
+            [$this->user['email']]
         );
-        
-        $this->assertEquals($token, $user['password_reset_token']);
-        $this->assertNotNull($user['password_reset_expires']);
+
+        $this->assertEquals($token, $row['password_reset_token']);
+        $this->assertNotNull($row['password_reset_expires']);
     }
-    
+
+    public function testPasswordResetTokenForUnknownEmail(): void
+    {
+        $this->assertNull($this->authService->generatePasswordResetToken('nobody@jldminerals.com'));
+    }
+
     public function testPasswordReset(): void
     {
-        // Generate reset token
-        $token = $this->authService->generatePasswordResetToken('admin@jldminerals.com');
-        
-        // Reset password
+        $token = $this->authService->generatePasswordResetToken($this->user['email']);
+
         $newPassword = 'NewPassword123!';
-        $result = $this->authService->resetPassword($token, $newPassword);
-        
-        $this->assertTrue($result);
-        
-        // Verify old password no longer works
-        $loginResult = $this->authService->login('admin@jldminerals.com', 'Jld@Passw0rd!');
-        $this->assertFalse($loginResult['success']);
-        
-        // Verify new password works
-        $loginResult = $this->authService->login('admin@jldminerals.com', $newPassword);
-        $this->assertTrue($loginResult['success']);
+        $this->assertTrue($this->authService->resetPassword($token, $newPassword));
+
+        $oldPasswordLogin = $this->authService->login($this->user['email'], $this->user['password']);
+        $this->assertFalse($oldPasswordLogin['success']);
+
+        $newPasswordLogin = $this->authService->login($this->user['email'], $newPassword);
+        $this->assertTrue($newPasswordLogin['success']);
     }
-    
+
     public function testPasswordResetWithInvalidToken(): void
     {
-        $result = $this->authService->resetPassword('invalid-token', 'NewPassword123!');
-        $this->assertFalse($result);
+        $this->assertFalse($this->authService->resetPassword('invalid-token', 'NewPassword123!'));
+    }
+
+    public function testPasswordResetTokenIsSingleUse(): void
+    {
+        $token = $this->authService->generatePasswordResetToken($this->user['email']);
+
+        $this->assertTrue($this->authService->resetPassword($token, 'NewPassword123!'));
+        $this->assertFalse($this->authService->resetPassword($token, 'AnotherPassword123!'));
     }
 }
-
-
-
-

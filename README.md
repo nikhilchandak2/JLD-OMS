@@ -1,6 +1,6 @@
 # Order Processing & Dispatch Management System
 
-A secure, role-based PHP web application for managing orders (truck counts), recording dispatches, and generating analytics reports. Built with PHP 8.1+, MySQL, and Bootstrap for a production-ready LAMP/LEMP stack deployment.
+A secure, role-based PHP web application for managing orders (truck counts), recording dispatches, and generating analytics reports. Built with PHP 8.2+, MySQL, and Bootstrap for a production-ready LAMP/LEMP stack deployment.
 
 ## Features
 
@@ -14,7 +14,7 @@ A secure, role-based PHP web application for managing orders (truck counts), rec
 
 ## Tech Stack
 
-- **Backend**: PHP 8.1+ with custom MVC architecture
+- **Backend**: PHP 8.2+ with custom MVC architecture
 - **Database**: MySQL 8.0+ / MariaDB 10.3+
 - **Frontend**: Server-rendered HTML with Bootstrap 5, vanilla JavaScript
 - **Libraries**: PhpSpreadsheet (Excel), TCPDF (PDF), PHPUnit (Testing)
@@ -23,7 +23,7 @@ A secure, role-based PHP web application for managing orders (truck counts), rec
 
 ### Prerequisites
 
-- PHP 8.1 or higher
+- PHP 8.2 or higher (required by the locked PhpSpreadsheet/ZipStream versions)
 - MySQL 8.0+ or MariaDB 10.3+
 - Composer
 - Web server (Apache/Nginx)
@@ -57,6 +57,7 @@ A secure, role-based PHP web application for managing orders (truck counts), rec
    php scripts/migrate.php
    php scripts/seed.php
    ```
+   Seeding is safe to re-run: it inserts missing rows only, and resolves roles by name.
 
 6. **Configure web server**
    
@@ -302,12 +303,13 @@ dispatches -> users (dispatched_by)
 
 ### Run Tests
 ```bash
-# Run all tests
-php scripts/test.php
-
-# Or use PHPUnit directly
 ./vendor/bin/phpunit
 ```
+
+Tests use the database credentials from `.env` but always run against `<DB_NAME>_test`, which
+`tests/bootstrap.php` creates, migrates and seeds on first run. Each test wraps itself in a
+transaction and creates its own company/party/product/user rows, so the suite never depends on
+seed ids and leaves no data behind.
 
 ### Test Coverage
 - Order creation and validation

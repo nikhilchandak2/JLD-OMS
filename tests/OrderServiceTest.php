@@ -2,183 +2,183 @@
 
 namespace Tests;
 
-use PHPUnit\Framework\TestCase;
-use App\Services\OrderService;
 use App\Services\DispatchService;
-use App\Core\Database;
+use App\Services\OrderService;
 
-class OrderServiceTest extends TestCase
+class OrderServiceTest extends DatabaseTestCase
 {
     private OrderService $orderService;
     private DispatchService $dispatchService;
-    private Database $database;
-    
+    private int $companyId;
+    private int $partyId;
+    private int $productId;
+    private int $userId;
+
     protected function setUp(): void
     {
-        // Load test environment
-        $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-        $dotenv->load();
-        
-        $this->database = new Database();
+        parent::setUp();
+
         $this->orderService = new OrderService();
         $this->dispatchService = new DispatchService();
-        
-        // Start transaction for test isolation
-        $this->database->beginTransaction();
+
+        $this->companyId = $this->createCompany();
+        $this->partyId = $this->createParty();
+        $this->productId = $this->createProduct();
+        $this->userId = $this->createUser('order_processing')['id'];
     }
-    
-    protected function tearDown(): void
+
+    private function orderData(array $overrides = []): array
     {
-        // Rollback transaction to clean up test data
-        $this->database->rollback();
+        return array_merge([
+            'company_id' => $this->companyId,
+            'order_date' => '2024-10-01',
+            'product_id' => $this->productId,
+            'order_qty_trucks' => 50,
+            'party_id' => $this->partyId,
+            'created_by' => $this->userId,
+        ], $overrides);
     }
-    
+
     public function testCreateOrder(): void
     {
-        $orderData = [
-            'order_date' => '2024-10-01',
-            'product_id' => 1,
-            'order_qty_trucks' => 50,
-            'party_id' => 1,
-            'created_by' => 1
-        ];
-        
-        $order = $this->orderService->createOrder($orderData);
-        
+        $order = $this->orderService->createOrder($this->orderData());
+
         $this->assertNotNull($order);
-        $this->assertEquals($orderData['order_qty_trucks'], $order->orderQtyTrucks);
+        $this->assertEquals(50, $order->orderQtyTrucks);
         $this->assertEquals('pending', $order->status);
+        $this->assertEquals($this->companyId, $order->companyId);
         $this->assertNotEmpty($order->orderNo);
-        $this->assertStringStartsWith('ORD-', $order->orderNo);
+        $this->assertMatchesRegularExpression('/^JLD-\d{8}$/', $order->orderNo);
     }
-    
+
     public function testCreateOrderWithInvalidProduct(): void
     {
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Product not found or inactive');
-        
-        $orderData = [
-            'order_date' => '2024-10-01',
-            'product_id' => 999, // Non-existent product
-            'order_qty_trucks' => 50,
-            'party_id' => 1,
-            'created_by' => 1
-        ];
-        
-        $this->orderService->createOrder($orderData);
+
+        $this->orderService->createOrder($this->orderData(['product_id' => 999999]));
     }
-    
+
     public function testCreateOrderWithInvalidParty(): void
     {
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Party not found or inactive');
-        
-        $orderData = [
-            'order_date' => '2024-10-01',
-            'product_id' => 1,
-            'order_qty_trucks' => 50,
-            'party_id' => 999, // Non-existent party
-            'created_by' => 1
-        ];
-        
-        $this->orderService->createOrder($orderData);
+
+        $this->orderService->createOrder($this->orderData(['party_id' => 999999]));
     }
-    
+
+    public function testCreateOrderInWeightModeDerivesTrucks(): void
+    {
+        $order = $this->orderService->createOrder($this->orderData([
+            'order_qty_mode' => 'weight',
+            'order_weight_tons' => 90,
+            'tons_per_truck' => 30,
+        ]));
+
+        $this->assertEquals('weight', $order->orderQtyMode);
+        $this->assertEquals(3, $order->orderQtyTrucks);
+        $this->assertEquals(90.0, (float)$order->orderWeightTons);
+    }
+
     public function testUpdateOrderQuantity(): void
     {
-        // Create an order first
-        $orderData = [
-            'order_date' => '2024-10-01',
-            'product_id' => 1,
-            'order_qty_trucks' => 50,
-            'party_id' => 1,
-            'created_by' => 1
-        ];
-        
-        $order = $this->orderService->createOrder($orderData);
-        
-        // Update the quantity
-        $updateData = ['order_qty_trucks' => 75];
-        $updatedOrder = $this->orderService->updateOrder($order->id, $updateData);
-        
+        $order = $this->orderService->createOrder($this->orderData());
+
+        $updatedOrder = $this->orderService->updateOrder($order->id, ['order_qty_trucks' => 75]);
+
         $this->assertEquals(75, $updatedOrder->orderQtyTrucks);
     }
-    
+
     public function testCannotReduceOrderQuantityBelowDispatched(): void
     {
-        // Create an order
-        $orderData = [
-            'order_date' => '2024-10-01',
-            'product_id' => 1,
-            'order_qty_trucks' => 50,
-            'party_id' => 1,
-            'created_by' => 1
-        ];
-        
-        $order = $this->orderService->createOrder($orderData);
-        
-        // Create a dispatch
-        $dispatchData = [
+        $order = $this->orderService->createOrder($this->orderData());
+
+        $this->dispatchService->createDispatch([
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 30,
-            'dispatched_by' => 1
-        ];
-        
-        $this->dispatchService->createDispatch($dispatchData);
-        
-        // Try to reduce order quantity below dispatched amount
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId,
+        ]);
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Cannot reduce order quantity below dispatched quantity');
-        
-        $updateData = ['order_qty_trucks' => 25]; // Less than 30 dispatched
-        $this->orderService->updateOrder($order->id, $updateData);
+
+        $this->orderService->updateOrder($order->id, ['order_qty_trucks' => 25]);
     }
-    
+
     public function testOrderStatusUpdatesCorrectly(): void
     {
-        // Create an order
-        $orderData = [
-            'order_date' => '2024-10-01',
-            'product_id' => 1,
-            'order_qty_trucks' => 50,
-            'party_id' => 1,
-            'created_by' => 1
-        ];
-        
-        $order = $this->orderService->createOrder($orderData);
+        $order = $this->orderService->createOrder($this->orderData());
         $this->assertEquals('pending', $order->status);
-        
-        // Create partial dispatch
-        $dispatchData = [
+
+        $this->dispatchService->createDispatch([
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 30,
-            'dispatched_by' => 1
-        ];
-        
-        $this->dispatchService->createDispatch($dispatchData);
-        
-        // Check order status is now partial
-        $updatedOrder = $this->orderService->getOrderById($order->id);
-        $this->assertEquals('partial', $updatedOrder->status);
-        
-        // Complete the dispatch
-        $dispatchData2 = [
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId,
+        ]);
+
+        $this->assertEquals('partial', $this->orderService->getOrderById($order->id)->status);
+
+        $this->dispatchService->createDispatch([
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-03',
             'dispatch_qty_trucks' => 20,
-            'dispatched_by' => 1
-        ];
-        
-        $this->dispatchService->createDispatch($dispatchData2);
-        
-        // Check order status is now completed
-        $completedOrder = $this->orderService->getOrderById($order->id);
-        $this->assertEquals('completed', $completedOrder->status);
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId,
+        ]);
+
+        $this->assertEquals('completed', $this->orderService->getOrderById($order->id)->status);
+    }
+
+    public function testOrderIsBlockedWhenPartyIsOverItsCreditLimit(): void
+    {
+        $partyId = $this->createParty(1000.0);
+        $this->database->execute(
+            "INSERT INTO crm_receivable_entries (party_id, entry_type, amount, entry_date, description, created_by)
+             VALUES (?, 'invoice', 5000, '2024-09-01', 'Test invoice', ?)",
+            [$partyId, $this->userId]
+        );
+
+        $this->expectException(\App\Services\CreditLimitExceededException::class);
+
+        $this->orderService->createOrder($this->orderData(['party_id' => $partyId]));
+    }
+
+    public function testAdminCanCreateOrderForOverLimitParty(): void
+    {
+        $partyId = $this->createParty(1000.0);
+        $adminId = $this->createUser('admin')['id'];
+        $this->database->execute(
+            "INSERT INTO crm_receivable_entries (party_id, entry_type, amount, entry_date, description, created_by)
+             VALUES (?, 'invoice', 5000, '2024-09-01', 'Test invoice', ?)",
+            [$partyId, $adminId]
+        );
+
+        $order = $this->orderService->createOrder($this->orderData([
+            'party_id' => $partyId,
+            'created_by' => $adminId,
+        ]));
+
+        $this->assertEquals('pending', $order->status);
+    }
+
+    public function testRecurringOrderCreatesScheduledDeliveries(): void
+    {
+        $order = $this->orderService->createOrder($this->orderData([
+            'order_qty_trucks' => 6,
+            'is_recurring' => true,
+            'delivery_frequency_days' => 7,
+            'trucks_per_delivery' => 2,
+        ]));
+
+        $deliveries = $this->database->fetchAll(
+            "SELECT id FROM scheduled_deliveries WHERE order_id = ?",
+            [$order->id]
+        );
+
+        $this->assertNotEmpty($deliveries);
     }
 }
-
-
-
-

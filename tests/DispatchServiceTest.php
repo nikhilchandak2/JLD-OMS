@@ -2,48 +2,41 @@
 
 namespace Tests;
 
-use PHPUnit\Framework\TestCase;
 use App\Services\OrderService;
 use App\Services\DispatchService;
-use App\Core\Database;
 
-class DispatchServiceTest extends TestCase
+class DispatchServiceTest extends DatabaseTestCase
 {
     private OrderService $orderService;
     private DispatchService $dispatchService;
-    private Database $database;
+    private int $userId;
+    private int $companyId;
+    private int $partyId;
+    private int $productId;
     
     protected function setUp(): void
     {
-        // Load test environment
-        $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-        $dotenv->load();
+        parent::setUp();
         
-        $this->database = new Database();
         $this->orderService = new OrderService();
         $this->dispatchService = new DispatchService();
         
-        // Start transaction for test isolation
-        $this->database->beginTransaction();
-    }
-    
-    protected function tearDown(): void
-    {
-        // Rollback transaction to clean up test data
-        $this->database->rollback();
+        $this->companyId = $this->createCompany();
+        $this->partyId = $this->createParty();
+        $this->productId = $this->createProduct();
+        $this->userId = $this->createUser('dispatch')['id'];
     }
     
     private function createTestOrder(): \App\Models\Order
     {
-        $orderData = [
+        return $this->orderService->createOrder([
+            'company_id' => $this->companyId,
             'order_date' => '2024-10-01',
-            'product_id' => 1,
+            'product_id' => $this->productId,
             'order_qty_trucks' => 50,
-            'party_id' => 1,
-            'created_by' => 1
-        ];
-        
-        return $this->orderService->createOrder($orderData);
+            'party_id' => $this->partyId,
+            'created_by' => $this->userId,
+        ]);
     }
     
     public function testCreateDispatch(): void
@@ -54,9 +47,10 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 25,
+            'product_rate' => 1200,
             'vehicle_no' => 'TRK-001',
             'remarks' => 'Test dispatch',
-            'dispatched_by' => 1
+            'dispatched_by' => $this->userId
         ];
         
         $dispatch = $this->dispatchService->createDispatch($dispatchData);
@@ -78,7 +72,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 60, // More than ordered
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $this->dispatchService->createDispatch($dispatchData);
@@ -93,7 +88,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 30,
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $this->dispatchService->createDispatch($dispatchData1);
@@ -106,7 +102,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-03',
             'dispatch_qty_trucks' => 25, // Only 20 remaining
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $this->dispatchService->createDispatch($dispatchData2);
@@ -121,7 +118,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 20,
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $dispatch1 = $this->dispatchService->createDispatch($dispatchData1);
@@ -132,7 +130,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-03',
             'dispatch_qty_trucks' => 15,
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $dispatch2 = $this->dispatchService->createDispatch($dispatchData2);
@@ -143,7 +142,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-04',
             'dispatch_qty_trucks' => 15, // Total: 20 + 15 + 15 = 50
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $dispatch3 = $this->dispatchService->createDispatch($dispatchData3);
@@ -163,7 +163,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 25,
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $dispatch = $this->dispatchService->createDispatch($dispatchData);
@@ -184,7 +185,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 25,
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $dispatch1 = $this->dispatchService->createDispatch($dispatchData1);
@@ -193,7 +195,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-03',
             'dispatch_qty_trucks' => 20,
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $dispatch2 = $this->dispatchService->createDispatch($dispatchData2);
@@ -218,7 +221,8 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '', // Empty date
             'dispatch_qty_trucks' => 25,
-            'dispatched_by' => 1
+            'product_rate' => 1200,
+            'dispatched_by' => $this->userId
         ];
         
         $this->dispatchService->createDispatch($dispatchData);
@@ -235,7 +239,7 @@ class DispatchServiceTest extends TestCase
             'order_id' => $order->id,
             'dispatch_date' => '2024-10-02',
             'dispatch_qty_trucks' => 0, // Zero quantity
-            'dispatched_by' => 1
+            'dispatched_by' => $this->userId
         ];
         
         $this->dispatchService->createDispatch($dispatchData);

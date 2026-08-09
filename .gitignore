@@ -2,6 +2,9 @@
 /vendor/
 composer.phar
 
+# Tests
+.phpunit.result.cache
+
 # Environment
 .env
 .env.local
