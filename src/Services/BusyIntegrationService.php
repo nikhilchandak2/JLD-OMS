@@ -1284,7 +1284,10 @@ class BusyIntegrationService
         $name = strtoupper(trim(preg_replace('/\s+/', ' ', $name) ?? ''));
         $name = preg_replace('/[.,\-]+/', ' ', $name) ?? $name;
         $name = preg_replace('/\b(PRIVATE\s+LIMITED|PVT\s*\.?\s*LTD\.?|LIMITED|LTD\.?)\b/i', '', $name) ?? $name;
-        return trim(preg_replace('/\s+/', ' ', $name) ?? '');
+        $name = trim(preg_replace('/\s+/', ' ', $name) ?? '');
+        // Busy invoice typos seen in the wild
+        $name = str_replace('MINERLAS', 'MINERALS', $name);
+        return $name;
     }
 
     private function findProductByName(string $productName): ?object

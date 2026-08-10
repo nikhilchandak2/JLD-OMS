@@ -8,6 +8,7 @@
  */
 return [
     'Sneha Minerals',
+    'Sneha Minerlas', // Busy typo variant
     'Sidhi Vinayak Mines and Minerals',
     'Gargi Industries',
     'JLD Minerals Private Limited',
