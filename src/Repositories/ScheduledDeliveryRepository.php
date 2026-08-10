@@ -59,7 +59,7 @@ class ScheduledDeliveryRepository
 
     public function createMultiple(array $deliveries): array
     {
-        $this->database->getConnection()->beginTransaction();
+        $this->database->beginTransaction();
         
         try {
             $createdDeliveries = [];
@@ -67,10 +67,10 @@ class ScheduledDeliveryRepository
                 $createdDeliveries[] = $this->create($delivery);
             }
             
-            $this->database->getConnection()->commit();
+            $this->database->commit();
             return $createdDeliveries;
         } catch (\Exception $e) {
-            $this->database->getConnection()->rollback();
+            $this->database->rollback();
             throw $e;
         }
     }

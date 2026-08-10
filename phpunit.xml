@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.0/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
          testdox="true">
     <testsuites>
@@ -19,10 +19,7 @@
         </exclude>
     </source>
     <php>
-        <env name="DB_HOST" value="localhost"/>
-        <env name="DB_NAME" value="order_processing_test"/>
-        <env name="DB_USER" value="root"/>
-        <env name="DB_PASS" value=""/>
+        <!-- Database credentials come from .env; tests/bootstrap.php redirects them to <DB_NAME>_test. -->
         <env name="APP_ENV" value="testing"/>
         <env name="APP_DEBUG" value="true"/>
     </php>
