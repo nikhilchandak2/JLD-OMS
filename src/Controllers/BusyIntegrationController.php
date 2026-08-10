@@ -286,14 +286,17 @@ class BusyIntegrationController
             // Ensure legacy batches from the daily ledger are filled in
             $this->busyInvoiceUploadRepository->ensureSchema();
 
-            $result = $this->busyInvoiceUploadRepository->findAll([
+            $uploadFilters = [
                 'start_date' => trim((string)($_GET['start_date'] ?? '')) ?: null,
                 'end_date' => trim((string)($_GET['end_date'] ?? '')) ?: null,
                 'company_id' => isset($_GET['company_id']) ? (int)$_GET['company_id'] : null,
                 'q' => trim((string)($_GET['q'] ?? '')) ?: null,
                 'limit' => $limit,
                 'offset' => $offset,
-            ]);
+            ];
+            $uploadFilters = CompanyContext::mergeFilter($uploadFilters);
+
+            $result = $this->busyInvoiceUploadRepository->findAll($uploadFilters);
 
             $rows = array_map(function (array $row): array {
                 $invFrom = $row['invoice_date_from'] ?? null;
@@ -418,9 +421,11 @@ class BusyIntegrationController
             return;
         }
 
-        // Ledger is cross-company by default — unmapped invoices must stay visible
-        // regardless of the header company switcher. Optional company_id still works.
+        // Scope to active company (header switcher) unless an explicit company_id is passed.
         $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
+        if ($companyId <= 0) {
+            $companyId = (int)(CompanyContext::getActiveCompanyId() ?: 0);
+        }
         $limit = isset($_GET['limit']) ? max(1, min(500, (int)$_GET['limit'])) : 100;
         $offset = isset($_GET['offset']) ? max(0, (int)$_GET['offset']) : 0;
 
@@ -479,6 +484,9 @@ class BusyIntegrationController
 
         $user = $this->authService->getCurrentUser();
         $companyId = isset($input['company_id']) ? (int)$input['company_id'] : 0;
+        if ($companyId <= 0) {
+            $companyId = (int)(CompanyContext::getActiveCompanyId() ?: 0);
+        }
 
         $filters = [
             'company_id' => $companyId > 0 ? $companyId : null,

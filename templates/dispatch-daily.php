@@ -32,6 +32,9 @@
                 After creating missing orders, use <strong>Remap unmapped</strong> (no need to re-upload CSV).
                 Remap only maps when an order exists — other unmapped invoices stay on this page.
                 Upload CSV once on the <a href="/dispatch">Dispatch Dashboard</a>.
+                <?php if (!empty($active_company['name'])): ?>
+                <br><span class="badge bg-primary mt-1">Company: <?= htmlspecialchars($active_company['name']) ?></span>
+                <?php endif; ?>
             </p>
         </div>
         <div class="d-flex gap-2 flex-wrap">

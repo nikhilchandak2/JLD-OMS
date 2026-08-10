@@ -6,7 +6,12 @@
             <h1 class="page-title">
                 <i class="bi bi-list-ul me-2"></i>All Busy Invoices
             </h1>
-            <p class="page-subtitle">Individual invoice list showing all invoices from all uploads</p>
+            <p class="page-subtitle">
+                Individual invoice list for the active company
+                <?php if (!empty($active_company['name'])): ?>
+                — <span class="badge bg-primary"><?= htmlspecialchars($active_company['name']) ?></span>
+                <?php endif; ?>
+            </p>
         </div>
         <div class="d-flex gap-2">
             <a href="/dispatch" class="btn btn-primary">

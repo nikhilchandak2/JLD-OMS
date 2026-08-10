@@ -1029,14 +1029,21 @@
     $canPartyMgmt = in_array($r, ['admin', 'accounts', 'entry', 'crm', 'sales', 'marketing']);
     $canProducts = in_array($r, ['admin', 'accounts', 'entry']);
     $reqUri = $_SERVER['REQUEST_URI'] ?? '';
+    $reqPath = parse_url($reqUri, PHP_URL_PATH) ?: $reqUri;
+    $ordersSectionActive = (
+        (strpos($reqPath, '/orders') === 0) ||
+        (strpos($reqPath, '/dispatch') === 0) ||
+        (basename($reqPath) === 'reports') ||
+        (strpos($reqPath, '/reports/daily-dispatch') === 0)
+    );
     ?>
     <!-- Top header bar menu -->
     <nav class="navbar navbar-expand-lg border-bottom app-topbar" style="background: var(--jld-white) !important;">
         <div class="container-fluid px-2 px-md-3">
             <div class="app-topbar-actions order-1 order-lg-3 ms-auto">
-                <?php if (!empty($companies_list)): ?>
+                <?php if (!empty($companies_list) && $ordersSectionActive): ?>
                 <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle text-primary fw-medium py-1 px-2" href="#" role="button" data-bs-toggle="dropdown" id="companySwitcherBtn" title="Switch company">
+                    <a class="nav-link dropdown-toggle text-primary fw-medium py-1 px-2" href="#" role="button" data-bs-toggle="dropdown" id="companySwitcherBtn" title="Switch company (Orders section)">
                         <i class="bi bi-building"></i><span class="d-none d-md-inline ms-1"><?= htmlspecialchars($active_company['name'] ?? 'Select company') ?></span>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" id="companySwitcherMenu">
@@ -1083,12 +1090,6 @@
                     <?php endif; ?>
 
                     <?php
-                    $ordersSectionActive = (
-                        (strpos($reqUri, '/orders') === 0) ||
-                        (strpos($reqUri, '/dispatch') === 0) ||
-                        (basename($reqUri) === 'reports') ||
-                        (strpos($reqUri, '/reports/daily-dispatch') === 0)
-                    );
                     if ($canOrders):
                     ?>
                     <li class="nav-item dropdown">
