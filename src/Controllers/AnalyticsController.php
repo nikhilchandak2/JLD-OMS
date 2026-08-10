@@ -150,14 +150,20 @@ class AnalyticsController
         return CompanyContext::getActiveCompanyId();
     }
 
-    /** @return array{0:string,1:array} SQL fragment and params for orders alias */
-    private function ordersCompanyFilter(string $alias = 'o'): array
+    /**
+     * SQL fragment and params scoping orders to the active company. Pass the alias the query
+     * gives the orders table, or nothing when the query selects from `orders` unaliased.
+     *
+     * @return array{0:string,1:array}
+     */
+    private function ordersCompanyFilter(?string $alias = null): array
     {
         $id = $this->activeCompanyId();
         if ($id === null) {
             return ['', []];
         }
-        return [" AND {$alias}.company_id = ?", [$id]];
+        $column = $alias === null ? 'company_id' : "{$alias}.company_id";
+        return [" AND {$column} = ?", [$id]];
     }
 
     /** @return array{0:string,1:array} SQL fragment via dispatches -> orders */
