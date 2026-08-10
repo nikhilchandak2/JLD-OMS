@@ -30,7 +30,7 @@ class BusyIntegrationService
     /** @var array<int, list<Order>> open pending/partial orders keyed by company_id */
     private array $openOrdersByCompanyCache = [];
 
-    /** @var list<string>|null */
+    /** @var array<string, string>|null party pattern => preferred company name */
     private ?array $autoOrderPartyPatterns = null;
 
     public function __construct()
@@ -61,6 +61,18 @@ class BusyIntegrationService
             $this->validateInvoiceData($invoiceData);
             $mapped = $this->mapInvoiceData($invoiceData);
             $companyId = $this->resolveCompanyId($mapped, $defaultCompanyId);
+            $partyForCompany = $this->findPartyByName($mapped['party_name']);
+            // Allowlisted parties: prefer configured company over upload switcher.
+            $allowlistCompanyId = $this->resolveAllowlistCompanyId($mapped['party_name']);
+            if ($allowlistCompanyId > 0) {
+                $companyId = $allowlistCompanyId;
+            } elseif ($partyForCompany) {
+                $companyId = $this->resolveCompanyIdForParty(
+                    (int)$partyForCompany->id,
+                    $companyId,
+                    null
+                );
+            }
             $order = $this->findMatchingOrder($mapped, $companyId);
 
             if (!$order) {
@@ -398,12 +410,18 @@ class BusyIntegrationService
                 continue;
             }
 
-            $companyId = !empty($row['company_id'])
+            $uploadHint = !empty($row['company_id'])
                 ? (int)$row['company_id']
-                : (CompanyContext::getActiveCompanyId() ?: 0);
+                : (CompanyContext::getActiveCompanyId() ?: null);
+            // Allowlist company is authoritative for these parties (avoids wrong upload company
+            // and avoids repeating a prior mis-filed auto-order in history).
+            $companyId = $this->resolveAllowlistCompanyId($mapped['party_name']);
             if ($companyId <= 0) {
-                $active = $this->companyRepository->findActive();
-                $companyId = $active !== [] ? (int)$active[0]->id : 0;
+                $companyId = $this->resolveCompanyIdForParty(
+                    (int)$party->id,
+                    $uploadHint && $uploadHint > 0 ? $uploadHint : null,
+                    null
+                );
             }
             if ($companyId <= 0) {
                 $skipped++;
@@ -513,46 +531,83 @@ class BusyIntegrationService
         ];
     }
 
-    /** @return list<string> */
-    private function getAutoOrderPartyPatterns(): array
+    /**
+     * @return array<string, string> party pattern => preferred company name (may be '')
+     */
+    private function getAutoOrderPartyMap(): array
     {
         if ($this->autoOrderPartyPatterns !== null) {
             return $this->autoOrderPartyPatterns;
         }
 
         $path = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'busy_auto_order_parties.php';
-        $patterns = [];
+        $map = [];
         if (is_file($path)) {
             $loaded = require $path;
             if (is_array($loaded)) {
-                foreach ($loaded as $name) {
-                    $name = trim((string)$name);
-                    if ($name !== '') {
-                        $patterns[] = $name;
+                foreach ($loaded as $key => $value) {
+                    // Support ["Party"] and ["Party" => "Company Name"]
+                    if (is_int($key)) {
+                        $party = trim((string)$value);
+                        $company = '';
+                    } else {
+                        $party = trim((string)$key);
+                        $company = trim((string)$value);
+                    }
+                    if ($party !== '') {
+                        $map[$party] = $company;
                     }
                 }
             }
         }
-        $this->autoOrderPartyPatterns = $patterns;
-        return $patterns;
+        $this->autoOrderPartyPatterns = $map;
+        return $map;
     }
 
     private function isAutoOrderAllowlistedParty(string $partyName): bool
     {
+        return $this->matchAutoOrderAllowlistEntry($partyName) !== null;
+    }
+
+    /**
+     * @return array{party: string, company: string}|null
+     */
+    private function matchAutoOrderAllowlistEntry(string $partyName): ?array
+    {
         $normalized = $this->normalizePartyName($partyName);
         if ($normalized === '') {
-            return false;
+            return null;
         }
-        foreach ($this->getAutoOrderPartyPatterns() as $pattern) {
+        foreach ($this->getAutoOrderPartyMap() as $pattern => $company) {
             $p = $this->normalizePartyName($pattern);
             if ($p === '') {
                 continue;
             }
             if ($normalized === $p || str_contains($normalized, $p) || str_contains($p, $normalized)) {
-                return true;
+                return ['party' => $pattern, 'company' => $company];
             }
         }
-        return false;
+        return null;
+    }
+
+    private function resolveAllowlistCompanyId(string $partyName): int
+    {
+        $entry = $this->matchAutoOrderAllowlistEntry($partyName);
+        $companyName = trim((string)($entry['company'] ?? ''));
+        if ($companyName === '') {
+            return 0;
+        }
+        $normalizedWanted = $this->normalizePartyName($companyName);
+        foreach ($this->companyRepository->findAll() as $company) {
+            $n = $this->normalizePartyName($company->name);
+            if ($n === '' ) {
+                continue;
+            }
+            if ($n === $normalizedWanted || str_contains($n, $normalizedWanted) || str_contains($normalizedWanted, $n)) {
+                return (int)$company->id;
+            }
+        }
+        return 0;
     }
 
     /**
@@ -888,6 +943,67 @@ class BusyIntegrationService
         );
         $exists = ((int)($row['c'] ?? 0)) > 0;
         return $exists;
+    }
+
+    /**
+     * Company for a party based on where they already have orders (delivery or billing).
+     * Then allowlist preferred company, then upload/header fallback.
+     * Never picks "first active company alphabetically".
+     */
+    private function resolveCompanyIdForParty(
+        int $partyId,
+        ?int $fallbackCompanyId = null,
+        ?string $partyNameForAllowlist = null
+    ): int {
+        if ($partyId > 0) {
+            if (OrderSchema::hasBillingPartyColumns()) {
+                $row = $this->database->fetch(
+                    "SELECT company_id,
+                            COUNT(*) AS order_count,
+                            MAX(order_date) AS last_order_date
+                     FROM orders
+                     WHERE party_id = ? OR billing_party_id = ?
+                     GROUP BY company_id
+                     ORDER BY last_order_date DESC, order_count DESC, company_id ASC
+                     LIMIT 1",
+                    [$partyId, $partyId]
+                );
+            } else {
+                $row = $this->database->fetch(
+                    "SELECT company_id,
+                            COUNT(*) AS order_count,
+                            MAX(order_date) AS last_order_date
+                     FROM orders
+                     WHERE party_id = ?
+                     GROUP BY company_id
+                     ORDER BY last_order_date DESC, order_count DESC, company_id ASC
+                     LIMIT 1",
+                    [$partyId]
+                );
+            }
+
+            if ($row && !empty($row['company_id'])) {
+                return (int)$row['company_id'];
+            }
+        }
+
+        if ($partyNameForAllowlist !== null && $partyNameForAllowlist !== '') {
+            $fromAllowlist = $this->resolveAllowlistCompanyId($partyNameForAllowlist);
+            if ($fromAllowlist > 0) {
+                return $fromAllowlist;
+            }
+        }
+
+        if ($fallbackCompanyId !== null && $fallbackCompanyId > 0) {
+            return $fallbackCompanyId;
+        }
+
+        $active = CompanyContext::getActiveCompanyId();
+        if ($active !== null && $active > 0) {
+            return $active;
+        }
+
+        return 0;
     }
 
     private function resolveCompanyId(array $data, ?int $defaultCompanyId): int
