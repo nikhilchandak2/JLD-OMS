@@ -45,6 +45,10 @@
                 <span class="spinner-border spinner-border-sm d-none" id="remapSpinner"></span>
                 <i class="bi bi-link-45deg me-1"></i> Remap unmapped
             </button>
+            <button type="button" class="btn btn-outline-danger" id="fixMisfiledBtn" onclick="fixMisfiledAllowlistOrders()">
+                <span class="spinner-border spinner-border-sm d-none" id="fixMisfiledSpinner"></span>
+                <i class="bi bi-building-gear me-1"></i> Fix wrong-company orders
+            </button>
             <button type="button" class="btn btn-primary" onclick="loadDailyBusyDispatches(true)">
                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
@@ -333,6 +337,60 @@ async function remapUnmappedInvoices() {
         }
     } catch (error) {
         showError(error.message || 'Remap failed');
+    } finally {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+    }
+}
+
+async function fixMisfiledAllowlistOrders() {
+    const btn = document.getElementById('fixMisfiledBtn');
+    const spinner = document.getElementById('fixMisfiledSpinner');
+
+    if (!confirm(
+        'Move allowlisted-party orders that were created under the wrong company '
+        + '(e.g. Sneha/Gargi under JL Daga Mines / JLDMM) to Jaichand Lal Daga (JLD)?\n\n'
+        + 'Order numbers will be reassigned to the JLD series. Dispatches stay linked.\n'
+        + 'Admin only. This cannot be undone automatically.'
+    )) {
+        return;
+    }
+
+    btn.disabled = true;
+    spinner.classList.remove('d-none');
+    showError('');
+    showSuccess('');
+
+    try {
+        const response = await apiCall('/api/busy/daily-invoices/fix-misfiled-orders', {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+
+        const data = response.data || {};
+        const details = data.details || [];
+        const samples = details
+            .filter((d) => d.status === 'moved')
+            .slice(0, 5)
+            .map((d) => `${d.old_order_no} → ${d.new_order_no} (${d.party_name})`);
+
+        let msg = response.message || 'Fix finished.';
+        if (samples.length) {
+            msg += '\n\nExamples:\n' + samples.join('\n');
+        }
+        const errors = details.filter((d) => d.status === 'error' || d.status === 'skipped').slice(0, 3);
+        if (errors.length) {
+            msg += '\n\nNotes:\n' + errors.map((d) => d.error || d.party_name).join('\n');
+        }
+
+        await loadDailyBusyDispatches(true);
+        if ((data.moved || 0) > 0) {
+            showSuccess(msg);
+        } else {
+            showError(msg + (errors.length ? '' : '\nNo misfiled orders found (or company prefix JLD missing).'));
+        }
+    } catch (error) {
+        showError(error.message || 'Fix misfiled orders failed');
     } finally {
         btn.disabled = false;
         spinner.classList.add('d-none');

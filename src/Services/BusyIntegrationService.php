@@ -532,6 +532,113 @@ class BusyIntegrationService
     }
 
     /**
+     * One-click repair: move allowlisted-party orders that sit under the wrong company
+     * (e.g. Sneha under JL Daga Mines / JLDMM) to the configured company (Jaichand / JLD).
+     * Keeps dispatches; reassigns order_no to the target company's series; updates Busy daily rows.
+     *
+     * @return array{moved: int, skipped: int, details: list<array<string, mixed>>}
+     */
+    public function fixMisfiledAllowlistOrders(?int $processedByUserId = null): array
+    {
+        $details = [];
+        $moved = 0;
+        $skipped = 0;
+
+        if ($this->getAutoOrderPartyMap() === []) {
+            return ['moved' => 0, 'skipped' => 0, 'details' => []];
+        }
+
+        $parties = $this->partyRepository->findAll();
+        foreach ($parties as $party) {
+            if (!$this->isAutoOrderAllowlistedParty((string)$party->name)) {
+                continue;
+            }
+
+            $correctCompanyId = $this->resolveAllowlistCompanyId((string)$party->name);
+            if ($correctCompanyId <= 0) {
+                $skipped++;
+                $details[] = [
+                    'status' => 'skipped',
+                    'party_name' => $party->name,
+                    'error' => 'No company resolved for allowlist entry (check order_prefix JLD on Jaichand).',
+                ];
+                continue;
+            }
+
+            $wrongOrders = $this->database->fetchAll(
+                'SELECT id, order_no, company_id, party_id, order_date, status
+                 FROM orders
+                 WHERE party_id = ? AND company_id <> ?
+                 ORDER BY order_date ASC, id ASC',
+                [(int)$party->id, $correctCompanyId]
+            );
+
+            foreach ($wrongOrders as $row) {
+                $orderId = (int)$row['id'];
+                $oldCompanyId = (int)$row['company_id'];
+                $oldNo = (string)$row['order_no'];
+
+                try {
+                    $this->database->beginTransaction();
+
+                    // Free unique order_no, then assign target-company number
+                    $tempNo = '__FIX_' . $orderId . '_' . time();
+                    $this->database->execute(
+                        'UPDATE orders SET order_no = ?, company_id = ? WHERE id = ?',
+                        [$tempNo, $correctCompanyId, $orderId]
+                    );
+
+                    $newNo = $this->orderRepository->generateOrderNumber($correctCompanyId);
+                    $this->database->execute(
+                        'UPDATE orders SET order_no = ? WHERE id = ?',
+                        [$newNo, $orderId]
+                    );
+
+                    if ($this->busyDailyInvoicesTableExists()) {
+                        $this->database->execute(
+                            'UPDATE busy_daily_invoices SET company_id = ? WHERE order_id = ?',
+                            [$correctCompanyId, $orderId]
+                        );
+                    }
+
+                    $this->database->commit();
+                    unset($this->openOrdersByCompanyCache[$oldCompanyId], $this->openOrdersByCompanyCache[$correctCompanyId]);
+
+                    $moved++;
+                    $details[] = [
+                        'status' => 'moved',
+                        'order_id' => $orderId,
+                        'party_name' => $party->name,
+                        'old_order_no' => $oldNo,
+                        'new_order_no' => $newNo,
+                        'old_company_id' => $oldCompanyId,
+                        'new_company_id' => $correctCompanyId,
+                    ];
+                } catch (\Throwable $e) {
+                    try {
+                        $this->database->rollback();
+                    } catch (\Throwable $ignored) {
+                    }
+                    $skipped++;
+                    $details[] = [
+                        'status' => 'error',
+                        'order_id' => $orderId,
+                        'party_name' => $party->name,
+                        'old_order_no' => $oldNo,
+                        'error' => $e->getMessage(),
+                    ];
+                }
+            }
+        }
+
+        return [
+            'moved' => $moved,
+            'skipped' => $skipped,
+            'details' => $details,
+        ];
+    }
+
+    /**
      * @return array<string, string> party pattern => preferred company name (may be '')
      */
     private function getAutoOrderPartyMap(): array

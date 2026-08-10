@@ -536,6 +536,59 @@ class BusyIntegrationController
         }
     }
 
+    /**
+     * POST /api/busy/daily-invoices/fix-misfiled-orders
+     * Move allowlisted-party orders from wrong company (e.g. JLDMM) to configured company (JLD).
+     */
+    public function fixMisfiledAllowlistOrders(): void
+    {
+        header('Content-Type: application/json');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            return;
+        }
+
+        if (!$this->requireDispatchImportAccess()) {
+            return;
+        }
+
+        // Restrict to admin — rewrites company + order numbers on dispatched orders
+        if (!$this->authService->hasAnyRole(['admin'])) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Admin access required to fix misfiled company orders']);
+            return;
+        }
+
+        $user = $this->authService->getCurrentUser();
+
+        try {
+            @ini_set('max_execution_time', '120');
+            @set_time_limit(120);
+
+            $result = $this->busyIntegrationService->fixMisfiledAllowlistOrders(
+                $user ? (int)$user['id'] : null
+            );
+
+            $message = sprintf(
+                'Fixed misfiled orders — %d moved, %d skipped',
+                (int)($result['moved'] ?? 0),
+                (int)($result['skipped'] ?? 0)
+            );
+
+            echo json_encode([
+                'success' => true,
+                'message' => $message,
+                'data' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('Busy fix-misfiled failed: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
     /** POST JSON body — single invoice import (same shape as webhook). */
     public function importInvoice(): void
     {

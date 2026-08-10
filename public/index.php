@@ -223,6 +223,7 @@ $router->group('/api', function($router) {
         $router->get('/busy/invoice-uploads/{id}/download', 'BusyIntegrationController@downloadInvoiceUpload');
         $router->get('/busy/daily-invoices', 'BusyIntegrationController@dailyInvoices');
         $router->post('/busy/daily-invoices/remap', 'BusyIntegrationController@remapDailyInvoices');
+        $router->post('/busy/daily-invoices/fix-misfiled-orders', 'BusyIntegrationController@fixMisfiledAllowlistOrders');
         $router->post('/busy/sync', 'BusyIntegrationController@syncInvoices');
         $router->get('/busy/status', 'BusyIntegrationController@getIntegrationStatus');
         
