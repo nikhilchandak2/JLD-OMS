@@ -242,10 +242,15 @@ async function loadDailyBusyDispatches(resetPage = false) {
 async function remapUnmappedInvoices() {
     const btn = document.getElementById('remapUnmappedBtn');
     const spinner = document.getElementById('remapSpinner');
+    const filterDate = (document.getElementById('filterDate')?.value || '').trim();
+
+    const scopeHint = filterDate
+        ? `invoice date ${filterDate}`
+        : 'ALL dates (batched — may take several rounds)';
 
     if (!confirm(
-        'Re-match ALL unmapped invoices against current portal orders?\n\n'
-        + 'Use this after creating missing orders. Dispatches will be created/updated for invoices that now match.\n'
+        `Re-match unmapped invoices (${scopeHint}) against portal orders?\n\n`
+        + 'Allowlisted parties (Gargi, Sneha, etc.) get auto-created same-day orders when still unmapped.\n'
         + 'No CSV re-upload needed.'
     )) {
         return;
@@ -256,19 +261,64 @@ async function remapUnmappedInvoices() {
     showError('');
 
     try {
-        const response = await apiCall('/api/busy/daily-invoices/remap', {
-            method: 'POST',
-            body: JSON.stringify({}),
-        });
+        let totalProcessed = 0;
+        let totalMapped = 0;
+        let totalStill = 0;
+        let totalAutoOrders = 0;
+        let rounds = 0;
+        let afterId = 0;
+        const maxRounds = 40;
+        const sampleHints = [];
 
-        const data = response.data || {};
-        const details = data.details || [];
-        const unmappedErrors = details
-            .filter((d) => d.status === 'unmapped' && d.error)
-            .map((d) => `#${d.invoice_no}: ${d.error}`);
-        const uniqueHints = [...new Set(unmappedErrors)].slice(0, 3);
-        let msg = response.message || 'Remap finished.';
-        if (uniqueHints.length && (data.mapped || 0) === 0) {
+        while (rounds < maxRounds) {
+            rounds++;
+            const body = {
+                limit: 75,
+                all_dates: !filterDate,
+            };
+            if (filterDate) {
+                body.date = filterDate;
+                body.only_selected_date = true;
+            }
+            if (afterId > 0) {
+                body.after_id = afterId;
+            }
+
+            const response = await apiCall('/api/busy/daily-invoices/remap', {
+                method: 'POST',
+                body: JSON.stringify(body),
+            });
+
+            const data = response.data || {};
+            totalProcessed += Number(data.processed || 0);
+            totalMapped += Number(data.mapped || 0);
+            totalStill = Number(data.still_unmapped || 0);
+            totalAutoOrders += Number(data.auto_orders_created || 0);
+            if (data.next_after_id) {
+                afterId = Number(data.next_after_id);
+            }
+
+            const details = data.details || [];
+            for (const d of details) {
+                if (d.status === 'unmapped' && d.error && sampleHints.length < 3) {
+                    sampleHints.push(`#${d.invoice_no}: ${d.error}`);
+                }
+            }
+
+            if (!data.has_more || Number(data.processed || 0) === 0) {
+                break;
+            }
+        }
+
+        let msg = `Remap finished — ${totalProcessed} processed, ${totalMapped} mapped`
+            + (totalAutoOrders ? `, ${totalAutoOrders} auto-order(s)` : '')
+            + ` (${rounds} batch${rounds === 1 ? '' : 'es'}).`;
+        if (totalStill > 0 && rounds >= maxRounds) {
+            msg += ' More may remain — click Remap again.';
+        }
+
+        const uniqueHints = [...new Set(sampleHints)].slice(0, 3);
+        if (uniqueHints.length && totalMapped === 0) {
             msg += '\n\nWhy (examples):\n' + uniqueHints.join('\n');
             showError(msg);
         } else {
@@ -276,9 +326,6 @@ async function remapUnmappedInvoices() {
             if (uniqueHints.length) {
                 console.warn('Remap still-unmapped examples', uniqueHints);
             }
-        }
-        if (details.length) {
-            console.log('Remap details', details);
         }
         await loadDailyBusyDispatches(true);
     } catch (error) {

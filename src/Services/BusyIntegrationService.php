@@ -222,27 +222,40 @@ class BusyIntegrationService
             );
         }
 
-        @ini_set('max_execution_time', '300');
-        @set_time_limit(300);
+        @ini_set('max_execution_time', '120');
+        @set_time_limit(120);
         $this->openOrdersByCompanyCache = [];
 
         // Older remap runs flipped some unmatched rows to "error" via processInvoice.
         // Put them back to unmapped before matching so they stay on the daily ledger.
         $this->busyDailyInvoiceRepository->reopenErrorsAsUnmapped();
 
+        if (!isset($filters['limit'])) {
+            $filters['limit'] = 75;
+        }
+
         $rows = $this->busyDailyInvoiceRepository->findRemapCandidates($filters);
+        $batchLimit = (int)$filters['limit'];
         $details = [];
         $activeCompanyId = CompanyContext::getActiveCompanyId();
+        $explainBudget = 3; // full explainNoMatch is O(companies×orders) — only a few per batch
 
         foreach ($rows as $row) {
             $invoiceNo = (string)($row['invoice_no'] ?? '');
             $rowId = (int)($row['id'] ?? 0);
-            $rowCompanyId = !empty($row['company_id']) ? (int)$row['company_id'] : null;
 
             try {
                 $match = $this->findOrderForDailyInvoiceRow($row, $activeCompanyId);
                 if ($match === null) {
-                    $reason = $this->explainNoMatch($this->mapDailyRowForRemap($row));
+                    $mapped = $this->mapDailyRowForRemap($row);
+                    if ($explainBudget > 0) {
+                        $reason = $this->explainNoMatch($mapped);
+                        $explainBudget--;
+                    } else {
+                        $reason = 'No matching pending order for billed-to "'
+                            . ($mapped['party_name'] ?? '') . '", product "'
+                            . ($mapped['product_name'] ?? '') . '".';
+                    }
                     $this->busyDailyInvoiceRepository->ensureStillUnmapped($rowId, $reason);
                     $details[] = [
                         'status' => 'unmapped',
@@ -289,29 +302,47 @@ class BusyIntegrationService
 
         $this->openOrdersByCompanyCache = [];
 
-        $auto = $this->autoCreateOrdersFromAllowlistedUnmapped($filters, $processedByUserId);
-        if (($auto['mapped'] ?? 0) > 0) {
-            $mappedNos = [];
-            foreach ($auto['details'] as $row) {
-                if (($row['status'] ?? '') === 'mapped') {
-                    $mappedNos[(string)$row['invoice_no']] = $row;
+        // Only auto-create for invoices still unmapped in THIS batch (avoid a second full ledger scan).
+        $stillUnmappedNos = array_values(array_filter(array_map(
+            static fn($d) => (($d['status'] ?? '') === 'unmapped') ? (string)($d['invoice_no'] ?? '') : '',
+            $details
+        )));
+
+        $auto = ['orders_created' => 0, 'mapped' => 0, 'details' => []];
+        if ($stillUnmappedNos !== []) {
+            $auto = $this->autoCreateOrdersFromAllowlistedUnmapped(
+                ['invoice_nos' => $stillUnmappedNos, 'limit' => count($stillUnmappedNos)],
+                $processedByUserId
+            );
+            if (($auto['mapped'] ?? 0) > 0) {
+                $mappedNos = [];
+                foreach ($auto['details'] as $row) {
+                    if (($row['status'] ?? '') === 'mapped') {
+                        $mappedNos[(string)$row['invoice_no']] = $row;
+                    }
+                }
+                foreach ($details as &$detail) {
+                    $no = (string)($detail['invoice_no'] ?? '');
+                    if (isset($mappedNos[$no])) {
+                        $detail = array_merge($detail, $mappedNos[$no], [
+                            'status' => 'mapped',
+                            'mapping_status' => 'mapped',
+                            'auto_order' => true,
+                        ]);
+                        unset($mappedNos[$no]);
+                    }
+                }
+                unset($detail);
+                foreach ($mappedNos as $row) {
+                    $details[] = $row;
                 }
             }
-            foreach ($details as &$detail) {
-                $no = (string)($detail['invoice_no'] ?? '');
-                if (isset($mappedNos[$no])) {
-                    $detail = array_merge($detail, $mappedNos[$no], [
-                        'status' => 'mapped',
-                        'mapping_status' => 'mapped',
-                        'auto_order' => true,
-                    ]);
-                    unset($mappedNos[$no]);
-                }
-            }
-            unset($detail);
-            foreach ($mappedNos as $row) {
-                $details[] = $row;
-            }
+        }
+
+        $hasMore = count($rows) >= $batchLimit;
+        $lastId = 0;
+        foreach ($rows as $row) {
+            $lastId = max($lastId, (int)($row['id'] ?? 0));
         }
 
         return [
@@ -321,6 +352,9 @@ class BusyIntegrationService
             'failed' => 0,
             'auto_orders_created' => (int)($auto['orders_created'] ?? 0),
             'auto_mapped' => (int)($auto['mapped'] ?? 0),
+            'batch_limit' => $batchLimit,
+            'has_more' => $hasMore,
+            'next_after_id' => $lastId > 0 ? $lastId : null,
             'details' => $details,
         ];
     }
@@ -540,9 +574,8 @@ class BusyIntegrationService
         if ($activeCompanyId && $activeCompanyId !== $rowCompanyId) {
             $companyIdsToTry[] = $activeCompanyId;
         }
-        // Include inactive companies too — orders may still sit there
-        foreach ($this->companyRepository->findAll() as $company) {
-            $cid = (int)$company->id;
+        // Prefer row/active company first; only then scan others.
+        foreach ($this->getCompanyIdsCached() as $cid) {
             if (!in_array($cid, $companyIdsToTry, true)) {
                 $companyIdsToTry[] = $cid;
             }
@@ -561,6 +594,19 @@ class BusyIntegrationService
         }
 
         return null;
+    }
+
+    /** @return list<int> */
+    private function getCompanyIdsCached(): array
+    {
+        static $ids = null;
+        if ($ids === null) {
+            $ids = [];
+            foreach ($this->companyRepository->findAll() as $company) {
+                $ids[] = (int)$company->id;
+            }
+        }
+        return $ids;
     }
 
     /**

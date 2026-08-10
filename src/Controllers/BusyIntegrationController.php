@@ -470,11 +470,12 @@ class BusyIntegrationController
             $input = [];
         }
 
-        // Optional scope: omit date to remap ALL unmapped/error invoices
+        // Optional scope: omit date to remap ALL unmapped/error invoices (in batches)
         $date = trim((string)($input['date'] ?? ''));
         $startDate = trim((string)($input['start_date'] ?? ''));
         $endDate = trim((string)($input['end_date'] ?? ''));
         $onlySelectedDate = !empty($input['only_selected_date']);
+        $limit = isset($input['limit']) ? (int)$input['limit'] : 75;
 
         $user = $this->authService->getCurrentUser();
         $companyId = isset($input['company_id']) ? (int)$input['company_id'] : 0;
@@ -482,8 +483,15 @@ class BusyIntegrationController
         $filters = [
             'company_id' => $companyId > 0 ? $companyId : null,
             'invoice_nos' => $input['invoice_nos'] ?? null,
+            'limit' => $limit,
         ];
+        if (!empty($input['after_id'])) {
+            $filters['after_id'] = (int)$input['after_id'];
+        }
         if ($onlySelectedDate && $date !== '') {
+            $filters['date'] = $date;
+        } elseif ($date !== '' && empty($input['all_dates'])) {
+            // Default: prefer the date shown on the daily page when provided
             $filters['date'] = $date;
         } elseif ($startDate !== '' || $endDate !== '') {
             $filters['start_date'] = $startDate !== '' ? $startDate : null;
@@ -491,8 +499,8 @@ class BusyIntegrationController
         }
 
         try {
-            @ini_set('max_execution_time', '300');
-            @set_time_limit(300);
+            @ini_set('max_execution_time', '120');
+            @set_time_limit(120);
 
             $result = $this->busyIntegrationService->remapUnmappedInvoices(
                 $filters,
@@ -500,17 +508,19 @@ class BusyIntegrationController
             );
 
             $message = sprintf(
-                'Remap finished — %d processed, %d mapped, %d still unmapped, %d failed',
+                'Remap batch — %d processed, %d mapped, %d still unmapped',
                 $result['processed'],
                 $result['mapped'],
-                $result['still_unmapped'],
-                $result['failed']
+                $result['still_unmapped']
             );
             if (!empty($result['auto_orders_created'])) {
                 $message .= sprintf(
-                    ' (%d auto-order(s) created for allowlisted parties)',
+                    ' (%d auto-order(s) created)',
                     (int)$result['auto_orders_created']
                 );
+            }
+            if (!empty($result['has_more'])) {
+                $message .= ' — more unmapped remain; continue Remap.';
             }
 
             echo json_encode([

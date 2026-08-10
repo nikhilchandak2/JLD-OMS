@@ -195,13 +195,21 @@ class BusyDailyInvoiceRepository
             }
         }
 
+        if (!empty($filters['after_id'])) {
+            $where[] = 'bdi.id > ?';
+            $params[] = (int)$filters['after_id'];
+        }
+
+        $limit = isset($filters['limit']) ? (int)$filters['limit'] : 100;
+        $limit = max(1, min(200, $limit));
+
         $whereSql = implode(' AND ', $where);
         $sql = "
             SELECT bdi.*
             FROM busy_daily_invoices bdi
             WHERE {$whereSql}
-            ORDER BY bdi.invoice_date ASC, bdi.id ASC
-            LIMIT 500
+            ORDER BY bdi.id ASC
+            LIMIT {$limit}
         ";
 
         return $this->database->fetchAll($sql, $params);
