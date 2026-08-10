@@ -1,18 +1,18 @@
 <?php
 /**
- * Parties for which OMS auto-creates a same-day order when Busy invoices
- * remain unmapped (reverse of the normal order-then-dispatch flow).
+ * Allowlisted parties for Busy reverse auto-orders.
  *
- * Keys = Busy / OMS party name patterns (normalized match).
- * Values = preferred OMS company name (used when the party has no order history;
- *          when history exists, the company's past orders win).
+ * Keys   = Busy / OMS party name patterns
+ * Values = OMS company order_prefix (preferred) or full company name
+ *
+ * All of these trade under Jaichand Lal Daga (prefix JLD), NOT JL Daga Mines (JLDMM).
  */
 return [
-    'Sneha Minerals' => 'Jaichand Lal Daga',
-    'Sneha Minerlas' => 'Jaichand Lal Daga', // Busy typo
-    'Sidhi Vinayak Mines and Minerals' => 'Jaichand Lal Daga',
-    'Gargi Industries' => 'Jaichand Lal Daga',
-    'JLD Minerals Private Limited' => 'JLD Minerals Private Limited',
-    'Daga Ceramics Pvt. Ltd.' => 'Jaichand Lal Daga',
-    'Suraj Ceramics Industries' => 'Jaichand Lal Daga',
+    'Sneha Minerals' => 'JLD',
+    'Sneha Minerlas' => 'JLD', // Busy typo
+    'Sidhi Vinayak Mines and Minerals' => 'JLD',
+    'Gargi Industries' => 'JLD',
+    'JLD Minerals Private Limited' => 'JLD',
+    'Daga Ceramics Pvt. Ltd.' => 'JLD',
+    'Suraj Ceramics Industries' => 'JLD',
 ];

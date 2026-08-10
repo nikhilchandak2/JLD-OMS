@@ -593,20 +593,39 @@ class BusyIntegrationService
     private function resolveAllowlistCompanyId(string $partyName): int
     {
         $entry = $this->matchAutoOrderAllowlistEntry($partyName);
-        $companyName = trim((string)($entry['company'] ?? ''));
-        if ($companyName === '') {
+        $wanted = trim((string)($entry['company'] ?? ''));
+        if ($wanted === '') {
             return 0;
         }
-        $normalizedWanted = $this->normalizePartyName($companyName);
-        foreach ($this->companyRepository->findAll() as $company) {
-            $n = $this->normalizePartyName($company->name);
-            if ($n === '' ) {
-                continue;
-            }
-            if ($n === $normalizedWanted || str_contains($n, $normalizedWanted) || str_contains($normalizedWanted, $n)) {
+
+        $wantedUpper = strtoupper($wanted);
+        $companies = $this->companyRepository->findAll();
+
+        // 1) Exact order_prefix (config uses JLD / JLDMM / JLDMPL) — never substring
+        foreach ($companies as $company) {
+            $prefix = strtoupper(trim((string)$company->orderPrefix));
+            if ($prefix !== '' && $prefix === $wantedUpper) {
                 return (int)$company->id;
             }
         }
+
+        // 2) Exact normalized company name (no str_contains — avoids JLD vs JLDMM mixups)
+        $normalizedWanted = $this->normalizePartyName($wanted);
+        if ($normalizedWanted !== '') {
+            foreach ($companies as $company) {
+                if ($this->normalizePartyName($company->name) === $normalizedWanted) {
+                    return (int)$company->id;
+                }
+            }
+        }
+
+        // 3) Exact company code
+        foreach ($companies as $company) {
+            if (strcasecmp(trim($company->code), $wanted) === 0) {
+                return (int)$company->id;
+            }
+        }
+
         return 0;
     }
 
