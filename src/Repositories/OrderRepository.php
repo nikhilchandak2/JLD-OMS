@@ -349,22 +349,55 @@ class OrderRepository
         return $this->database->execute($sql, [$status, $orderId]);
     }
     
-    public function generateOrderNumber(): string
+    public function generateOrderNumber(int $companyId): string
     {
-        $year = date('Y');
-        
-        // Get the highest sequence number for this year with JLD format
-        $sql = "
-            SELECT COALESCE(MAX(CAST(SUBSTRING(order_no, 9) AS UNSIGNED)), 0) + 1 as next_seq
-            FROM orders 
-            WHERE order_no LIKE ? AND LENGTH(order_no) = 12
-        ";
-        
-        $pattern = "JLD-{$year}%";
-        $result = $this->database->fetch($sql, [$pattern]);
-        $sequence = str_pad($result['next_seq'], 4, '0', STR_PAD_LEFT);
-        
-        return "JLD-{$year}{$sequence}";
+        $company = $this->database->fetch(
+            'SELECT id, name, order_prefix FROM companies WHERE id = ? LIMIT 1',
+            [$companyId]
+        );
+        if (!$company) {
+            throw new \RuntimeException("Company {$companyId} not found for order number generation");
+        }
+
+        $prefix = strtoupper(trim((string)($company['order_prefix'] ?? '')));
+        if ($prefix === '') {
+            $prefix = \App\Support\OrderPrefix::suggestFromName((string)$company['name']);
+            try {
+                $this->database->execute(
+                    'UPDATE companies SET order_prefix = ? WHERE id = ? AND (order_prefix IS NULL OR order_prefix = \'\')',
+                    [$prefix, $companyId]
+                );
+            } catch (\Throwable $ignored) {
+                // Unique collision — keep suggested prefix for this number only
+            }
+            $reloaded = $this->database->fetch(
+                'SELECT order_prefix FROM companies WHERE id = ? LIMIT 1',
+                [$companyId]
+            );
+            if (!empty($reloaded['order_prefix'])) {
+                $prefix = strtoupper(trim((string)$reloaded['order_prefix']));
+            }
+        }
+
+        $prefix = preg_replace('/[^A-Z0-9]/', '', $prefix) ?? $prefix;
+        if ($prefix === '') {
+            $prefix = 'ORD';
+        }
+
+        $like = $prefix . '-%';
+        $result = $this->database->fetch(
+            "SELECT COALESCE(MAX(
+                CAST(SUBSTRING(order_no, LOCATE('-', order_no) + 1) AS UNSIGNED)
+             ), 0) + 1 AS next_seq
+             FROM orders
+             WHERE company_id = ?
+               AND order_no LIKE ?
+               AND order_no NOT LIKE '__TMP_%'",
+            [$companyId, $like]
+        );
+
+        $sequence = (int)($result['next_seq'] ?? 1);
+        return \App\Support\OrderPrefix::format($prefix, $sequence);
     }
     
     public function getTotalDispatched(int $orderId): int

@@ -91,6 +91,15 @@ try {
 
     echo "All migrations completed.\n";
 
+    $renumber = __DIR__ . '/renumber_orders_by_company_prefix.php';
+    if (is_file($renumber)) {
+        echo "\n--- order prefix renumber ---\n";
+        passthru('php ' . escapeshellarg($renumber), $renumberCode);
+        if ($renumberCode !== 0) {
+            throw new Exception("Order renumber script failed with code {$renumberCode}");
+        }
+    }
+
 } catch (Exception $e) {
     echo "Migration failed: " . $e->getMessage() . "\n";
     exit(1);

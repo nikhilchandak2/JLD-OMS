@@ -48,7 +48,28 @@ class OrderServiceTest extends DatabaseTestCase
         $this->assertEquals('pending', $order->status);
         $this->assertEquals($this->companyId, $order->companyId);
         $this->assertNotEmpty($order->orderNo);
-        $this->assertMatchesRegularExpression('/^JLD-\d{8}$/', $order->orderNo);
+        $this->assertMatchesRegularExpression('/^[A-Z0-9]+-\d{4,}$/', $order->orderNo);
+    }
+
+    public function testCreateOrderUsesPerCompanySeries(): void
+    {
+        $companyA = $this->createCompany('AAA');
+        $companyB = $this->createCompany('BBB');
+
+        $orderA1 = $this->orderService->createOrder($this->orderData([
+            'company_id' => $companyA,
+        ]));
+        $orderB1 = $this->orderService->createOrder($this->orderData([
+            'company_id' => $companyB,
+        ]));
+        $orderA2 = $this->orderService->createOrder($this->orderData([
+            'company_id' => $companyA,
+            'order_date' => '2024-09-01', // backdated — still next seq, no renumber
+        ]));
+
+        $this->assertSame('AAA-0001', $orderA1->orderNo);
+        $this->assertSame('BBB-0001', $orderB1->orderNo);
+        $this->assertSame('AAA-0002', $orderA2->orderNo);
     }
 
     public function testCreateOrderWithInvalidProduct(): void

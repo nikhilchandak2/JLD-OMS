@@ -64,14 +64,19 @@ class CompanyRepository
 
     public function create(Company $company): int
     {
+        if ($company->orderPrefix === '' && $company->name !== '') {
+            $company->orderPrefix = \App\Support\OrderPrefix::suggestFromName($company->name);
+        }
+
         $sql = "
-            INSERT INTO companies (name, code, address, phone, email, contact_person, gst_number, pan_number, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO companies (name, code, order_prefix, address, phone, email, contact_person, gst_number, pan_number, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ";
-        
+
         $this->database->execute($sql, [
             $company->name,
             $company->code,
+            $company->orderPrefix !== '' ? $company->orderPrefix : null,
             $company->address,
             $company->phone,
             $company->email,
@@ -80,7 +85,7 @@ class CompanyRepository
             $company->panNumber,
             $company->status
         ]);
-        
+
         return (int)$this->database->lastInsertId();
     }
 
@@ -88,14 +93,15 @@ class CompanyRepository
     {
         $sql = "
             UPDATE companies 
-            SET name = ?, code = ?, address = ?, phone = ?, email = ?, 
+            SET name = ?, code = ?, order_prefix = ?, address = ?, phone = ?, email = ?, 
                 contact_person = ?, gst_number = ?, pan_number = ?, status = ?
             WHERE id = ?
         ";
-        
+
         return $this->database->execute($sql, [
             $company->name,
             $company->code,
+            $company->orderPrefix !== '' ? $company->orderPrefix : null,
             $company->address,
             $company->phone,
             $company->email,

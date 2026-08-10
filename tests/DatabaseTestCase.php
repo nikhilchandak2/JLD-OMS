@@ -37,13 +37,25 @@ abstract class DatabaseTestCase extends TestCase
         return substr(bin2hex(random_bytes(4)), 0, 8);
     }
 
-    protected function createCompany(): int
+    protected function createCompany(?string $orderPrefix = null): int
     {
         $suffix = $this->uniqueSuffix();
-        $this->database->execute(
-            "INSERT INTO companies (name, code, status) VALUES (?, ?, 'active')",
-            ["Test Company {$suffix}", "TST{$suffix}"]
-        );
+        $name = "Test Company {$suffix}";
+        $code = "TST{$suffix}";
+        $prefix = $orderPrefix ?? ('T' . strtoupper(substr($suffix, 0, 3)));
+
+        // order_prefix column added in migration 044
+        try {
+            $this->database->execute(
+                "INSERT INTO companies (name, code, order_prefix, status) VALUES (?, ?, ?, 'active')",
+                [$name, $code, $prefix]
+            );
+        } catch (\Throwable $e) {
+            $this->database->execute(
+                "INSERT INTO companies (name, code, status) VALUES (?, ?, 'active')",
+                [$name, $code]
+            );
+        }
 
         return (int)$this->database->lastInsertId();
     }

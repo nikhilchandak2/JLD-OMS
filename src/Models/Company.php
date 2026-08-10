@@ -7,6 +7,7 @@ class Company
     public int $id = 0;
     public string $name = '';
     public string $code = '';
+    public string $orderPrefix = '';
     public string $address = '';
     public string $phone = '';
     public string $email = '';
@@ -23,6 +24,7 @@ class Company
         $this->id = $data['id'] ?? 0;
         $this->name = $data['name'] ?? '';
         $this->code = $data['code'] ?? '';
+        $this->orderPrefix = $data['order_prefix'] ?? '';
         $this->address = $data['address'] ?? '';
         $this->phone = $data['phone'] ?? '';
         $this->email = $data['email'] ?? '';
@@ -41,6 +43,7 @@ class Company
             'id' => $this->id,
             'name' => $this->name,
             'code' => $this->code,
+            'order_prefix' => $this->orderPrefix,
             'address' => $this->address,
             'phone' => $this->phone,
             'email' => $this->email,

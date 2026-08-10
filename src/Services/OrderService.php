@@ -156,7 +156,7 @@ class OrderService
         
         $order = new Order();
         $order->companyId = $data['company_id'];
-        $order->orderNo = $this->orderRepository->generateOrderNumber();
+        $order->orderNo = $this->orderRepository->generateOrderNumber((int)$data['company_id']);
         $order->orderDate = $data['order_date'];
         $order->productId = $data['product_id'];
 
