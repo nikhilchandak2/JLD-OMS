@@ -259,6 +259,7 @@ async function remapUnmappedInvoices() {
     btn.disabled = true;
     spinner.classList.remove('d-none');
     showError('');
+    showSuccess('');
 
     try {
         let totalProcessed = 0;
@@ -318,16 +319,18 @@ async function remapUnmappedInvoices() {
         }
 
         const uniqueHints = [...new Set(sampleHints)].slice(0, 3);
-        if (uniqueHints.length && totalMapped === 0) {
-            msg += '\n\nWhy (examples):\n' + uniqueHints.join('\n');
+        if (uniqueHints.length) {
+            msg += '\n\nStill unmapped (examples):\n' + uniqueHints.join('\n');
+        }
+
+        // Reload table first — loadDailyBusyDispatches clears alerts, so show result after.
+        await loadDailyBusyDispatches(true);
+
+        if (totalMapped === 0 && totalProcessed > 0) {
             showError(msg);
         } else {
             showSuccess(msg);
-            if (uniqueHints.length) {
-                console.warn('Remap still-unmapped examples', uniqueHints);
-            }
         }
-        await loadDailyBusyDispatches(true);
     } catch (error) {
         showError(error.message || 'Remap failed');
     } finally {
