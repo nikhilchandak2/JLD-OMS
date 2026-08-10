@@ -44,6 +44,45 @@ class AuthServiceTest extends DatabaseTestCase
         $this->assertEquals('Invalid credentials', $result['message']);
     }
 
+    public function testDefaultPasswordDoesNotAuthenticateAnAccountThatDoesNotUseIt(): void
+    {
+        $result = $this->authService->login($this->user['email'], 'Jld@Passw0rd!');
+
+        $this->assertFalse($result['success']);
+        $this->assertEquals('Invalid credentials', $result['message']);
+    }
+
+    public function testAccountStoringTheDefaultPasswordStillAuthenticates(): void
+    {
+        $seeded = $this->createUser('entry', 'Jld@Passw0rd!');
+
+        $result = $this->authService->login($seeded['email'], 'Jld@Passw0rd!');
+
+        $this->assertTrue($result['success']);
+        $this->assertEquals('entry', $result['user']['role']);
+    }
+
+    public function testRetiredDefaultPasswordNeverAuthenticates(): void
+    {
+        $legacy = $this->createUser('entry', 'Passw0rd!');
+
+        $result = $this->authService->login($legacy['email'], 'Passw0rd!');
+
+        $this->assertFalse($result['success']);
+        $this->assertEquals('Invalid credentials', $result['message']);
+    }
+
+    public function testFailedDefaultPasswordAttemptCountsTowardsLockout(): void
+    {
+        $this->authService->login($this->user['email'], 'Jld@Passw0rd!');
+
+        $row = $this->database->fetch(
+            "SELECT failed_login_attempts FROM users WHERE email = ?",
+            [$this->user['email']]
+        );
+        $this->assertEquals(1, $row['failed_login_attempts']);
+    }
+
     public function testLoginWithInactiveUser(): void
     {
         $inactive = $this->createUser('entry', 'Test@Passw0rd!', false);

