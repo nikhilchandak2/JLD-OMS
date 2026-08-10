@@ -28,6 +28,26 @@ class CompanyRepository
         return array_map(fn($data) => new Company($data), $results);
     }
 
+    /**
+     * The active company carrying the most recent order, used as the landing company on login.
+     * Alphabetical order puts whichever entity happens to sort first in front of the one people
+     * actually trade under, which makes a fresh login look like an empty system.
+     */
+    public function findMostRecentlyTrading(): ?Company
+    {
+        $sql = "
+            SELECT c.*
+            FROM companies c
+            LEFT JOIN orders o ON o.company_id = c.id
+            WHERE c.status = 'active'
+            GROUP BY c.id
+            ORDER BY MAX(o.order_date) IS NULL ASC, MAX(o.order_date) DESC, COUNT(o.id) DESC, c.id ASC
+            LIMIT 1
+        ";
+        $result = $this->database->fetch($sql);
+        return $result ? new Company($result) : null;
+    }
+
     public function findById(int $id): ?Company
     {
         $sql = "SELECT * FROM companies WHERE id = ?";

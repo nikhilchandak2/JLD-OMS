@@ -67,7 +67,7 @@ class CompanyContext
         );
     }
 
-    /** Default to first active company on login. */
+    /** Land on the active company that is actually trading, not the alphabetically first one. */
     public static function initializeForUser(): void
     {
         if (self::getActiveCompanyId() !== null) {
@@ -76,15 +76,14 @@ class CompanyContext
         }
 
         $repo = new CompanyRepository();
-        $companies = $repo->findActive();
-        if (empty($companies)) {
+        $company = $repo->findMostRecentlyTrading();
+        if (!$company) {
             return;
         }
 
-        $first = $companies[0];
-        self::setActiveCompanyId((int)$first->id);
-        $_SESSION['active_company_name'] = $first->name;
-        $_SESSION['active_company_code'] = $first->code;
+        self::setActiveCompanyId((int)$company->id);
+        $_SESSION['active_company_name'] = $company->name;
+        $_SESSION['active_company_code'] = $company->code;
     }
 
     /** Merge session company into repository/API filters unless explicitly overridden. */
