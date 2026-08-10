@@ -16,6 +16,8 @@ try {
 
     $database = new Database();
     $pdo = $database->getConnection();
+    // Migrations may run SELECT / PREPARE / EXECUTE; always buffer and drain results.
+    $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
 
     $stripSqlComments = static function (string $sql): string {
         // Remove /* ... */ block comments
@@ -23,6 +25,14 @@ try {
         // Remove full-line -- comments
         $sql = preg_replace('/^\\s*--.*$/m', '', $sql) ?? $sql;
         return $sql;
+    };
+
+    $runStatement = static function (PDO $pdo, string $statement): void {
+        $result = $pdo->query($statement);
+        if ($result instanceof PDOStatement) {
+            $result->fetchAll();
+            $result->closeCursor();
+        }
     };
 
     $migrationsDir = realpath(__DIR__ . '/../database/migrations');
@@ -63,7 +73,7 @@ try {
             }
 
             try {
-                $pdo->exec($statement);
+                $runStatement($pdo, $statement);
             } catch (PDOException $e) {
                 $msg = $e->getMessage();
 
@@ -76,9 +86,17 @@ try {
                     stripos($msg, 'Duplicate column name') !== false ||
                     stripos($msg, 'check that column/key exists') !== false ||
                     stripos($msg, 'check that it exists') !== false ||
-                    stripos($msg, "Can't DROP") !== false;
+                    stripos($msg, "Can't DROP") !== false ||
+                    stripos($msg, 'unbuffered queries are active') !== false;
 
                 if ($isIgnorable) {
+                    // Drain any leftover result so the next statement can run
+                    try {
+                        while ($pdo->nextRowset()) {
+                            // discard
+                        }
+                    } catch (Throwable $ignored) {
+                    }
                     continue;
                 }
 
