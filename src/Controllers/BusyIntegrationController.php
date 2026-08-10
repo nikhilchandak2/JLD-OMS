@@ -216,6 +216,7 @@ class BusyIntegrationController
         $mapped = (int)($result['successful'] ?? 0);
         $unmapped = (int)($result['unmapped'] ?? 0);
         $failed = (int)($result['failed'] ?? 0);
+        $autoOrders = (int)($result['auto_orders_created'] ?? 0);
         $status = 'processed';
         if ($failed > 0 && $mapped === 0 && $unmapped === 0) {
             $status = 'failed';
@@ -243,6 +244,9 @@ class BusyIntegrationController
         $parts = [
             sprintf('%d succeeded', $mapped),
         ];
+        if ($autoOrders > 0) {
+            $parts[] = sprintf('%d auto-order(s) created', $autoOrders);
+        }
         if ($unmapped > 0) {
             $parts[] = sprintf('%d unmapped (no order)', $unmapped);
         }
@@ -502,6 +506,12 @@ class BusyIntegrationController
                 $result['still_unmapped'],
                 $result['failed']
             );
+            if (!empty($result['auto_orders_created'])) {
+                $message .= sprintf(
+                    ' (%d auto-order(s) created for allowlisted parties)',
+                    (int)$result['auto_orders_created']
+                );
+            }
 
             echo json_encode([
                 'success' => true,

@@ -25,9 +25,13 @@ class BusyIntegrationService
     private DispatchRepository $dispatchRepository;
     private BusyDailyInvoiceRepository $busyDailyInvoiceRepository;
     private DispatchService $dispatchService;
+    private OrderService $orderService;
 
     /** @var array<int, list<Order>> open pending/partial orders keyed by company_id */
     private array $openOrdersByCompanyCache = [];
+
+    /** @var list<string>|null */
+    private ?array $autoOrderPartyPatterns = null;
 
     public function __construct()
     {
@@ -39,6 +43,7 @@ class BusyIntegrationService
         $this->dispatchRepository = new DispatchRepository();
         $this->busyDailyInvoiceRepository = new BusyDailyInvoiceRepository();
         $this->dispatchService = new DispatchService();
+        $this->orderService = new OrderService();
     }
 
     /**
@@ -124,11 +129,45 @@ class BusyIntegrationService
             }
         }
 
+        $unmappedNos = array_values(array_filter(array_map(
+            static fn($d) => (($d['status'] ?? '') === 'unmapped') ? (string)($d['invoice_no'] ?? '') : '',
+            $details
+        )));
+
+        $auto = ['orders_created' => 0, 'mapped' => 0, 'details' => []];
+        if ($unmappedNos !== []) {
+            $auto = $this->autoCreateOrdersFromAllowlistedUnmapped(
+                ['invoice_nos' => $unmappedNos],
+                $processedByUserId
+            );
+            if (($auto['mapped'] ?? 0) > 0) {
+                $mappedNos = [];
+                foreach ($auto['details'] as $row) {
+                    if (($row['status'] ?? '') === 'mapped') {
+                        $mappedNos[(string)$row['invoice_no']] = $row;
+                    }
+                }
+                foreach ($details as &$detail) {
+                    $no = (string)($detail['invoice_no'] ?? '');
+                    if (isset($mappedNos[$no])) {
+                        $detail = array_merge($detail, $mappedNos[$no], [
+                            'status' => 'success',
+                            'mapping_status' => 'mapped',
+                            'action' => 'auto_order',
+                        ]);
+                    }
+                }
+                unset($detail);
+            }
+        }
+
         return [
             'processed' => count($details),
             'successful' => count(array_filter($details, fn($r) => $r['status'] === 'success')),
             'unmapped' => count(array_filter($details, fn($r) => $r['status'] === 'unmapped')),
             'failed' => count(array_filter($details, fn($r) => $r['status'] === 'error')),
+            'auto_orders_created' => (int)($auto['orders_created'] ?? 0),
+            'auto_mapped' => (int)($auto['mapped'] ?? 0),
             'details' => $details,
         ];
     }
@@ -250,13 +289,236 @@ class BusyIntegrationService
 
         $this->openOrdersByCompanyCache = [];
 
+        $auto = $this->autoCreateOrdersFromAllowlistedUnmapped($filters, $processedByUserId);
+        if (($auto['mapped'] ?? 0) > 0) {
+            $mappedNos = [];
+            foreach ($auto['details'] as $row) {
+                if (($row['status'] ?? '') === 'mapped') {
+                    $mappedNos[(string)$row['invoice_no']] = $row;
+                }
+            }
+            foreach ($details as &$detail) {
+                $no = (string)($detail['invoice_no'] ?? '');
+                if (isset($mappedNos[$no])) {
+                    $detail = array_merge($detail, $mappedNos[$no], [
+                        'status' => 'mapped',
+                        'mapping_status' => 'mapped',
+                        'auto_order' => true,
+                    ]);
+                    unset($mappedNos[$no]);
+                }
+            }
+            unset($detail);
+            foreach ($mappedNos as $row) {
+                $details[] = $row;
+            }
+        }
+
         return [
             'processed' => count($details),
             'mapped' => count(array_filter($details, fn($r) => $r['status'] === 'mapped')),
             'still_unmapped' => count(array_filter($details, fn($r) => $r['status'] === 'unmapped')),
             'failed' => 0,
+            'auto_orders_created' => (int)($auto['orders_created'] ?? 0),
+            'auto_mapped' => (int)($auto['mapped'] ?? 0),
             'details' => $details,
         ];
+    }
+
+    /**
+     * For allowlisted parties (see config/busy_auto_order_parties.php): when Busy invoices
+     * remain unmapped, create a same-day pending order (qty = total trucks) and map them.
+     *
+     * @param array<string, mixed> $filters Same shape as findRemapCandidates filters
+     * @return array{orders_created: int, mapped: int, skipped: int, details: list<array<string, mixed>>}
+     */
+    public function autoCreateOrdersFromAllowlistedUnmapped(array $filters, ?int $processedByUserId = null): array
+    {
+        if (!$this->busyDailyInvoicesTableExists()) {
+            return ['orders_created' => 0, 'mapped' => 0, 'skipped' => 0, 'details' => []];
+        }
+
+        $rows = $this->busyDailyInvoiceRepository->findRemapCandidates($filters);
+        $eligible = [];
+        foreach ($rows as $row) {
+            $partyName = trim((string)($row['party_name'] ?? ''));
+            if ($partyName === '' || !$this->isAutoOrderAllowlistedParty($partyName)) {
+                continue;
+            }
+            $eligible[] = $row;
+        }
+
+        if ($eligible === []) {
+            return ['orders_created' => 0, 'mapped' => 0, 'skipped' => 0, 'details' => []];
+        }
+
+        /** @var array<string, list<array<string, mixed>>> $groups */
+        $groups = [];
+        $skipped = 0;
+        foreach ($eligible as $row) {
+            $mapped = $this->mapDailyRowForRemap($row);
+            $party = $this->findPartyByName($mapped['party_name']);
+            $product = $this->findProductByName($mapped['product_name']);
+            if (!$party || !$product) {
+                $skipped++;
+                continue;
+            }
+
+            $companyId = !empty($row['company_id'])
+                ? (int)$row['company_id']
+                : (CompanyContext::getActiveCompanyId() ?: 0);
+            if ($companyId <= 0) {
+                $active = $this->companyRepository->findActive();
+                $companyId = $active !== [] ? (int)$active[0]->id : 0;
+            }
+            if ($companyId <= 0) {
+                $skipped++;
+                continue;
+            }
+
+            $key = $companyId . '|' . (int)$party->id . '|' . (int)$product->id . '|' . substr((string)$mapped['invoice_date'], 0, 10);
+            if (!isset($groups[$key])) {
+                $groups[$key] = [
+                    'company_id' => $companyId,
+                    'party_id' => (int)$party->id,
+                    'party_name' => (string)$party->name,
+                    'product_id' => (int)$product->id,
+                    'product_name' => (string)$product->name,
+                    'invoice_date' => substr((string)$mapped['invoice_date'], 0, 10),
+                    'rows' => [],
+                    'mapped_rows' => [],
+                ];
+            }
+            $groups[$key]['rows'][] = $row;
+            $groups[$key]['mapped_rows'][] = $mapped;
+        }
+
+        $ordersCreated = 0;
+        $mappedCount = 0;
+        $details = [];
+        $userId = $processedByUserId ?? 1;
+
+        foreach ($groups as $group) {
+            $qty = 0;
+            foreach ($group['mapped_rows'] as $m) {
+                $qty += max(1, (int)($m['quantity'] ?? 1));
+            }
+            if ($qty <= 0) {
+                continue;
+            }
+
+            try {
+                $order = $this->orderService->createOrder([
+                    'company_id' => $group['company_id'],
+                    'party_id' => $group['party_id'],
+                    'product_id' => $group['product_id'],
+                    'order_date' => $group['invoice_date'],
+                    'order_qty_trucks' => $qty,
+                    'created_by' => $userId,
+                    'created_by_role' => 'admin',
+                    'priority' => 'normal',
+                    'bill_to_other_party' => false,
+                ]);
+                $ordersCreated++;
+                unset($this->openOrdersByCompanyCache[$group['company_id']]);
+
+                // Reload with dispatch capacity fields
+                $order = $this->orderRepository->findById((int)$order->id) ?? $order;
+
+                foreach ($group['mapped_rows'] as $idx => $mappedInvoice) {
+                    $invoiceNo = (string)$mappedInvoice['invoice_no'];
+                    try {
+                        $mappedInvoice['remarks'] = 'Auto-mapped after order created from Busy unmapped invoices';
+                        $result = $this->upsertDispatchFromInvoice($order, $mappedInvoice, $userId);
+                        $this->upsertDailyInvoiceRecord(
+                            $mappedInvoice,
+                            $group['company_id'],
+                            'mapped',
+                            null,
+                            (int)$result['order_id'],
+                            (int)$result['dispatch_id'],
+                            $userId
+                        );
+                        // Refresh capacity after each truck
+                        $order = $this->orderRepository->findById((int)$order->id) ?? $order;
+                        $mappedCount++;
+                        $details[] = array_merge([
+                            'status' => 'mapped',
+                            'mapping_status' => 'mapped',
+                            'auto_order' => true,
+                            'invoice_no' => $invoiceNo,
+                        ], $result);
+                    } catch (\Throwable $e) {
+                        $details[] = [
+                            'status' => 'unmapped',
+                            'mapping_status' => 'unmapped',
+                            'invoice_no' => $invoiceNo,
+                            'error' => 'Auto-order created (' . $order->orderNo . ') but map failed: ' . $e->getMessage(),
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                foreach ($group['mapped_rows'] as $mappedInvoice) {
+                    $details[] = [
+                        'status' => 'unmapped',
+                        'mapping_status' => 'unmapped',
+                        'invoice_no' => (string)$mappedInvoice['invoice_no'],
+                        'error' => 'Auto-order create failed: ' . $e->getMessage(),
+                    ];
+                }
+            }
+        }
+
+        $this->openOrdersByCompanyCache = [];
+
+        return [
+            'orders_created' => $ordersCreated,
+            'mapped' => $mappedCount,
+            'skipped' => $skipped,
+            'details' => $details,
+        ];
+    }
+
+    /** @return list<string> */
+    private function getAutoOrderPartyPatterns(): array
+    {
+        if ($this->autoOrderPartyPatterns !== null) {
+            return $this->autoOrderPartyPatterns;
+        }
+
+        $path = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'busy_auto_order_parties.php';
+        $patterns = [];
+        if (is_file($path)) {
+            $loaded = require $path;
+            if (is_array($loaded)) {
+                foreach ($loaded as $name) {
+                    $name = trim((string)$name);
+                    if ($name !== '') {
+                        $patterns[] = $name;
+                    }
+                }
+            }
+        }
+        $this->autoOrderPartyPatterns = $patterns;
+        return $patterns;
+    }
+
+    private function isAutoOrderAllowlistedParty(string $partyName): bool
+    {
+        $normalized = $this->normalizePartyName($partyName);
+        if ($normalized === '') {
+            return false;
+        }
+        foreach ($this->getAutoOrderPartyPatterns() as $pattern) {
+            $p = $this->normalizePartyName($pattern);
+            if ($p === '') {
+                continue;
+            }
+            if ($normalized === $p || str_contains($normalized, $p) || str_contains($p, $normalized)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
