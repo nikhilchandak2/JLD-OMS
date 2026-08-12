@@ -1,5 +1,10 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1><i class="bi bi-graph-up"></i> Reports</h1>
+    <?php if (!empty($active_company['name'])): ?>
+    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">
+        <i class="bi bi-building me-1"></i><?= htmlspecialchars($active_company['name']) ?>
+    </span>
+    <?php endif; ?>
 </div>
 
 <?php include __DIR__ . '/partials/reports-nav.php'; ?>

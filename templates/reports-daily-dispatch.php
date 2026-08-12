@@ -45,13 +45,14 @@
                     <option value="">All products</option>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-2<?= !empty($can_view_all_companies) ? '' : ' d-none' ?>">
                 <label for="filterCompany" class="form-label">Company scope</label>
                 <select class="form-select" id="filterCompany">
                     <?php if (!empty($can_view_all_companies)): ?>
                     <option value="all">All companies</option>
                     <?php endif; ?>
                 </select>
+                <div class="form-text">Admins only — others use header switcher</div>
             </div>
             <div class="col-12 col-md-auto">
                 <button class="btn btn-primary" onclick="loadDailyDispatchReport()">
@@ -188,7 +189,9 @@ function getReportFilters() {
         start_date: startDate,
         end_date: endDate
     });
-    if (company) params.append('company_id', company);
+    if (canViewAllCompanies && company) {
+        params.append('company_id', company);
+    }
     if (party) params.append('party_id', party);
     if (product) params.append('product_id', product);
     return params;
@@ -207,24 +210,34 @@ function syncDateFilters(fromSingle) {
 }
 
 async function loadFilterOptions() {
-    const [companiesRes, partiesRes, productsRes] = await Promise.all([
-        apiCall('/api/companies'),
+    const requests = [
         apiCall('/api/reports/parties'),
-        apiCall('/api/reports/products')
-    ]);
-
-    const companySelect = document.getElementById('filterCompany');
-    const existingAll = companySelect.querySelector('option[value="all"]');
-    companySelect.innerHTML = '';
-    if (existingAll || canViewAllCompanies) {
-        companySelect.innerHTML += '<option value="all">All companies</option>';
+        apiCall('/api/reports/products'),
+    ];
+    if (canViewAllCompanies) {
+        requests.unshift(apiCall('/api/companies'));
     }
-    (companiesRes.data || []).forEach(c => {
-        companySelect.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`;
-    });
 
-    if (defaultCompanyId > 0) {
-        companySelect.value = String(defaultCompanyId);
+    const results = await Promise.all(requests);
+    let companiesRes = null;
+    let partiesRes;
+    let productsRes;
+    if (canViewAllCompanies) {
+        [companiesRes, partiesRes, productsRes] = results;
+    } else {
+        [partiesRes, productsRes] = results;
+    }
+
+    if (canViewAllCompanies) {
+        const companySelect = document.getElementById('filterCompany');
+        companySelect.innerHTML = '<option value="all">All companies</option>';
+        (companiesRes.data || []).forEach(c => {
+            companySelect.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`;
+        });
+
+        if (defaultCompanyId > 0) {
+            companySelect.value = String(defaultCompanyId);
+        }
     }
 
     const partySelect = document.getElementById('filterParty');

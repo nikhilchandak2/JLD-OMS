@@ -267,6 +267,7 @@ class WebController
         $this->renderTemplate('reports', [
             'title' => 'Reports',
             'user' => $user,
+            'active_company' => CompanyContext::getActiveCompany(),
             'csrf_token' => CsrfMiddleware::getToken()
         ]);
     }

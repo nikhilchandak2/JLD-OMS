@@ -56,6 +56,11 @@ class ReportService
             $sql .= " AND p.id = ?";
             $params[] = $filters['product_id'];
         }
+
+        if (!empty($filters['company_id'])) {
+            $sql .= " AND o.company_id = ?";
+            $params[] = (int)$filters['company_id'];
+        }
         
         $sql .= " ORDER BY c.name, pt.name, o.order_date DESC";
         
@@ -94,6 +99,11 @@ class ReportService
         if (!empty($filters['product_id'])) {
             $sql .= " AND p.id = ?";
             $params[] = $filters['product_id'];
+        }
+
+        if (!empty($filters['company_id'])) {
+            $sql .= " AND o.company_id = ?";
+            $params[] = (int)$filters['company_id'];
         }
         
         $result = $this->database->fetch($sql, $params);

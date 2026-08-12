@@ -1033,8 +1033,7 @@
     $ordersSectionActive = (
         (strpos($reqPath, '/orders') === 0) ||
         (strpos($reqPath, '/dispatch') === 0) ||
-        (basename($reqPath) === 'reports') ||
-        (strpos($reqPath, '/reports/daily-dispatch') === 0)
+        (strpos($reqPath, '/reports') === 0)
     );
     ?>
     <!-- Top header bar menu -->

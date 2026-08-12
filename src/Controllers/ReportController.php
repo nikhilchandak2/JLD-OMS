@@ -30,29 +30,10 @@ class ReportController
             return;
         }
         
-        // Get query parameters
-        $filters = [
-            'start_date' => $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days')),
-            'end_date' => $_GET['end_date'] ?? date('Y-m-d'),
-            'party_id' => $_GET['party_id'] ?? null,
-            'product_id' => $_GET['product_id'] ?? null,
-            'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 100,
-            'offset' => isset($_GET['offset']) ? (int)$_GET['offset'] : 0
-        ];
-        
-        // Validate dates
-        if (!$this->isValidDate($filters['start_date']) || !$this->isValidDate($filters['end_date'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD']);
-            return;
-        }
+        CompanyContext::initializeForUser();
 
-        $filters['start_date'] = IndianDate::toStorage($filters['start_date']);
-        $filters['end_date'] = IndianDate::toStorage($filters['end_date']);
-        
-        if (strtotime($filters['start_date']) > strtotime($filters['end_date'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Start date cannot be after end date']);
+        $filters = $this->parsePartywiseFilters($_GET, true);
+        if ($filters === null) {
             return;
         }
         
@@ -95,23 +76,12 @@ class ReportController
             return;
         }
         
-        // Get query parameters (same as partywise report)
-        $filters = [
-            'start_date' => $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days')),
-            'end_date' => $_GET['end_date'] ?? date('Y-m-d'),
-            'party_id' => $_GET['party_id'] ?? null,
-            'product_id' => $_GET['product_id'] ?? null
-        ];
-        
-        // Validate dates
-        if (!$this->isValidDate($filters['start_date']) || !$this->isValidDate($filters['end_date'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD']);
+        CompanyContext::initializeForUser();
+
+        $filters = $this->parsePartywiseFilters($_GET, false);
+        if ($filters === null) {
             return;
         }
-
-        $filters['start_date'] = IndianDate::toStorage($filters['start_date']);
-        $filters['end_date'] = IndianDate::toStorage($filters['end_date']);
         
         try {
             if ($format === 'pdf') {
@@ -214,6 +184,8 @@ class ReportController
             return;
         }
 
+        CompanyContext::initializeForUser();
+
         $filters = $this->parseDailyDispatchFilters($_GET);
         if ($filters === null) {
             return;
@@ -248,6 +220,8 @@ class ReportController
             return;
         }
 
+        CompanyContext::initializeForUser();
+
         $filters = $this->parseDailyDispatchFilters($_GET);
         if ($filters === null) {
             return;
@@ -266,6 +240,50 @@ class ReportController
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>|null
+     */
+    private function parsePartywiseFilters(array $input, bool $withPagination): ?array
+    {
+        $filters = [
+            'start_date' => $input['start_date'] ?? date('Y-m-d', strtotime('-30 days')),
+            'end_date' => $input['end_date'] ?? date('Y-m-d'),
+            'party_id' => !empty($input['party_id']) ? (int)$input['party_id'] : null,
+            'product_id' => !empty($input['product_id']) ? (int)$input['product_id'] : null,
+        ];
+
+        if ($withPagination) {
+            $filters['limit'] = isset($input['limit']) ? (int)$input['limit'] : 100;
+            $filters['offset'] = isset($input['offset']) ? (int)$input['offset'] : 0;
+        }
+
+        if (!$this->isValidDate((string)$filters['start_date']) || !$this->isValidDate((string)$filters['end_date'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid date format. Use DD/MM/YYYY or YYYY-MM-DD']);
+            return null;
+        }
+
+        $filters['start_date'] = IndianDate::toStorage((string)$filters['start_date']);
+        $filters['end_date'] = IndianDate::toStorage((string)$filters['end_date']);
+
+        if (strtotime((string)$filters['start_date']) > strtotime((string)$filters['end_date'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Start date cannot be after end date']);
+            return null;
+        }
+
+        if (isset($input['company_id']) && $input['company_id'] !== '' && $input['company_id'] !== 'all') {
+            $filters['company_id'] = (int)$input['company_id'];
+        } elseif ($this->authService->hasRole('admin') && ($input['company_id'] ?? '') === 'all') {
+            $filters['company_id'] = null;
+        } else {
+            $filters = CompanyContext::mergeFilter($filters);
+        }
+
+        return $filters;
     }
 
     /** @return array<string, mixed>|null */
