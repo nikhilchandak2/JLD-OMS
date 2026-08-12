@@ -211,7 +211,8 @@ function formatRate(value) {
 }
 
 function formatMappingCell(row) {
-    if (row.mapping_status === 'mapped' && row.order_id) {
+    const isMapped = row.mapping_status === 'mapped' && row.order_id;
+    if (isMapped) {
         return `<a href="/orders/${row.order_id}"><strong>${escapeHtml(row.order_no || ('#' + row.order_id))}</strong></a>
             <div class="small text-success">Mapped to order</div>`;
     }
@@ -403,7 +404,8 @@ async function fixMisfiledAllowlistOrders() {
 function renderDailySummary(summary) {
     document.getElementById('sumTotal').textContent = summary.total ?? 0;
     document.getElementById('sumMapped').textContent = summary.mapped ?? 0;
-    document.getElementById('sumUnmapped').textContent = summary.unmapped ?? 0;
+    const notMapped = summary.not_mapped ?? ((summary.unmapped ?? 0) + (summary.errors ?? 0));
+    document.getElementById('sumUnmapped').textContent = notMapped;
     const weight = summary.weight_tons != null
         ? Number(summary.weight_tons).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' MT'
         : '—';
@@ -424,7 +426,7 @@ function renderDailyTable() {
     }
 
     tbody.innerHTML = dailyRows.map(row => {
-        const rowClass = row.mapping_status === 'unmapped'
+        const rowClass = (row.mapping_status === 'unmapped' || (row.mapping_status === 'mapped' && !row.order_id))
             ? 'table-warning'
             : (row.mapping_status === 'error' ? 'table-danger' : '');
         const notes = row.error_message

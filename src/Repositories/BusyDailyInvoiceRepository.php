@@ -141,6 +141,21 @@ class BusyDailyInvoiceRepository
         );
     }
 
+    /** Rows marked mapped but missing order_id — treat as unmapped for KPI/remap. */
+    public function normalizeOrphanMappedRows(): void
+    {
+        $this->database->execute(
+            "UPDATE busy_daily_invoices
+             SET mapping_status = 'unmapped',
+                 error_message = COALESCE(
+                     NULLIF(error_message, ''),
+                     'Previously marked mapped without an order link — use Remap'
+                 )
+             WHERE mapping_status = 'mapped'
+               AND (order_id IS NULL OR order_id = 0)"
+        );
+    }
+
     /** Bulk recovery: error → unmapped (invoice fields preserved). */
     public function reopenErrorsAsUnmapped(): void
     {
@@ -268,9 +283,14 @@ class BusyDailyInvoiceRepository
         $summaryRow = $this->database->fetch(
             "SELECT
                 COUNT(*) AS total,
-                SUM(CASE WHEN bdi.mapping_status = 'mapped' THEN 1 ELSE 0 END) AS mapped,
+                SUM(CASE WHEN bdi.mapping_status = 'mapped' AND bdi.order_id IS NOT NULL AND bdi.order_id > 0 THEN 1 ELSE 0 END) AS mapped,
                 SUM(CASE WHEN bdi.mapping_status = 'unmapped' THEN 1 ELSE 0 END) AS unmapped,
                 SUM(CASE WHEN bdi.mapping_status = 'error' THEN 1 ELSE 0 END) AS errors,
+                SUM(CASE
+                    WHEN bdi.mapping_status IN ('unmapped', 'error')
+                         OR (bdi.mapping_status = 'mapped' AND (bdi.order_id IS NULL OR bdi.order_id = 0))
+                    THEN 1 ELSE 0
+                END) AS not_mapped,
                 COALESCE(SUM(bdi.quantity_trucks), 0) AS trucks,
                 COALESCE(SUM(bdi.loading_weight_tons), 0) AS weight_tons
              FROM busy_daily_invoices bdi
@@ -315,6 +335,7 @@ class BusyDailyInvoiceRepository
                 'mapped' => (int)($summaryRow['mapped'] ?? 0),
                 'unmapped' => (int)($summaryRow['unmapped'] ?? 0),
                 'errors' => (int)($summaryRow['errors'] ?? 0),
+                'not_mapped' => (int)($summaryRow['not_mapped'] ?? 0),
                 'trucks' => (int)($summaryRow['trucks'] ?? 0),
                 'weight_tons' => (float)($summaryRow['weight_tons'] ?? 0),
             ],

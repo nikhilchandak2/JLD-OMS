@@ -202,6 +202,7 @@ class BusyIntegrationService
         if (($filters['mapping_status'] ?? '') === 'open') {
             $this->busyDailyInvoiceRepository->reopenErrorsAsUnmapped();
         }
+        $this->busyDailyInvoiceRepository->normalizeOrphanMappedRows();
 
         $result = $this->busyDailyInvoiceRepository->findDaily($filters);
         $limit = isset($filters['limit']) ? (int)$filters['limit'] : count($result['rows']);
@@ -241,6 +242,7 @@ class BusyIntegrationService
         // Older remap runs flipped some unmatched rows to "error" via processInvoice.
         // Put them back to unmapped before matching so they stay on the daily ledger.
         $this->busyDailyInvoiceRepository->reopenErrorsAsUnmapped();
+        $this->busyDailyInvoiceRepository->normalizeOrphanMappedRows();
 
         if (!isset($filters['limit'])) {
             $filters['limit'] = 75;
@@ -1027,6 +1029,11 @@ class BusyIntegrationService
     private function formatDailyInvoiceRow(array $row): array
     {
         $status = (string)($row['mapping_status'] ?? 'unmapped');
+        $orderId = $row['order_id'] !== null && (int)$row['order_id'] > 0 ? (int)$row['order_id'] : null;
+        if ($status === 'mapped' && $orderId === null) {
+            $status = 'unmapped';
+        }
+        $isMapped = $status === 'mapped' && $orderId !== null;
         return [
             'id' => (int)$row['id'],
             'invoice_no' => $row['invoice_no'],
@@ -1042,12 +1049,12 @@ class BusyIntegrationService
             'order_no_from_invoice' => $row['order_no_from_invoice'],
             'company_id' => $row['company_id'] !== null ? (int)$row['company_id'] : null,
             'company_name' => $row['company_name'] ?? null,
-            'order_id' => $row['order_id'] !== null ? (int)$row['order_id'] : null,
+            'order_id' => $orderId,
             'order_no' => $row['order_no'] ?? null,
             'dispatch_id' => $row['dispatch_id'] !== null ? (int)$row['dispatch_id'] : null,
             'mapping_status' => $status,
-            'is_mapped' => $status === 'mapped',
-            'mapping_label' => $status === 'mapped'
+            'is_mapped' => $isMapped,
+            'mapping_label' => $isMapped
                 ? 'Mapped to order'
                 : ($status === 'error' ? 'Import error' : 'Dispatch not mapped to any order'),
             'error_message' => $row['error_message'],
@@ -1240,13 +1247,34 @@ class BusyIntegrationService
                 continue;
             }
 
-            $matched = $this->pickOrderByProduct($pendingOrders, $invoiceProduct);
-            if ($matched) {
-                return $matched;
+            // Icon invoice on Acecon delivery order — prefer bill-to billing party matches first.
+            $pools = [$this->preferBillingPartyMatches($pendingOrders, $invoicePartyName), $pendingOrders];
+            foreach ($pools as $pool) {
+                $matched = $this->pickOrderByProduct($pool, $invoiceProduct);
+                if ($matched) {
+                    return $matched;
+                }
             }
         }
 
         return null;
+    }
+
+    /**
+     * When Busy billed-to matches an order's billing party (bill-to another party),
+     * prefer those orders over delivery-party-only matches.
+     *
+     * @param list<Order> $pendingOrders
+     * @return list<Order>
+     */
+    private function preferBillingPartyMatches(array $pendingOrders, string $invoicePartyName): array
+    {
+        $billingMatched = array_values(array_filter(
+            $pendingOrders,
+            fn(Order $order) => $this->invoicePartyMatchesBillingParty($order, $invoicePartyName)
+        ));
+
+        return $billingMatched !== [] ? $billingMatched : $pendingOrders;
     }
 
     /**
@@ -1355,25 +1383,46 @@ class BusyIntegrationService
             return false;
         }
 
+        if ($this->invoicePartyMatchesDeliveryParty($order, $invoicePartyName)) {
+            return true;
+        }
+
+        return $this->invoicePartyMatchesBillingParty($order, $invoicePartyName);
+    }
+
+    private function invoicePartyMatchesDeliveryParty(Order $order, string $invoicePartyName): bool
+    {
         $invoiceParty = $this->findPartyByName($invoicePartyName);
 
-        // Delivery party (site)
         if ($invoiceParty && (int)$order->partyId === (int)$invoiceParty->id) {
             return true;
         }
-        if ($this->partyNamesLooselyMatch($invoicePartyName, $order->partyName)) {
+
+        return $this->partyNamesLooselyMatch($invoicePartyName, $order->partyName);
+    }
+
+    /**
+     * Busy "Party Name" on invoice is often the billing party (e.g. Icon) while delivery is Acecon.
+     */
+    private function invoicePartyMatchesBillingParty(Order $order, string $invoicePartyName): bool
+    {
+        if (!OrderSchema::hasBillingPartyColumns()) {
+            return false;
+        }
+
+        if (!$order->billToOtherParty && !$order->billingPartyId && $order->billingPartyName === '') {
+            return false;
+        }
+
+        $invoiceParty = $this->findPartyByName($invoicePartyName);
+
+        if ($invoiceParty && $order->billingPartyId && (int)$order->billingPartyId === (int)$invoiceParty->id) {
             return true;
         }
 
-        // Billing party (Busy often shows Icon even when delivery is Acecon)
-        if (OrderSchema::hasBillingPartyColumns() && $order->billingPartyId) {
-            if ($invoiceParty && (int)$order->billingPartyId === (int)$invoiceParty->id) {
-                return true;
-            }
-            if ($order->billingPartyName !== ''
-                && $this->partyNamesLooselyMatch($invoicePartyName, $order->billingPartyName)) {
-                return true;
-            }
+        if ($order->billingPartyName !== ''
+            && $this->partyNamesLooselyMatch($invoicePartyName, $order->billingPartyName)) {
+            return true;
         }
 
         return false;
@@ -1443,8 +1492,8 @@ class BusyIntegrationService
                 $tip .= ' Nearby open order(s): ' . implode('; ', $sampleOrders)
                     . '. Confirm that order shows billing="' . $party . '", product matches, status pending/partial, and has remaining trucks; then Remap.';
             } else {
-                $tip .= ' Create/open a pending order for this party (or Acecon with billing party "'
-                    . $party . '") and matching product "' . $product . '", then Remap.';
+                $tip .= ' For Acecon delivery billed to Icon, create/open a pending order with delivery=Acecon, billing party="'
+                    . $party . '", matching product "' . $product . '", then Remap.';
             }
             return 'No match for billed-to "' . $party . '", product "' . $product . '".' . $tip;
         }
