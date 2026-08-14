@@ -258,7 +258,7 @@ async function remapUnmappedInvoices() {
 
     if (!confirm(
         `Re-match unmapped invoices (${scopeHint}) against portal orders?\n\n`
-        + 'Allowlisted parties (Gargi, Sneha, etc.) get auto-created same-day orders when still unmapped.\n'
+        + 'Allowlisted parties (Gargi, Sneha, etc.) reuse an existing same-day order, or create one only if none exists.\n'
         + 'No CSV re-upload needed.'
     )) {
         return;

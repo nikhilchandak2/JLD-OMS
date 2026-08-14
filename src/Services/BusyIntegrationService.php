@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Models\Order;
+use App\Models\Dispatch;
 use App\Repositories\OrderRepository;
 use App\Repositories\PartyRepository;
 use App\Repositories\ProductRepository;
@@ -60,6 +61,24 @@ class BusyIntegrationService
         try {
             $this->validateInvoiceData($invoiceData);
             $mapped = $this->mapInvoiceData($invoiceData);
+            $existingDispatch = $this->findActiveDispatchForInvoice((string)$mapped['invoice_no']);
+            if ($existingDispatch) {
+                $linkedOrder = $this->orderRepository->findById((int)$existingDispatch->orderId);
+                if ($linkedOrder) {
+                    $result = $this->upsertDispatchFromInvoice($linkedOrder, $mapped, $processedByUserId);
+                    $this->upsertDailyInvoiceRecord(
+                        $mapped,
+                        (int)$linkedOrder->companyId,
+                        'mapped',
+                        null,
+                        (int)$result['order_id'],
+                        (int)$result['dispatch_id'],
+                        $processedByUserId
+                    );
+                    $this->updateWebhookLog($logId, 'success', null);
+                    return array_merge($result, ['mapping_status' => 'mapped']);
+                }
+            }
             $companyId = $this->resolveCompanyId($mapped, $defaultCompanyId);
             $partyForCompany = $this->findPartyByName($mapped['party_name']);
             // Allowlisted parties: prefer configured company over upload switcher.
@@ -257,11 +276,18 @@ class BusyIntegrationService
         foreach ($rows as $row) {
             $invoiceNo = (string)($row['invoice_no'] ?? '');
             $rowId = (int)($row['id'] ?? 0);
+            $mapped = [];
 
             try {
+                $mapped = $this->mapDailyRowForRemap($row);
+                $relinked = $this->relinkDailyInvoiceIfDispatchExists($mapped, $processedByUserId);
+                if ($relinked !== null) {
+                    $details[] = $relinked;
+                    continue;
+                }
+
                 $match = $this->findOrderForDailyInvoiceRow($row, $activeCompanyId);
                 if ($match === null) {
-                    $mapped = $this->mapDailyRowForRemap($row);
                     if ($explainBudget > 0) {
                         $reason = $this->explainNoMatch($mapped);
                         $explainBudget--;
@@ -283,7 +309,6 @@ class BusyIntegrationService
                 /** @var Order $order */
                 $order = $match['order'];
                 $companyId = (int)$match['company_id'];
-                $mapped = $this->mapDailyRowForRemap($row);
                 $result = $this->upsertDispatchFromInvoice($order, $mapped, $processedByUserId);
                 $this->upsertDailyInvoiceRecord(
                     $mapped,
@@ -303,6 +328,14 @@ class BusyIntegrationService
                     'mapping_status' => 'mapped',
                 ], $result);
             } catch (\Throwable $e) {
+                if (($mapped['invoice_no'] ?? '') === '') {
+                    $mapped['invoice_no'] = $invoiceNo;
+                }
+                $relinked = $this->relinkDailyInvoiceIfDispatchExists($mapped, $processedByUserId);
+                if ($relinked !== null) {
+                    $details[] = $relinked;
+                    continue;
+                }
                 // Never flip a stored ledger row to error / never delete — leave as-is.
                 $this->busyDailyInvoiceRepository->ensureStillUnmapped($rowId, $e->getMessage());
                 $details[] = [
@@ -375,7 +408,9 @@ class BusyIntegrationService
 
     /**
      * For allowlisted parties (see config/busy_auto_order_parties.php): when Busy invoices
-     * remain unmapped, create a same-day pending order (qty = total trucks) and map them.
+     * remain unmapped, reuse a same-day order if one already exists (expand qty if needed),
+     * otherwise create one pending order and map them. Never creates a second order for the
+     * same company + party + product + invoice date.
      *
      * @param array<string, mixed> $filters Same shape as findRemapCandidates filters
      * @return array{orders_created: int, mapped: int, skipped: int, details: list<array<string, mixed>>}
@@ -388,21 +423,38 @@ class BusyIntegrationService
 
         $rows = $this->busyDailyInvoiceRepository->findRemapCandidates($filters);
         $eligible = [];
+        $details = [];
+        $mappedCount = 0;
+        $skipped = 0;
+
         foreach ($rows as $row) {
             $partyName = trim((string)($row['party_name'] ?? ''));
             if ($partyName === '' || !$this->isAutoOrderAllowlistedParty($partyName)) {
                 continue;
             }
+
+            $mapped = $this->mapDailyRowForRemap($row);
+            $relinked = $this->relinkDailyInvoiceIfDispatchExists($mapped, $processedByUserId);
+            if ($relinked !== null) {
+                $mappedCount++;
+                $details[] = $relinked;
+                continue;
+            }
+
             $eligible[] = $row;
         }
 
         if ($eligible === []) {
-            return ['orders_created' => 0, 'mapped' => 0, 'skipped' => 0, 'details' => []];
+            return [
+                'orders_created' => 0,
+                'mapped' => $mappedCount,
+                'skipped' => $skipped,
+                'details' => $details,
+            ];
         }
 
-        /** @var array<string, list<array<string, mixed>>> $groups */
+        /** @var array<string, array<string, mixed>> $groups */
         $groups = [];
-        $skipped = 0;
         foreach ($eligible as $row) {
             $mapped = $this->mapDailyRowForRemap($row);
             $party = $this->findPartyByName($mapped['party_name']);
@@ -448,8 +500,6 @@ class BusyIntegrationService
         }
 
         $ordersCreated = 0;
-        $mappedCount = 0;
-        $details = [];
         $userId = $processedByUserId ?? 1;
 
         foreach ($groups as $group) {
@@ -462,27 +512,47 @@ class BusyIntegrationService
             }
 
             try {
-                $order = $this->orderService->createOrder([
-                    'company_id' => $group['company_id'],
-                    'party_id' => $group['party_id'],
-                    'product_id' => $group['product_id'],
-                    'order_date' => $group['invoice_date'],
-                    'order_qty_trucks' => $qty,
-                    'created_by' => $userId,
-                    'created_by_role' => 'admin',
-                    'priority' => 'normal',
-                    'bill_to_other_party' => false,
-                ]);
-                $ordersCreated++;
+                $existing = $this->findSameDayOrderForAutoMap(
+                    (int)$group['company_id'],
+                    (int)$group['party_id'],
+                    (int)$group['product_id'],
+                    (string)$group['invoice_date']
+                );
+                $reused = $existing !== null;
+                if ($existing) {
+                    $order = $this->ensureAutoOrderHasCapacity($existing, $qty);
+                } else {
+                    $order = $this->orderService->createOrder([
+                        'company_id' => $group['company_id'],
+                        'party_id' => $group['party_id'],
+                        'product_id' => $group['product_id'],
+                        'order_date' => $group['invoice_date'],
+                        'order_qty_trucks' => $qty,
+                        'created_by' => $userId,
+                        'created_by_role' => 'admin',
+                        'priority' => 'normal',
+                        'bill_to_other_party' => false,
+                    ]);
+                    $ordersCreated++;
+                }
                 unset($this->openOrdersByCompanyCache[$group['company_id']]);
 
-                // Reload with dispatch capacity fields
                 $order = $this->orderRepository->findById((int)$order->id) ?? $order;
+                $orderLabel = $reused ? 'existing order' : 'auto-order';
 
-                foreach ($group['mapped_rows'] as $idx => $mappedInvoice) {
+                foreach ($group['mapped_rows'] as $mappedInvoice) {
                     $invoiceNo = (string)$mappedInvoice['invoice_no'];
                     try {
-                        $mappedInvoice['remarks'] = 'Auto-mapped after order created from Busy unmapped invoices';
+                        $already = $this->relinkDailyInvoiceIfDispatchExists($mappedInvoice, $userId);
+                        if ($already !== null) {
+                            $mappedCount++;
+                            $details[] = $already;
+                            continue;
+                        }
+
+                        $mappedInvoice['remarks'] = $reused
+                            ? 'Auto-mapped to existing same-day order ' . $order->orderNo
+                            : 'Auto-mapped after order created from Busy unmapped invoices';
                         $result = $this->upsertDispatchFromInvoice($order, $mappedInvoice, $userId);
                         $this->upsertDailyInvoiceRecord(
                             $mappedInvoice,
@@ -493,21 +563,26 @@ class BusyIntegrationService
                             (int)$result['dispatch_id'],
                             $userId
                         );
-                        // Refresh capacity after each truck
                         $order = $this->orderRepository->findById((int)$order->id) ?? $order;
                         $mappedCount++;
                         $details[] = array_merge([
                             'status' => 'mapped',
                             'mapping_status' => 'mapped',
-                            'auto_order' => true,
+                            'auto_order' => !$reused,
                             'invoice_no' => $invoiceNo,
                         ], $result);
                     } catch (\Throwable $e) {
+                        $relinked = $this->relinkDailyInvoiceIfDispatchExists($mappedInvoice, $userId);
+                        if ($relinked !== null) {
+                            $mappedCount++;
+                            $details[] = $relinked;
+                            continue;
+                        }
                         $details[] = [
                             'status' => 'unmapped',
                             'mapping_status' => 'unmapped',
                             'invoice_no' => $invoiceNo,
-                            'error' => 'Auto-order created (' . $order->orderNo . ') but map failed: ' . $e->getMessage(),
+                            'error' => 'Map to ' . $orderLabel . ' ' . $order->orderNo . ' failed: ' . $e->getMessage(),
                         ];
                     }
                 }
@@ -531,6 +606,131 @@ class BusyIntegrationService
             'skipped' => $skipped,
             'details' => $details,
         ];
+    }
+
+    private function findActiveDispatchForInvoice(string $invoiceNo): ?Dispatch
+    {
+        $invoiceNo = trim($invoiceNo);
+        if ($invoiceNo === '') {
+            return null;
+        }
+
+        $existing = $this->dispatchRepository->findByBusyInvoiceNo($invoiceNo);
+        if (!$existing) {
+            return null;
+        }
+        if (DispatchSchema::hasDispatchStatusColumn()
+            && strtolower((string)($existing->status ?? 'active')) !== 'active') {
+            return null;
+        }
+
+        return $existing;
+    }
+
+    /**
+     * If this Busy invoice already has an active dispatch, point the daily ledger at that
+     * order instead of treating the row as unmapped (which would auto-create a duplicate).
+     *
+     * @param array<string, mixed> $mapped
+     * @return array<string, mixed>|null
+     */
+    private function relinkDailyInvoiceIfDispatchExists(array $mapped, ?int $uploadedBy): ?array
+    {
+        $invoiceNo = trim((string)($mapped['invoice_no'] ?? ''));
+        if ($invoiceNo === '') {
+            return null;
+        }
+
+        $existing = $this->findActiveDispatchForInvoice($invoiceNo);
+        if (!$existing) {
+            return null;
+        }
+
+        $order = $this->orderRepository->findById((int)$existing->orderId);
+        if (!$order) {
+            return null;
+        }
+
+        $this->upsertDailyInvoiceRecord(
+            $mapped,
+            (int)$order->companyId,
+            'mapped',
+            null,
+            (int)$order->id,
+            (int)$existing->id,
+            $uploadedBy
+        );
+
+        return [
+            'status' => 'mapped',
+            'mapping_status' => 'mapped',
+            'action' => 'relinked',
+            'auto_order' => false,
+            'invoice_no' => $invoiceNo,
+            'order_id' => (int)$order->id,
+            'order_no' => $order->orderNo,
+            'dispatch_id' => (int)$existing->id,
+            'party_name' => $order->partyName,
+            'dispatch_qty' => (int)$existing->dispatchQtyTrucks,
+        ];
+    }
+
+    /**
+     * One order per company + party + product + date for allowlisted auto-map.
+     * Prefers pending/partial, then any existing order (including completed).
+     */
+    private function findSameDayOrderForAutoMap(
+        int $companyId,
+        int $partyId,
+        int $productId,
+        string $orderDate
+    ): ?Order {
+        $orderDate = substr(trim($orderDate), 0, 10);
+        if ($companyId <= 0 || $partyId <= 0 || $productId <= 0 || $orderDate === '') {
+            return null;
+        }
+
+        $row = $this->database->fetch(
+            "SELECT o.id
+             FROM orders o
+             WHERE o.company_id = ?
+               AND o.party_id = ?
+               AND o.product_id = ?
+               AND o.order_date = ?
+             ORDER BY CASE WHEN o.status IN ('pending', 'partial') THEN 0 ELSE 1 END,
+                      o.id ASC
+             LIMIT 1",
+            [$companyId, $partyId, $productId, $orderDate]
+        );
+        if (!$row) {
+            return null;
+        }
+
+        return $this->orderRepository->findById((int)$row['id']);
+    }
+
+    /** Increase truck qty on an existing auto-map order so remaining invoices can attach. */
+    private function ensureAutoOrderHasCapacity(Order $order, int $neededTrucks): Order
+    {
+        $neededTrucks = max(1, $neededTrucks);
+        $remaining = max(0, (int)$order->orderQtyTrucks - (int)$order->totalDispatched);
+        if ($remaining >= $neededTrucks) {
+            return $order;
+        }
+
+        $newQty = (int)$order->totalDispatched + $neededTrucks;
+        $order->orderQtyTrucks = $newQty;
+        if (strtolower((string)$order->orderQtyMode) !== 'weight') {
+            $tons = (float)$order->tonsPerTruck;
+            if ($tons <= 0) {
+                $tons = 40.0;
+            }
+            $order->orderWeightTons = round($newQty * $tons, 3);
+        }
+        $this->orderRepository->update($order);
+        $this->orderService->updateOrderStatus((int)$order->id);
+
+        return $this->orderRepository->findById((int)$order->id) ?? $order;
     }
 
     /**
