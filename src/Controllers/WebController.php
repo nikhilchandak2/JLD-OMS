@@ -776,6 +776,41 @@ class WebController
         ]);
     }
 
+    public function crmDeals(): void
+    {
+        $this->renderCrmPipelinePage('crm/deals', 'Deals - CRM');
+    }
+
+    public function crmDealNew(): void
+    {
+        $this->renderCrmPipelinePage('crm/deal-new', 'New enquiry - CRM');
+    }
+
+    public function crmDealDetail(string $id): void
+    {
+        $this->renderCrmPipelinePage('crm/deal-detail', 'Deal - CRM', ['deal_id' => (int)$id]);
+    }
+
+    public function crmTechnicalQueue(): void
+    {
+        $this->renderCrmPipelinePage('crm/technical-queue', 'Technical queue - CRM');
+    }
+
+    private function renderCrmPipelinePage(string $template, string $title, array $extra = []): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['entry', 'admin', 'crm', 'sales', 'marketing', 'technical'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
+            return;
+        }
+        $this->renderTemplate($template, array_merge([
+            'title' => $title,
+            'user' => $this->authService->getCurrentUser(),
+            'csrf_token' => CsrfMiddleware::getToken()
+        ], $extra));
+    }
+
     private function requireAuth(): void
     {
         if (!$this->authService->isAuthenticated()) {

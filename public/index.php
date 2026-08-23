@@ -275,7 +275,34 @@ $router->group('/api', function($router) {
         $router->delete('/crm/receivables/{id}', 'CrmReceivableController@deleteEntry');
         $router->get('/crm/receivables/aging', 'CrmReceivableController@agingSummary');
         $router->post('/crm/receivables/import', 'CrmReceivableController@importFromCsv');
-        
+
+        // CRM deals - the 7-stage sales pipeline (crm_deals is the only pipeline entity)
+        $router->get('/crm/deals', 'CrmDealController@index');
+        $router->get('/crm/deals/summary', 'CrmDealController@summary');
+        $router->get('/crm/deals/reason-codes', 'CrmDealController@reasonCodes');
+        $router->post('/crm/deals', 'CrmDealController@create');
+        $router->get('/crm/deals/{id}', 'CrmDealController@show');
+        $router->put('/crm/deals/{id}', 'CrmDealController@update');
+        $router->delete('/crm/deals/{id}', 'CrmDealController@delete');
+        $router->get('/crm/deals/{id}/criteria', 'CrmDealController@criteria');
+        $router->post('/crm/deals/{id}/criteria', 'CrmDealController@saveCriteria');
+        $router->post('/crm/deals/{id}/advance', 'CrmDealController@advance');
+        $router->post('/crm/deals/{id}/move-back', 'CrmDealController@moveBack');
+        $router->post('/crm/deals/{id}/win', 'CrmDealController@win');
+        $router->post('/crm/deals/{id}/close', 'CrmDealController@close');
+        $router->post('/crm/deals/{id}/reopen', 'CrmDealController@reopen');
+        $router->post('/crm/deals/{id}/grades', 'CrmDealController@addGrade');
+        $router->delete('/crm/deals/{id}/grades/{gradeCode}', 'CrmDealController@removeGrade');
+
+        // CRM technical flags - orthogonal hold, routed to a team queue only
+        $router->get('/crm/technical-flags', 'CrmTechnicalFlagController@index');
+        $router->get('/crm/technical-flags/queues', 'CrmTechnicalFlagController@queues');
+        $router->get('/crm/technical-flags/stats', 'CrmTechnicalFlagController@stats');
+        $router->post('/crm/technical-flags', 'CrmTechnicalFlagController@create');
+        $router->post('/crm/technical-flags/{id}/claim', 'CrmTechnicalFlagController@claim');
+        $router->post('/crm/technical-flags/{id}/resolve', 'CrmTechnicalFlagController@resolve');
+        $router->post('/crm/technical-flags/{id}/cancel', 'CrmTechnicalFlagController@cancel');
+
     }, [new AuthMiddleware()]);
 });
 
@@ -326,6 +353,10 @@ $router->get('/crm/funnel', 'WebController@crmFunnel');
 $router->get('/crm/parties/new', 'WebController@crmPartyNew');
 $router->get('/crm/parties/{id}', 'WebController@crmPartyDetail');
 $router->get('/crm/import-receivables', 'WebController@crmImportReceivables');
+$router->get('/crm/deals', 'WebController@crmDeals');
+$router->get('/crm/deals/new', 'WebController@crmDealNew');
+$router->get('/crm/deals/{id}', 'WebController@crmDealDetail');
+$router->get('/crm/technical-queue', 'WebController@crmTechnicalQueue');
 
 // Handle the request
 try {

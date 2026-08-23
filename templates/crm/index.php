@@ -5,6 +5,9 @@
             <h1 class="page-title mb-1">CRM Dashboard</h1>
         </div>
         <div class="d-flex gap-2 align-items-center">
+            <a href="/crm/deals/new" class="btn btn-success px-3 py-2"><i class="bi bi-lightning-charge me-1"></i>New enquiry</a>
+            <a href="/crm/deals" class="btn btn-outline-primary px-3"><i class="bi bi-kanban me-1"></i>Deals</a>
+            <a href="/crm/technical-queue" class="btn btn-outline-secondary px-3"><i class="bi bi-tools me-1"></i>Technical queue</a>
             <a href="/crm/parties/new" class="btn btn-success px-3"><i class="bi bi-plus-lg me-1"></i>Add New</a>
             <a href="/admin/parties" class="btn btn-primary px-4" title="<?= isset($user) ? htmlspecialchars(ucfirst($user['role'] ?? 'User')) : 'User' ?>"><i class="bi bi-person-circle me-2"></i>Parties</a>
             <a href="/crm/funnel" class="btn btn-primary px-4">
