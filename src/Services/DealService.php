@@ -29,6 +29,8 @@ class DealService
     private AuditLogRepository $audit;
     private CrmDealPolicy $policy;
     private DealStageService $stageService;
+    private CreditGateService $creditGate;
+    private CreditGatePolicy $creditPolicy;
     private array $config;
 
     public function __construct()
@@ -43,6 +45,8 @@ class DealService
         $this->audit = new AuditLogRepository();
         $this->policy = new CrmDealPolicy();
         $this->stageService = new DealStageService();
+        $this->creditGate = new CreditGateService();
+        $this->creditPolicy = new CreditGatePolicy();
         $this->config = require __DIR__ . '/../../config/crm_pipeline.php';
     }
 
@@ -181,6 +185,10 @@ class DealService
         $deal['history'] = $this->stageService->history($dealId);
         $deal['time_in_stage_seconds'] = $this->stageService->timeInStage($dealId);
 
+        if ((int)$deal['stage'] >= 5) {
+            $deal['credit_gate'] = $this->creditSnapshotForDeal($deal, $actor['role'] ?? null);
+        }
+
         return $this->policy->serializeDeal($deal, $actor['role'] ?? null);
     }
 
@@ -302,6 +310,27 @@ class DealService
     public function sources(): array
     {
         return $this->config['sources'];
+    }
+
+    /**
+     * Rep sees status + headroom + as-of from Stage 5. Ledger amounts are stripped.
+     *
+     * @return array<string,mixed>
+     */
+    private function creditSnapshotForDeal(array $deal, ?string $role): array
+    {
+        $companyId = (int)($deal['company_id'] ?? 0);
+        if ($companyId <= 0) {
+            $row = $this->database->fetch("SELECT id FROM companies WHERE status = 'active' ORDER BY id LIMIT 1");
+            $companyId = (int)($row['id'] ?? 0);
+        }
+        $proposed = isset($deal['value']) && $deal['value'] !== null && $deal['value'] !== ''
+            ? (float)$deal['value']
+            : 0.0;
+
+        $evaluation = $this->creditGate->evaluate((int)$deal['party_id'], $companyId, $proposed);
+
+        return $this->creditPolicy->serializeForRole($evaluation, $role);
     }
 
     private function decorate(array $deal): array

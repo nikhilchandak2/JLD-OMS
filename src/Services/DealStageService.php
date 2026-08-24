@@ -57,6 +57,7 @@ class DealStageService
         'inquiry_date',
         'decision_maker_contact',
         'sample_sent',
+        'credit_gate_cleared',
     ];
 
     private Database $database;
@@ -71,6 +72,8 @@ class DealStageService
     private CrmTechnicalFlagRepository $flags;
     private AuditLogRepository $audit;
     private CrmDealPolicy $policy;
+    private CreditGateService $creditGate;
+    private CreditOverrideService $creditOverrides;
     private array $config;
 
     public function __construct()
@@ -87,6 +90,8 @@ class DealStageService
         $this->flags = new CrmTechnicalFlagRepository();
         $this->audit = new AuditLogRepository();
         $this->policy = new CrmDealPolicy();
+        $this->creditGate = new CreditGateService();
+        $this->creditOverrides = new CreditOverrideService();
         $this->config = require __DIR__ . '/../../config/crm_pipeline.php';
     }
 
@@ -249,6 +254,10 @@ class DealStageService
                 'exit_criteria_snapshot' => $snapshot,
                 'actor_user_id' => $actor['id'] ?? null,
             ]);
+
+            if ($kind === 'advance' && $fromStage === 6 && $targetStage === 7) {
+                $this->creditOverrides->ensureForDealAdvance($deal, $actor);
+            }
 
             $this->audit->log(
                 $actor['id'] ?? null,
@@ -459,9 +468,47 @@ class DealStageService
             case 'sample_sent':
                 $samples = $this->samples->findAll(['deal_id' => (int)$deal['id']]);
                 return empty($samples) ? null : 'yes (' . count($samples) . ')';
+            case 'credit_gate_cleared':
+                return $this->creditGateClearedValue($deal);
             default:
                 return null;
         }
+    }
+
+    private function creditGateClearedValue(array $deal): ?string
+    {
+        if ($this->creditOverrides->findApprovedForDeal((int)$deal['id'])) {
+            return 'approved';
+        }
+
+        $companyId = (int)($deal['company_id'] ?? 0);
+        if ($companyId <= 0) {
+            $row = $this->database->fetch("SELECT id FROM companies WHERE status = 'active' ORDER BY id LIMIT 1");
+            $companyId = (int)($row['id'] ?? 0);
+        }
+        if ($companyId <= 0) {
+            return null;
+        }
+
+        $proposed = isset($deal['value']) && $deal['value'] !== null && $deal['value'] !== ''
+            ? (float)$deal['value']
+            : 0.0;
+
+        try {
+            $evaluation = $this->creditGate->evaluate((int)$deal['party_id'], $companyId, $proposed);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if ((int)$evaluation['tier'] === CreditGateService::TIER_AUTO) {
+            return 'cleared';
+        }
+        if ((int)$evaluation['tier'] === CreditGateService::TIER_PASSIVE
+            && !empty($evaluation['allows_provisional_proceed'])) {
+            return 'pending_director';
+        }
+
+        return null;
     }
 
     // -----------------------------------------------------------------------

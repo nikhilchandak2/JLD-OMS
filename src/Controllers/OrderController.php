@@ -284,19 +284,31 @@ class OrderController
                 'trucks_per_delivery' => isset($input['trucks_per_delivery']) ? (int)$input['trucks_per_delivery'] : null,
                 'total_deliveries' => isset($input['total_deliveries']) ? (int)$input['total_deliveries'] : null,
                 'created_by' => $user['id'],
-                'created_by_role' => $user['role'] ?? ''
+                'created_by_role' => $user['role'] ?? '',
+                'proposed_order_value' => isset($input['proposed_order_value']) && $input['proposed_order_value'] !== ''
+                    ? (float)$input['proposed_order_value']
+                    : 0,
+                'rep_reason' => isset($input['rep_reason']) ? trim((string)$input['rep_reason']) : (isset($input['reason']) ? trim((string)$input['reason']) : ''),
             ];
             
             $order = $this->orderService->createOrder($orderData);
             
             http_response_code(201);
+            $gateStatus = $order->creditGateStatus ?? 'cleared';
+            $message = match ($gateStatus) {
+                'pending_director' => 'Order created — pending Director confirmation. Dispatch may proceed.',
+                'blocked' => 'Order created but blocked until the Director decides.',
+                default => 'Order created successfully',
+            };
             echo json_encode([
                 'success' => true,
-                'message' => 'Order created successfully',
+                'message' => $message,
                 'data' => $order->toArray()
             ]);
+        } catch (\App\Services\CreditGateException $e) {
+            http_response_code(400);
+            echo json_encode(array_merge(['error' => $e->getMessage()], $e->getDetails()));
         } catch (CreditLimitExceededException $e) {
-            // Hard credit gate: order was NOT created.
             http_response_code(409);
             echo json_encode([
                 'error' => $e->getMessage(),

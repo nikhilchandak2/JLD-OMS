@@ -40,6 +40,8 @@ class Order
     public float $pendingWeightTons = 0;
     public array $dispatches = [];
     public array $creditNotes = [];
+    public string $creditGateStatus = 'cleared';
+    public ?int $creditOverrideRequestId = null;
     
     public function __construct(array $data = [])
     {
@@ -91,6 +93,10 @@ class Order
         $this->pendingTrucks = $this->orderQtyTrucks - $this->totalDispatched;
         $plannedWeight = (float)($this->orderWeightTons ?? 0);
         $this->pendingWeightTons = max(0, $plannedWeight - $this->totalDispatchedWeight);
+        $this->creditGateStatus = $data['credit_gate_status'] ?? 'cleared';
+        $this->creditOverrideRequestId = isset($data['credit_override_request_id']) && $data['credit_override_request_id'] !== '' && $data['credit_override_request_id'] !== null
+            ? (int)$data['credit_override_request_id']
+            : null;
     }
     
     public function toArray(): array
@@ -132,6 +138,8 @@ class Order
                 return is_object($dispatch) ? $dispatch->toArray() : $dispatch;
             }, $this->dispatches ?? []),
             'credit_notes' => $this->creditNotes ?? [],
+            'credit_gate_status' => $this->creditGateStatus,
+            'credit_override_request_id' => $this->creditOverrideRequestId,
         ];
     }
     

@@ -34,26 +34,69 @@ try {
 $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$testName}` CHARACTER SET utf8mb4");
 $pdo->exec("USE `{$testName}`");
 
+$applySqlFile = static function (PDO $pdo, string $path): void {
+    $sql = (string)file_get_contents($path);
+    $sql = preg_replace('~/\*[\s\S]*?\*/~', '', $sql) ?? $sql;
+    $sql = preg_replace('/^\s*--.*$/m', '', $sql) ?? $sql;
+    foreach (array_filter(array_map('trim', explode(';', $sql))) as $statement) {
+        try {
+            $result = $pdo->query($statement);
+            if ($result instanceof PDOStatement) {
+                $result->fetchAll();
+                $result->closeCursor();
+            }
+        } catch (PDOException $e) {
+            $msg = $e->getMessage();
+            $ignorable =
+                stripos($msg, 'already exists') !== false ||
+                stripos($msg, 'Duplicate') !== false ||
+                stripos($msg, 'check that column/key exists') !== false ||
+                stripos($msg, 'check that it exists') !== false ||
+                stripos($msg, "Can't DROP") !== false ||
+                stripos($msg, 'Unknown column') !== false ||
+                stripos($msg, '1072') !== false ||
+                stripos($msg, 'Key column') !== false ||
+                stripos($msg, 'RENAME COLUMN') !== false ||
+                stripos($msg, 'prepared statement') !== false;
+            if (!$ignorable) {
+                fwrite(STDERR, "Migration {$path} failed: {$msg}\n");
+                throw $e;
+            }
+        }
+    }
+};
+
 $alreadyMigrated = $pdo->query("SHOW TABLES LIKE 'orders'")->fetch() !== false;
+$migrationsDir = dirname(__DIR__) . '/database/migrations';
 
 if (!$alreadyMigrated) {
     fwrite(STDOUT, "Preparing test schema '{$testName}'...\n");
-    foreach (['scripts/migrate.php', 'scripts/seed.php'] as $script) {
-        // variables_order=EGPCS so the child script sees these overrides in $_ENV, which is
-        // where the app reads its database settings from.
-        $command = sprintf(
-            'DB_HOST=%s DB_NAME=%s DB_USER=%s DB_PASS=%s %s -d variables_order=EGPCS %s 2>&1',
-            escapeshellarg($host),
-            escapeshellarg($testName),
-            escapeshellarg($user),
-            escapeshellarg($pass),
-            escapeshellarg(PHP_BINARY),
-            escapeshellarg(dirname(__DIR__) . '/' . $script)
-        );
-        exec($command, $output, $status);
-        if ($status !== 0) {
-            fwrite(STDERR, "Failed to run {$script}:\n" . implode("\n", $output) . "\n");
-            exit(1);
-        }
+    $files = glob($migrationsDir . '/*.sql') ?: [];
+    sort($files, SORT_NATURAL);
+    foreach ($files as $file) {
+        $applySqlFile($pdo, $file);
+    }
+}
+
+$ownerCol = $pdo->query(
+    "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'crm_deals' AND COLUMN_NAME = 'owner_user_id'"
+)->fetch();
+if ((int)($ownerCol['c'] ?? 0) === 0) {
+    $applySqlFile($pdo, $migrationsDir . '/046_crm_pipeline_7stage.sql');
+}
+
+$incremental = [
+    'data_feeds' => '047_data_feeds.sql',
+    'credit_policy_tiers' => '048_credit_gate.sql',
+];
+foreach ($incremental as $marker => $file) {
+    $missing = $pdo->query("SHOW TABLES LIKE '{$marker}'")->fetch() === false;
+    if (!$missing && $marker === 'credit_policy_tiers') {
+        $count = $pdo->query("SELECT COUNT(*) AS c FROM credit_policy_tiers")->fetch();
+        $missing = ((int)($count['c'] ?? 0) === 0);
+    }
+    if ($missing) {
+        $applySqlFile($pdo, $migrationsDir . '/' . $file);
     }
 }

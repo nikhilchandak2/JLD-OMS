@@ -71,7 +71,8 @@ $router->group('/api', function($router) {
     $router->get('/reminders/jobs/{id}/download', 'RemindersJobsController@download');
     $router->post('/reminders/jobs/{id}/complete', 'RemindersJobsController@complete');
 
-    // Busy invoice webhook (public — API key / IP allowlist)
+    // INERT (B1): Busy webhook is not a live ledger path. Batch upload via /data-feeds only.
+    // The route stays so a leftover Busy config gets a loud 410 instead of silent success.
     $router->post('/busy/webhook', 'BusyIntegrationController@receiveInvoiceWebhook');
     
     // Protected routes
@@ -197,6 +198,17 @@ $router->group('/api', function($router) {
         $router->get('/parties/{id}/credit-status', 'CreditRequestController@creditStatus');
         $router->post('/parties/{id}/credit-requests', 'CreditRequestController@create');
 
+        $router->get('/credit/evaluate', 'CreditGateController@evaluate');
+        $router->get('/credit/parties/{id}/prefill', 'CreditGateController@prefill');
+        $router->post('/credit/capture', 'CreditGateController@capture');
+        $router->get('/credit/overrides', 'CreditGateController@queue');
+        $router->get('/credit/overrides/volume', 'CreditGateController@volume');
+        $router->post('/credit/overrides/batch-approve', 'CreditGateController@batchApprove');
+        $router->post('/credit/expire', 'CreditGateController@expire');
+        $router->get('/credit/overrides/{id}', 'CreditGateController@show');
+        $router->post('/credit/overrides/{id}/decide', 'CreditGateController@decide');
+        $router->post('/credit/overrides/{id}/withdraw', 'CreditGateController@withdraw');
+
         // Visit requests (marketing -> technical team)
         $router->get('/visit-requests', 'VisitRequestController@index');
         $router->post('/visit-requests', 'VisitRequestController@create');
@@ -303,6 +315,19 @@ $router->group('/api', function($router) {
         $router->post('/crm/technical-flags/{id}/resolve', 'CrmTechnicalFlagController@resolve');
         $router->post('/crm/technical-flags/{id}/cancel', 'CrmTechnicalFlagController@cancel');
 
+        // Daily batch ingest — ledger and dispatch files. Authoritative, not live.
+        $router->get('/data-feeds', 'DataFeedController@dashboard');
+        $router->get('/data-feeds/as-of', 'DataFeedController@asOf');
+        $router->get('/data-feeds/unmatched', 'DataFeedController@unmatched');
+        $router->get('/data-feeds/template/{feedKey}', 'DataFeedController@template');
+        $router->post('/data-feeds/runs', 'DataFeedController@upload');
+        $router->get('/data-feeds/runs/{id}', 'DataFeedController@show');
+        $router->post('/data-feeds/runs/{id}/validate', 'DataFeedController@validate');
+        $router->post('/data-feeds/runs/{id}/promote', 'DataFeedController@promote');
+        $router->get('/data-feeds/runs/{id}/rejections', 'DataFeedController@rejections');
+        $router->post('/data-feeds/aliases', 'DataFeedController@createAlias');
+        $router->put('/data-feeds/{id}', 'DataFeedController@updateFeed');
+
     }, [new AuthMiddleware()]);
 });
 
@@ -324,6 +349,7 @@ $router->get('/visit-requests', 'WebController@visitRequests');
 $router->get('/reports', 'WebController@reports');
 $router->get('/reports/daily-dispatch', 'WebController@dailyDispatchReport');
 $router->get('/admin/users', 'WebController@users');
+$router->get('/admin/credit-approvals/{id}', 'WebController@creditOverrideDetail');
 $router->get('/admin/credit-approvals', 'WebController@creditApprovalsPage');
 $router->get('/admin/parties/import', 'WebController@partiesImport');
 $router->get('/admin/parties', 'WebController@parties');
@@ -357,6 +383,10 @@ $router->get('/crm/deals', 'WebController@crmDeals');
 $router->get('/crm/deals/new', 'WebController@crmDealNew');
 $router->get('/crm/deals/{id}', 'WebController@crmDealDetail');
 $router->get('/crm/technical-queue', 'WebController@crmTechnicalQueue');
+$router->get('/data-feeds', 'WebController@dataFeeds');
+$router->get('/data-feeds/upload', 'WebController@dataFeedsUpload');
+$router->get('/data-feeds/unmatched', 'WebController@dataFeedsUnmatched');
+$router->get('/data-feeds/runs/{id}', 'WebController@dataFeedsRun');
 
 // Handle the request
 try {

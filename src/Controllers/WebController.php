@@ -336,7 +336,31 @@ class WebController
         $this->renderTemplate('admin/credit-approvals', [
             'title' => 'Credit Approvals',
             'user' => $user,
-            'csrf_token' => CsrfMiddleware::getToken()
+            'csrf_token' => CsrfMiddleware::getToken(),
+            'override_id' => 0,
+        ]);
+    }
+
+    public function creditOverrideDetail(string $id): void
+    {
+        $this->requireAuth();
+
+        $user = $this->authService->getCurrentUser();
+
+        if (!$this->authService->hasRole('admin')) {
+            http_response_code(403);
+            $this->renderTemplate('error', [
+                'title' => 'Access Denied',
+                'message' => 'Admin access required'
+            ]);
+            return;
+        }
+
+        $this->renderTemplate('admin/credit-approvals', [
+            'title' => 'Credit Approval',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken(),
+            'override_id' => (int)$id,
         ]);
     }
     
@@ -794,6 +818,41 @@ class WebController
     public function crmTechnicalQueue(): void
     {
         $this->renderCrmPipelinePage('crm/technical-queue', 'Technical queue - CRM');
+    }
+
+    public function dataFeeds(): void
+    {
+        $this->renderDataFeedPage('data-feeds/dashboard', 'Data feeds');
+    }
+
+    public function dataFeedsUpload(): void
+    {
+        $this->renderDataFeedPage('data-feeds/upload', 'Upload data feed');
+    }
+
+    public function dataFeedsRun(string $id): void
+    {
+        $this->renderDataFeedPage('data-feeds/run-detail', 'Feed run', ['run_id' => (int)$id]);
+    }
+
+    public function dataFeedsUnmatched(): void
+    {
+        $this->renderDataFeedPage('data-feeds/unmatched', 'Unmatched parties');
+    }
+
+    private function renderDataFeedPage(string $template, string $title, array $extra = []): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'entry', 'crm', 'accounts', 'sales'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Data feed access required']);
+            return;
+        }
+        $this->renderTemplate($template, array_merge([
+            'title' => $title,
+            'user' => $this->authService->getCurrentUser(),
+            'csrf_token' => CsrfMiddleware::getToken()
+        ], $extra));
     }
 
     private function renderCrmPipelinePage(string $template, string $title, array $extra = []): void

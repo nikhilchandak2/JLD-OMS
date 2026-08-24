@@ -158,6 +158,9 @@ class OrderRepository
             ) recv ON recv.party_id = o.party_id
             WHERE o.status IN ('pending', 'partial')
         ";
+        if (OrderSchema::hasCreditGateColumns()) {
+            $sql .= " AND o.credit_gate_status <> 'blocked'";
+        }
 
         $params = [];
         if ($companyId !== null && $companyId > 0) {

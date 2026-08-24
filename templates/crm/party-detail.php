@@ -85,6 +85,7 @@
                 <button type="button" class="btn btn-sm btn-primary py-0" id="btnAddReceivable"><i class="bi bi-plus me-1"></i>Add entry</button>
             </div>
             <div class="card-body">
+                <?php $feedKey = 'ledger'; $mode = 'group'; include __DIR__ . '/../partials/data-as-of-banner.php'; ?>
                 <div class="crm-receivable-summary">
                     <div class="item"><strong>Outstanding</strong> <span id="receivableOutstanding">–</span></div>
                     <div class="item"><strong>Credit limit</strong> <span id="receivableCreditLimit">–</span></div>

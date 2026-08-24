@@ -132,7 +132,7 @@ SET @has_varchar_stage := (
     AND COLUMN_NAME = 'stage' AND DATA_TYPE = 'varchar'
 );
 SET @sql := IF(@has_varchar_stage = 1,
-  'ALTER TABLE crm_deals RENAME COLUMN stage TO legacy_funnel_stage',
+  'ALTER TABLE crm_deals CHANGE COLUMN stage legacy_funnel_stage VARCHAR(50) DEFAULT NULL',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -144,7 +144,7 @@ SET @has_assigned_to := (
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'crm_deals' AND COLUMN_NAME = 'assigned_to'
 );
 SET @sql := IF(@has_assigned_to = 1,
-  'ALTER TABLE crm_deals RENAME COLUMN assigned_to TO owner_user_id',
+  'ALTER TABLE crm_deals CHANGE COLUMN assigned_to owner_user_id INT DEFAULT NULL',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -170,7 +170,7 @@ SET @has_lead_id := (
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'crm_deals' AND COLUMN_NAME = 'lead_id'
 );
 SET @sql := IF(@has_lead_id = 1,
-  'ALTER TABLE crm_deals RENAME COLUMN lead_id TO legacy_lead_id',
+  'ALTER TABLE crm_deals CHANGE COLUMN lead_id legacy_lead_id INT DEFAULT NULL',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

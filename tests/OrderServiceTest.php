@@ -22,9 +22,10 @@ class OrderServiceTest extends DatabaseTestCase
         $this->dispatchService = new DispatchService();
 
         $this->companyId = $this->createCompany();
-        $this->partyId = $this->createParty();
+        $this->partyId = $this->createParty(10000000.0);
         $this->productId = $this->createProduct();
         $this->userId = $this->createUser('order_processing')['id'];
+        $this->database->execute("UPDATE data_feeds SET is_active = 0 WHERE feed_key = 'ledger'");
     }
 
     private function orderData(array $overrides = []): array
@@ -154,7 +155,7 @@ class OrderServiceTest extends DatabaseTestCase
         $this->assertEquals('completed', $this->orderService->getOrderById($order->id)->status);
     }
 
-    public function testOrderIsBlockedWhenPartyIsOverItsCreditLimit(): void
+    public function testOverLimitPartyGetsAPendingOrBlockedGateInsteadOfAHardBlock(): void
     {
         $partyId = $this->createParty(1000.0);
         $this->database->execute(
@@ -163,12 +164,14 @@ class OrderServiceTest extends DatabaseTestCase
             [$partyId, $this->userId]
         );
 
-        $this->expectException(\App\Services\CreditLimitExceededException::class);
+        $order = $this->orderService->createOrder($this->orderData(['party_id' => $partyId]));
 
-        $this->orderService->createOrder($this->orderData(['party_id' => $partyId]));
+        $this->assertSame('pending', $order->status);
+        $this->assertSame('blocked', $order->creditGateStatus);
+        $this->assertNotNull($order->creditOverrideRequestId);
     }
 
-    public function testAdminCanCreateOrderForOverLimitParty(): void
+    public function testAdminCreatingAnOverLimitOrderDoesNotBypassTheGate(): void
     {
         $partyId = $this->createParty(1000.0);
         $adminId = $this->createUser('admin')['id'];
@@ -181,9 +184,11 @@ class OrderServiceTest extends DatabaseTestCase
         $order = $this->orderService->createOrder($this->orderData([
             'party_id' => $partyId,
             'created_by' => $adminId,
+            'created_by_role' => 'admin',
         ]));
 
         $this->assertEquals('pending', $order->status);
+        $this->assertSame('blocked', $order->creditGateStatus);
     }
 
     public function testRecurringOrderCreatesScheduledDeliveries(): void

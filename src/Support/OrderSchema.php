@@ -8,6 +8,7 @@ use App\Core\Database;
 class OrderSchema
 {
     private static ?bool $hasBillingPartyColumns = null;
+    private static ?bool $hasCreditGateColumns = null;
 
     public static function hasBillingPartyColumns(): bool
     {
@@ -53,6 +54,21 @@ class OrderSchema
             (COALESCE({$orderAlias}.bill_to_other_party, 0) = 0 AND {$orderAlias}.party_id = ?)
             OR (COALESCE({$orderAlias}.bill_to_other_party, 0) = 1 AND {$orderAlias}.billing_party_id = ?)
         )";
+    }
+
+    public static function hasCreditGateColumns(): bool
+    {
+        if (self::$hasCreditGateColumns !== null) {
+            return self::$hasCreditGateColumns;
+        }
+
+        $db = new Database();
+        $row = $db->fetch(
+            "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'credit_gate_status'"
+        );
+        self::$hasCreditGateColumns = ((int)($row['c'] ?? 0)) > 0;
+        return self::$hasCreditGateColumns;
     }
 
     /** @return array<int, int> */

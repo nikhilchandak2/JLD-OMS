@@ -24,6 +24,8 @@
 
 <div id="error-container" class="error-message"></div>
 <div id="success-container" class="error-message"></div>
+<?php $feedKey = 'ledger'; $mode = 'group'; include __DIR__ . '/partials/data-as-of-banner.php'; ?>
+<?php $feedKey = 'dispatch_day_file'; $mode = 'group'; include __DIR__ . '/partials/data-as-of-banner.php'; ?>
 
 <!-- Summary Cards -->
 <div class="row mb-4" id="summaryCards">

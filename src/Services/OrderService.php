@@ -13,6 +13,7 @@ use App\Repositories\DispatchTransferRepository;
 use App\Repositories\ScheduledDeliveryRepository;
 use App\Models\Order;
 use App\Models\ScheduledDelivery;
+use App\Support\OrderSchema;
 
 class OrderService
 {
@@ -27,6 +28,8 @@ class OrderService
     private ScheduledDeliveryRepository $scheduledDeliveryRepository;
     private CreditNoteRepository $creditNoteRepository;
     private DispatchTransferRepository $dispatchTransferRepository;
+    private CreditGateService $creditGate;
+    private CreditOverrideService $creditOverrides;
     
     public function __construct()
     {
@@ -39,6 +42,8 @@ class OrderService
         $this->scheduledDeliveryRepository = new ScheduledDeliveryRepository();
         $this->creditNoteRepository = new CreditNoteRepository();
         $this->dispatchTransferRepository = new DispatchTransferRepository();
+        $this->creditGate = new CreditGateService();
+        $this->creditOverrides = new CreditOverrideService();
     }
     
     public function getOrders(array $filters = []): array
@@ -134,25 +139,6 @@ class OrderService
             }
         }
         $partyId = (int)$data['party_id'];
-
-        // Hard credit gate: over-limit parties cannot get new orders (admin can override).
-        // Sales must raise a party-level credit request (max 2 per party per month) and get
-        // admin approval (which raises the credit limit) before the order can be created.
-        $creditInfo = $this->getCreditLimitAndOutstanding($partyId);
-        if ($creditInfo && $creditInfo['outstanding'] > $creditInfo['credit_limit'] && $createdByRole !== 'admin') {
-            $status = $this->getPartyCreditStatus($partyId);
-            throw new CreditLimitExceededException(
-                sprintf(
-                    'Order blocked: party outstanding (%.2f) exceeds credit limit (%.2f). ' .
-                    'Raise a credit request for admin approval (%d of %d used this month).',
-                    $creditInfo['outstanding'],
-                    $creditInfo['credit_limit'],
-                    $status['requests_used_this_month'],
-                    self::MAX_CREDIT_REQUESTS_PER_MONTH
-                ),
-                $status
-            );
-        }
         
         $order = new Order();
         $order->companyId = $data['company_id'];
@@ -201,6 +187,10 @@ class OrderService
             
             // Log the creation
             $this->logAuditEvent($data['created_by'], 'orders', $orderId, 'CREATE', null, $order->toArray());
+
+            if (empty($data['skip_credit_gate']) && OrderSchema::hasCreditGateColumns()) {
+                $this->applyCreditGateToNewOrder($order, $data, $createdByRole);
+            }
             
             $this->database->commit();
             
@@ -347,6 +337,39 @@ class OrderService
         }
     }
 
+    private function applyCreditGateToNewOrder(Order $order, array $data, string $createdByRole): void
+    {
+        $proposed = isset($data['proposed_order_value']) && $data['proposed_order_value'] !== ''
+            ? (float)$data['proposed_order_value']
+            : 0.0;
+        $evaluation = $this->creditGate->evaluate((int)$order->partyId, (int)$order->companyId, $proposed);
+        $status = (string)$evaluation['credit_gate_status'];
+        $requestId = null;
+        $actor = ['id' => $order->createdBy ?: null, 'role' => $createdByRole !== '' ? $createdByRole : null];
+
+        if ((int)$evaluation['tier'] === CreditGateService::TIER_AUTO) {
+            $this->logAuditEvent($order->createdBy ?: null, 'orders', (int)$order->id, 'UPDATE', null, [
+                'credit_gate' => 'auto_cleared',
+                'tier' => 1,
+                'ledger_as_of' => $evaluation['ledger_as_of'],
+            ]);
+        } else {
+            $reason = trim((string)($data['rep_reason'] ?? $data['reason'] ?? 'Order capture'));
+            if ($reason === '') {
+                $reason = 'Order capture';
+            }
+            $request = $this->creditOverrides->raise($evaluation, $actor, $reason, null, (int)$order->id);
+            $requestId = (int)$request['id'];
+        }
+
+        $this->database->execute(
+            "UPDATE orders SET credit_gate_status = ?, credit_override_request_id = ? WHERE id = ?",
+            [$status, $requestId, $order->id]
+        );
+        $order->creditGateStatus = $status;
+        $order->creditOverrideRequestId = $requestId;
+    }
+
     private function validateCompanyExists(int $companyId): void
     {
         $result = $this->database->fetch("SELECT id FROM companies WHERE id = ? AND status = 'active'", [$companyId]);
@@ -372,35 +395,50 @@ class OrderService
     }
 
     /**
-     * Credit snapshot for a party, including monthly credit-request quota usage.
-     * credit_limit/outstanding are null when the party has no credit limit configured.
+     * Credit snapshot for a party. Ledger figures come from the daily batch (B1);
+     * the as-of stamp is the oldest contributing entity (B6).
      */
-    public function getPartyCreditStatus(int $partyId): array
+    public function getPartyCreditStatus(int $partyId, int $companyId = 0): array
     {
         $party = $this->partyRepository->findById($partyId);
         if (!$party) {
             throw new \Exception("Party not found");
         }
 
-        $creditInfo = $this->getCreditLimitAndOutstanding($partyId);
+        if ($companyId <= 0) {
+            $row = $this->database->fetch("SELECT id FROM companies WHERE status = 'active' ORDER BY id LIMIT 1");
+            $companyId = (int)($row['id'] ?? 0);
+        }
+
         $yearMonth = date('Y-m');
         $requestsUsed = $this->creditApprovalRepository->countRequestsForPartyInMonth($partyId, $yearMonth);
         $requestsRemaining = max(0, self::MAX_CREDIT_REQUESTS_PER_MONTH - $requestsUsed);
 
-        return [
+        $legacy = [
             'party_id' => $partyId,
             'party_name' => $party->name,
-            'has_credit_limit' => $creditInfo !== null,
-            'credit_limit' => $creditInfo['credit_limit'] ?? null,
-            'outstanding' => $creditInfo !== null
-                ? $creditInfo['outstanding']
-                : (float)$this->receivableEntryRepository->getOutstandingForParty($partyId),
-            'over_limit' => $creditInfo !== null && $creditInfo['outstanding'] > $creditInfo['credit_limit'],
             'requests_used_this_month' => $requestsUsed,
             'requests_remaining_this_month' => $requestsRemaining,
             'max_requests_per_month' => self::MAX_CREDIT_REQUESTS_PER_MONTH,
             'has_pending_request' => $this->creditApprovalRepository->hasPendingForParty($partyId),
         ];
+
+        if ($companyId <= 0) {
+            return $legacy + [
+                'has_credit_limit' => $party->creditLimit !== null && $party->creditLimit > 0,
+                'credit_limit' => $party->creditLimit !== null ? (float)$party->creditLimit : null,
+                'outstanding' => (float)$this->receivableEntryRepository->getOutstandingForParty($partyId),
+                'over_limit' => false,
+            ];
+        }
+
+        $evaluation = $this->creditGate->evaluate($partyId, $companyId, 0.0);
+        $limit = $evaluation['credit_limit'];
+
+        return array_merge($legacy, $evaluation, [
+            'has_credit_limit' => $limit !== null && $limit > 0,
+            'over_limit' => (int)$evaluation['tier'] > CreditGateService::TIER_AUTO,
+        ]);
     }
 
     /**

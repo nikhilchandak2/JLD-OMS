@@ -532,6 +532,7 @@ class BusyIntegrationService
                         'created_by_role' => 'admin',
                         'priority' => 'normal',
                         'bill_to_other_party' => false,
+                        'skip_credit_gate' => true,
                     ]);
                     $ordersCreated++;
                 }
@@ -1057,11 +1058,13 @@ class BusyIntegrationService
         ];
 
         return [
-            'status' => 'active',
+            // INERT (B1): webhook is not a live ledger path. Batch ingest is /data-feeds.
+            'status' => 'inert',
+            'inert_reason' => 'Ledger ingestion is batch-only by design. POST /api/busy/webhook returns 410 and does not write busy_webhook_logs.',
             'last_30_days' => $stats,
             'webhook_url' => $this->getWebhookUrl(),
-            'upload_endpoint' => '/api/busy/invoices/upload',
-            'authentication' => 'API Key required in X-API-KEY header for webhook; session auth for upload',
+            'upload_endpoint' => '/data-feeds',
+            'authentication' => 'Webhook is inert. Use session-authenticated /data-feeds for ledger and dispatch files.',
         ];
     }
 
@@ -1922,6 +1925,10 @@ class BusyIntegrationService
         ];
     }
 
+    /**
+     * Historical helper for invoice-import diagnostics. The public webhook must not
+     * call this — ledger ingestion is batch-only (B1) via /data-feeds.
+     */
     private function logWebhookData(array $data, string $status = 'received'): int
     {
         $sql = "

@@ -716,13 +716,20 @@ function updateOrderDisplay(order) {
     const creditApproval = order.credit_approval || null;
     const creditEl = document.getElementById('headerCreditBadge');
     if (creditEl) {
-        creditEl.innerHTML = creditApproval
-            ? creditApproval.status === 'pending'
+        const gate = order.credit_gate_status || 'cleared';
+        if (gate === 'pending_director') {
+            creditEl.innerHTML = '<span class="badge bg-warning text-dark">Pending Director confirmation</span>';
+        } else if (gate === 'blocked') {
+            creditEl.innerHTML = '<span class="badge bg-danger">Credit blocked</span>';
+        } else if (creditApproval) {
+            creditEl.innerHTML = creditApproval.status === 'pending'
                 ? '<span class="badge bg-warning text-dark">Credit Pending</span>'
                 : creditApproval.status === 'approved'
                     ? '<span class="badge bg-success">Credit Approved</span>'
-                    : '<span class="badge bg-danger">Credit Rejected</span>'
-            : '';
+                    : '<span class="badge bg-danger">Credit Rejected</span>';
+        } else {
+            creditEl.innerHTML = '';
+        }
     }
 
     const availableQtyEl = document.getElementById('availableQty');
@@ -751,7 +758,10 @@ function updateOrderDisplay(order) {
 
     // If credit approval is not approved yet, block dispatch UI (backend also enforces)
     const dispatchBtn = document.getElementById('dispatchBtn');
-    if (dispatchBtn && creditApproval && creditApproval.status !== 'approved') {
+    if (dispatchBtn && order.credit_gate_status === 'blocked') {
+        dispatchBtn.disabled = true;
+        dispatchBtn.title = 'Director credit decision required before dispatch';
+    } else if (dispatchBtn && creditApproval && creditApproval.status !== 'approved') {
         dispatchBtn.disabled = true;
         dispatchBtn.title = 'Admin credit approval required before dispatch';
     }

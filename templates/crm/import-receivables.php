@@ -17,6 +17,11 @@
 
 <div id="error-container" class="error-message"></div>
 <div id="success-container" class="alert alert-success" style="display:none;"></div>
+<div class="alert alert-warning">
+    This page is the legacy invoice-wise import. The authoritative daily ledger path is
+    <a href="/data-feeds/upload?feed_key=ledger">Data feeds</a> — two-phase, no auto-created parties, with an as-of stamp.
+</div>
+<?php $feedKey = 'ledger'; $mode = 'group'; include __DIR__ . '/../partials/data-as-of-banner.php'; ?>
 
 <div class="card mb-4">
     <div class="card-header"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Upload CSV</div>

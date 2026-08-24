@@ -121,6 +121,7 @@
                                     <i class="bi bi-plus-lg"></i>
                                 </button>
                             </div>
+                            <?php $feedKey = 'ledger'; $mode = 'group'; include __DIR__ . '/partials/data-as-of-banner.php'; ?>
                             <div id="creditStatusPanel" class="mt-2" style="display: none;"></div>
                         </div>
                         <div class="col-md-6">
@@ -190,6 +191,35 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <div class="card new-order-section mb-4">
+                <div class="card-header py-3">
+                    <i class="bi bi-shield-check me-2"></i>Credit gate
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label for="proposedOrderValue" class="form-label">Estimated value (₹)</label>
+                            <input type="number" class="form-control" id="proposedOrderValue" name="proposed_order_value" min="0" step="0.01" placeholder="Last rate × tonnes">
+                            <div class="form-text">Prefills from last dispatch rate. Confirmed only after submit.</div>
+                        </div>
+                        <div class="col-md-8">
+                            <label for="linkedDealId" class="form-label">Link an open deal (optional)</label>
+                            <select class="form-select" id="linkedDealId" name="deal_id">
+                                <option value="">No deal — repeat order</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label for="repReason" class="form-label">Reason if over the limit</label>
+                            <textarea class="form-control" id="repReason" name="rep_reason" rows="2" maxlength="500" placeholder="Required only when this order is over the group limit"></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-3" id="extraGrades"></div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="btnAddGrade">
+                        <i class="bi bi-plus-lg"></i> Add another grade
+                    </button>
                 </div>
             </div>
 
@@ -540,111 +570,101 @@ async function checkPartyCredit(partyId) {
     const panel = document.getElementById('creditStatusPanel');
     const submitBtn = document.getElementById('submitBtn');
     partyCreditStatus = null;
+    submitBtn.disabled = false;
 
     if (!partyId) {
         panel.style.display = 'none';
         panel.innerHTML = '';
-        submitBtn.disabled = false;
         return;
     }
 
     try {
-        const response = await apiCall(`/api/parties/${partyId}/credit-status`);
+        const companyId = document.getElementById('companyId').value;
+        const proposed = document.getElementById('proposedOrderValue')?.value || 0;
+        const response = await apiCall(`/api/credit/evaluate?party_id=${partyId}&company_id=${companyId}&proposed_order_value=${encodeURIComponent(proposed)}`);
         const status = response.data;
         partyCreditStatus = status;
 
-        if (!status.has_credit_limit) {
-            panel.innerHTML = `
-                <div class="alert alert-secondary py-2 mb-0">
-                    <small>Outstanding: <strong>${formatMoney(status.outstanding)}</strong> &middot; No credit limit set for this party.</small>
-                </div>`;
-            panel.style.display = 'block';
-            submitBtn.disabled = false;
-            return;
-        }
+        const tier = Number(status.tier);
+        const tone = tier === 1 ? 'success' : (tier === 2 ? 'warning' : 'danger');
+        const label = tier === 1
+            ? 'Within limit — will auto-clear on submit'
+            : (tier === 2
+                ? 'Up to 10% over — may proceed pending Director confirmation'
+                : 'Over the 10% band, or no limit — nothing proceeds until the Director decides');
+        const headroom = status.headroom == null ? '—' : formatMoney(status.headroom);
+        const asOf = status.ledger_as_of || 'no contributing feed';
+        const missing = (status.missing_entities || []).map(function (e) { return e.company_name || ('#' + e.company_id); }).join(', ');
 
-        if (status.over_limit) {
-            const isAdmin = currentUserRole === 'admin';
-            let actionHtml = '';
-            if (isAdmin) {
-                actionHtml = '<div class="mt-1"><small>You are admin: order creation is still allowed (override).</small></div>';
-            } else if (status.has_pending_request) {
-                actionHtml = '<div class="mt-1"><small><i class="bi bi-hourglass-split"></i> A credit request is already pending admin decision.</small></div>';
-            } else if (status.requests_remaining_this_month > 0) {
-                actionHtml = `
-                    <div class="mt-2">
-                        <button type="button" class="btn btn-sm btn-warning" onclick="openCreditRequestModal()">
-                            <i class="bi bi-shield-exclamation"></i> Raise Credit Request
-                        </button>
-                        <small class="ms-2">${status.requests_used_this_month} of ${status.max_requests_per_month} requests used this month</small>
-                    </div>`;
-            } else {
-                actionHtml = `<div class="mt-1"><small><i class="bi bi-x-octagon"></i> Credit request limit reached (${status.max_requests_per_month}/month). No more requests can be made until next month.</small></div>`;
-            }
-
-            panel.innerHTML = `
-                <div class="alert alert-danger py-2 mb-0">
-                    <small>
-                        <i class="bi bi-exclamation-triangle-fill"></i>
-                        <strong>Order blocked:</strong> outstanding <strong>${formatMoney(status.outstanding)}</strong>
-                        exceeds credit limit <strong>${formatMoney(status.credit_limit)}</strong>.
-                    </small>
-                    ${actionHtml}
-                </div>`;
-            panel.style.display = 'block';
-            submitBtn.disabled = !isAdmin;
-        } else {
-            panel.innerHTML = `
-                <div class="alert alert-success py-2 mb-0">
-                    <small>
-                        <i class="bi bi-check-circle"></i>
-                        Outstanding: <strong>${formatMoney(status.outstanding)}</strong>
-                        / Credit limit: <strong>${formatMoney(status.credit_limit)}</strong>
-                        (within limit)
-                    </small>
-                </div>`;
-            panel.style.display = 'block';
-            submitBtn.disabled = false;
-        }
-    } catch (error) {
-        panel.style.display = 'none';
-        panel.innerHTML = '';
-        document.getElementById('submitBtn').disabled = false;
+        panel.innerHTML = `
+            <div class="alert alert-${tone} py-2 mb-0">
+                <small>
+                    <strong>Tier ${tier}.</strong> ${label}<br>
+                    Headroom: <strong>₹${headroom}</strong>
+                    · as of ${escapeHtml(String(asOf))}${missing ? ' · missing: ' + escapeHtml(missing) : ''}
+                    · not live
+                </small>
+            </div>`;
+        panel.style.display = 'block';
+        await loadPrefill(partyId);
+    } catch (e) {
+        panel.innerHTML = `<div class="alert alert-secondary py-2 mb-0"><small>${escapeHtml(e.message)}</small></div>`;
+        panel.style.display = 'block';
     }
 }
 
-function openCreditRequestModal() {
-    if (!partyCreditStatus) return;
-    document.getElementById('creditRequestInfo').innerHTML = `
-        <strong>${escapeHtml(partyCreditStatus.party_name)}</strong><br>
-        Outstanding: <strong>${formatMoney(partyCreditStatus.outstanding)}</strong> /
-        Credit limit: <strong>${formatMoney(partyCreditStatus.credit_limit)}</strong><br>
-        <small>${partyCreditStatus.requests_used_this_month} of ${partyCreditStatus.max_requests_per_month} requests used this month</small>`;
-    new bootstrap.Modal(document.getElementById('creditRequestModal')).show();
-}
-
-document.getElementById('creditRequestForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    if (!partyCreditStatus) return;
-
-    const increaseRaw = document.getElementById('requestedIncrease').value;
-    const body = {
-        requested_limit_increase: increaseRaw ? Number(increaseRaw) : null,
-        reason: document.getElementById('creditRequestReason').value || null
-    };
-
+async function loadPrefill(partyId) {
     try {
-        const response = await apiCall(`/api/parties/${partyCreditStatus.party_id}/credit-requests`, {
-            method: 'POST',
-            body: JSON.stringify(body)
-        });
-        bootstrap.Modal.getInstance(document.getElementById('creditRequestModal')).hide();
-        this.reset();
-        showSuccess(response.message || 'Credit request submitted for admin approval.');
-        await checkPartyCredit(partyCreditStatus.party_id);
-    } catch (error) {
-        showError(error.message);
+        const res = await apiCall(`/api/credit/parties/${partyId}/prefill`);
+        const grades = res.data.recent_grades || [];
+        const deals = res.data.open_deals || [];
+        const dealSel = document.getElementById('linkedDealId');
+        if (dealSel) {
+            dealSel.innerHTML = '<option value="">No deal — repeat order</option>' + deals.map(function (d) {
+                return `<option value="${d.id}">#${d.id} stage ${d.stage}${d.grades ? ' · ' + escapeHtml(d.grades) : ''}</option>`;
+            }).join('');
+        }
+
+        if (!grades.length) return;
+        const first = grades[0];
+        const productSel = document.getElementById('productId');
+        if (productSel && !productSel.value && first.product_id) {
+            if (typeof $.fn.select2 !== 'undefined') {
+                $('#productId').val(String(first.product_id)).trigger('change');
+            } else {
+                productSel.value = String(first.product_id);
+            }
+            if (first.order_qty_mode === 'weight' && first.order_weight_tons) {
+                document.getElementById('qtyModeWeight').checked = true;
+                document.getElementById('orderWeight').value = first.order_weight_tons;
+            } else if (first.order_qty_trucks) {
+                document.getElementById('orderQty').value = first.order_qty_trucks;
+            }
+            if (first.tons_per_truck) document.getElementById('tonsPerTruck').value = first.tons_per_truck;
+            toggleQtyMode();
+            updateQtyPreview();
+        }
+        if (first.last_rate && (first.order_weight_tons || first.order_qty_trucks)) {
+            const tonnes = first.order_weight_tons || (first.order_qty_trucks * (first.tons_per_truck || 40));
+            const proposed = document.getElementById('proposedOrderValue');
+            if (proposed && !proposed.value) proposed.value = (first.last_rate * tonnes).toFixed(2);
+        }
+    } catch (e) {
+        /* prefill is optional */
     }
+}
+
+document.getElementById('btnAddGrade')?.addEventListener('click', function () {
+    const wrap = document.getElementById('extraGrades');
+    wrap.insertAdjacentHTML('beforeend', `<div class="extra-grade-row row g-2 align-items-end mb-2">
+        <div class="col-md-5"><label class="form-label small">Extra grade</label>
+            <select class="form-select extra-product">${document.getElementById('productId').innerHTML}</select></div>
+        <div class="col-md-3"><label class="form-label small">Trucks</label>
+            <input type="number" class="form-control extra-trucks" min="1"></div>
+        <div class="col-md-3"><label class="form-label small">Weight MT</label>
+            <input type="number" class="form-control extra-weight" step="0.001" min="0"></div>
+        <div class="col-md-1"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.extra-grade-row').remove()">×</button></div>
+    </div>`);
 });
 
 async function loadFormData() {
@@ -834,6 +854,20 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
         const qtyMode = formData.get('order_qty_mode') || 'trucks';
         const deliveryType = formData.get('delivery_type') || 'none';
         const billToOtherParty = formData.has('bill_to_other_party');
+        const extraLines = Array.from(document.querySelectorAll('.extra-grade-row')).map(function (row) {
+            const pid = parseInt(row.querySelector('.extra-product')?.value || '0', 10);
+            if (!pid) return null;
+            const trucks = parseInt(row.querySelector('.extra-trucks')?.value || '0', 10);
+            const weight = parseFloat(row.querySelector('.extra-weight')?.value || '0');
+            return {
+                product_id: pid,
+                order_qty_mode: weight > 0 ? 'weight' : 'trucks',
+                order_qty_trucks: trucks || null,
+                order_weight_tons: weight || null,
+                tons_per_truck: parseFloat(formData.get('tons_per_truck')) || 40
+            };
+        }).filter(Boolean);
+
         const orderData = {
             company_id: parseInt(formData.get('company_id')),
             order_date: formData.get('order_date'),
@@ -859,10 +893,21 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
                 : null,
             total_deliveries: deliveryType === 'recurring' && formData.get('total_deliveries')
                 ? parseInt(formData.get('total_deliveries'))
-                : null
+                : null,
+            proposed_order_value: formData.get('proposed_order_value') ? parseFloat(formData.get('proposed_order_value')) : 0,
+            rep_reason: (formData.get('rep_reason') || '').trim(),
+            deal_id: formData.get('deal_id') ? parseInt(formData.get('deal_id')) : null,
+            lines: extraLines.length ? [{
+                product_id: parseInt(formData.get('product_id')),
+                order_qty_mode: qtyMode,
+                order_qty_trucks: qtyMode === 'trucks' ? parseInt(formData.get('order_qty_trucks')) : null,
+                order_weight_tons: qtyMode === 'weight' ? parseFloat(formData.get('order_weight_tons')) : null,
+                tons_per_truck: parseFloat(formData.get('tons_per_truck')) || 40,
+                scheduled_dispatch_date: deliveryType === 'scheduled' ? (formData.get('scheduled_dispatch_date') || null) : null
+            }].concat(extraLines) : undefined
         };
         
-        const response = await fetch('/api/orders', {
+        const response = await fetch('/api/credit/capture', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -873,14 +918,15 @@ document.getElementById('newOrderForm').addEventListener('submit', async functio
         const result = await response.json();
 
         if (!response.ok) {
-            if (result.credit_blocked && result.credit_status) {
-                partyCreditStatus = result.credit_status;
-                await checkPartyCredit(partyCreditStatus.party_id);
+            if (result.evaluation) {
+                partyCreditStatus = result.evaluation;
+                await checkPartyCredit(orderData.party_id);
             }
             throw new Error(result.error || 'Failed to create order');
         }
-        
-        showSuccess((result.message || 'Order created successfully') + '! Order No: ' + result.data.order_no);
+
+        const first = (result.data && result.data.orders && result.data.orders[0]) || {};
+        showSuccess((result.message || 'Order captured') + (first.order_no ? '! Order No: ' + first.order_no : ''));
         
         clearNewOrderForm();
         
@@ -1095,6 +1141,13 @@ document.addEventListener('DOMContentLoaded', function() {
         updateOrderSummary();
     });
     $('#productId').on('change', updateOrderSummary);
+    const proposedEl = document.getElementById('proposedOrderValue');
+    if (proposedEl) {
+        proposedEl.addEventListener('change', function () {
+            const partyId = document.getElementById('partyId').value;
+            if (partyId) checkPartyCredit(partyId);
+        });
+    }
     updateOrderSummary();
 });
 </script>

@@ -34,8 +34,10 @@ class CreditRequestController
         }
 
         try {
-            $status = $this->orderService->getPartyCreditStatus($partyId);
-            echo json_encode(['success' => true, 'data' => $status]);
+            $companyId = isset($_GET['company_id']) ? (int)$_GET['company_id'] : (int)(\App\Support\CompanyContext::getActiveCompanyId() ?? 0);
+            $status = $this->orderService->getPartyCreditStatus($partyId, $companyId);
+            $policy = new \App\Services\CreditGatePolicy();
+            echo json_encode(['success' => true, 'data' => $policy->serializeForRole($status, $user['role'] ?? null)]);
         } catch (\Exception $e) {
             if (stripos($e->getMessage(), 'not found') !== false) {
                 http_response_code(404);

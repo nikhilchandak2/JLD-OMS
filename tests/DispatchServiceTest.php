@@ -22,7 +22,7 @@ class DispatchServiceTest extends DatabaseTestCase
         $this->dispatchService = new DispatchService();
         
         $this->companyId = $this->createCompany();
-        $this->partyId = $this->createParty();
+        $this->partyId = $this->createParty(10000000.0);
         $this->productId = $this->createProduct();
         $this->userId = $this->createUser('dispatch')['id'];
     }

@@ -519,6 +519,17 @@
         }
         .crm-receivable-summary .item { font-size: 0.875rem; }
         .crm-receivable-summary .item strong { color: var(--jld-primary); margin-right: 0.35rem; }
+        .data-as-of-banner {
+            display: none;
+            border-radius: 0.5rem;
+            padding: 0.65rem 0.9rem;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            border: 1px solid transparent;
+        }
+        .data-as-of-banner--fresh { display: block; background: #e8f5e9; border-color: #a5d6a7; color: #1b5e20; }
+        .data-as-of-banner--late { display: block; background: #fff8e1; border-color: #ffcc80; color: #e65100; }
+        .data-as-of-banner--stale { display: block; background: #fdecea; border-color: #ef9a9a; color: #b71c1c; }
         
         /* Select2 customization */
         .select2-container--bootstrap-5 .select2-selection {
@@ -1198,6 +1209,7 @@
                             <li><a class="dropdown-item <?= $reqUri === '/crm/deals/new' ? 'active' : '' ?>" href="/crm/deals/new"><i class="bi bi-plus-circle"></i> New enquiry</a></li>
                             <li><a class="dropdown-item <?= ($reqUri === '/crm/deals' || preg_match('#^/crm/deals/\d+#', $reqUri)) ? 'active' : '' ?>" href="/crm/deals"><i class="bi bi-kanban"></i> Deals</a></li>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/crm/technical-queue') === 0 ? 'active' : '' ?>" href="/crm/technical-queue"><i class="bi bi-tools"></i> Technical queue</a></li>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/data-feeds') === 0 ? 'active' : '' ?>" href="/data-feeds"><i class="bi bi-cloud-arrow-up"></i> Data feeds</a></li>
                         </ul>
                     </li>
                     <?php endif; ?>
@@ -1211,7 +1223,7 @@
                     <?php endif; ?>
 
                     <?php
-                    $adminSectionActive = strpos($reqUri, '/admin/') === 0;
+                    $adminSectionActive = strpos($reqUri, '/admin/') === 0 || strpos($reqUri, '/data-feeds') === 0;
                     if ($canPartyMgmt || $canProducts || $r === 'admin'):
                     ?>
                     <li class="nav-item dropdown">
@@ -1233,6 +1245,7 @@
                             <?php if ($r === 'admin'): ?>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/users') === 0 ? 'active' : '' ?>" href="/admin/users"><i class="bi bi-people"></i> Users</a></li>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/credit-approvals') === 0 ? 'active' : '' ?>" href="/admin/credit-approvals"><i class="bi bi-shield-check"></i> Credit Approvals</a></li>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/data-feeds') === 0 ? 'active' : '' ?>" href="/data-feeds"><i class="bi bi-cloud-arrow-up"></i> Data feeds</a></li>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/busy-integration') === 0 ? 'active' : '' ?>" href="/admin/busy-integration"><i class="bi bi-link-45deg"></i> Busy Integration</a></li>
                             <?php endif; ?>
                         </ul>
@@ -1409,6 +1422,7 @@
             }
         }
     </script>
+    <script src="/js/data-as-of-banner.js"></script>
 </body>
 </html>
 

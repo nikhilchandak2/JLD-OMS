@@ -161,6 +161,11 @@ class DispatchService
             $status = (string)($approval['status'] ?? 'pending');
             throw new \Exception("Cannot dispatch until admin credit approval is granted. Current approval status: {$status}.");
         }
+
+        if (\App\Support\OrderSchema::hasCreditGateColumns()
+            && ($order->creditGateStatus ?? 'cleared') === 'blocked') {
+            throw new \Exception('Cannot dispatch: the Director has not cleared this order\'s credit gate.');
+        }
         
         // Validate business rules
         $dispatchQty = $data['dispatch_qty_trucks'];

@@ -16,6 +16,12 @@
         </div>
     </div>
 
+    <div class="alert alert-danger">
+        <strong>Webhook is inert.</strong> Ledger and dispatch ingestion is manual daily batch only (B1).
+        Do not configure Busy to push live data here. Use <a href="/data-feeds" class="alert-link">Data feeds</a>.
+        POST /api/busy/webhook returns 410 and does not write <code>busy_webhook_logs</code>.
+    </div>
+
     <!-- Integration Status Card -->
     <div class="row">
         <div class="col-xl-12">
@@ -23,7 +29,7 @@
                 <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
                     <h6 class="m-0 font-weight-bold text-primary">Integration Status</h6>
                     <div class="dropdown no-arrow">
-                        <span class="badge badge-success" id="statusBadge">Active</span>
+                        <span class="badge bg-danger" id="statusBadge">Inert</span>
                     </div>
                 </div>
                 <div class="card-body">
@@ -74,7 +80,7 @@
                                 <i class="bi bi-clipboard"></i> Copy
                             </button>
                         </div>
-                        <small class="form-text text-muted">Configure this URL in your Busy software to send invoice webhooks</small>
+                        <small class="form-text text-muted">Historical URL only. The endpoint is inert and must not be wired as a live ledger path.</small>
                     </div>
                     
                     <div class="mb-3">
@@ -233,6 +239,11 @@ async function loadIntegrationStatus() {
         const data = response.data;
         
         document.getElementById('webhookUrl').value = data.webhook_url;
+        const badge = document.getElementById('statusBadge');
+        if (badge) {
+            badge.textContent = data.status === 'inert' ? 'Inert' : (data.status || 'Unknown');
+            badge.className = data.status === 'inert' ? 'badge bg-danger' : 'badge bg-secondary';
+        }
         document.getElementById('totalWebhooks').textContent = data.last_30_days.total_webhooks;
         document.getElementById('successfulWebhooks').textContent = data.last_30_days.successful;
         document.getElementById('failedWebhooks').textContent = data.last_30_days.failed;

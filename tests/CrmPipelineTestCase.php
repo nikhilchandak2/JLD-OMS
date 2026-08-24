@@ -79,6 +79,12 @@ abstract class CrmPipelineTestCase extends DatabaseTestCase
                         [(int)$deal['party_id'], $dealId]
                     );
                     break;
+                case 'credit_gate_cleared':
+                    $this->database->execute(
+                        "UPDATE parties SET credit_limit = 10000000 WHERE id = ?",
+                        [(int)$deal['party_id']]
+                    );
+                    break;
                 default:
                     $captured[$criterion['field_key']] = 'test value';
             }

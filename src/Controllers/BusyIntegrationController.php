@@ -26,56 +26,19 @@ class BusyIntegrationController
         $this->busyInvoiceUploadRepository = new BusyInvoiceUploadRepository();
     }
 
-    /** Public webhook — Busy pushes invoice JSON after bill is raised. */
+    /**
+     * INERT (B1). Ledger and dispatch ingestion is manual daily batch only.
+     * This endpoint must not look like a live data path next to /data-feeds.
+     * It does not write busy_webhook_logs and does not call processInvoice().
+     */
     public function receiveInvoiceWebhook(): void
     {
         header('Content-Type: application/json');
-
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            return;
-        }
-
-        $rawInput = file_get_contents('php://input');
-        $invoiceData = json_decode($rawInput, true);
-
-        if (!$invoiceData) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid JSON data']);
-            return;
-        }
-
-        if (!$this->validateWebhookAuth()) {
-            http_response_code(401);
-            echo json_encode(['error' => 'Unauthorized webhook request']);
-            return;
-        }
-
-        try {
-            $result = $this->busyIntegrationService->processInvoice($invoiceData);
-            if (($result['mapping_status'] ?? '') === 'unmapped') {
-                http_response_code(422);
-                echo json_encode([
-                    'success' => false,
-                    'message' => $result['error'] ?? 'Invoice saved but not mapped to any order',
-                    'data' => $result,
-                ]);
-                return;
-            }
-            http_response_code(200);
-            echo json_encode([
-                'success' => true,
-                'message' => 'Invoice processed successfully',
-                'data' => $result,
-            ]);
-        } catch (\Throwable $e) {
-            http_response_code(400);
-            echo json_encode([
-                'error' => 'Failed to process invoice',
-                'message' => $e->getMessage(),
-            ]);
-        }
+        http_response_code(410);
+        echo json_encode([
+            'error' => 'Gone',
+            'message' => 'The Busy webhook is inert by design. Ledger and dispatch ingestion is manual daily batch only. Upload via /data-feeds.',
+        ]);
     }
 
     /**

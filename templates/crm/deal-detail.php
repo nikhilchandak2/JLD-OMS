@@ -231,6 +231,15 @@ function renderFacts(d) {
     ];
     if (d.value !== undefined) facts.push(['Deal value', d.value === null ? '—' : d.value]);
 
+    const gate = d.credit_gate;
+    if (gate && Number(d.stage) >= 5) {
+        const tier = gate.tier ? ('Tier ' + gate.tier) : 'Credit';
+        const headroom = gate.headroom == null ? '—' : ('₹' + Number(gate.headroom).toLocaleString('en-IN'));
+        const asOf = gate.ledger_as_of || 'no contributing feed';
+        facts.push([tier + ' status', (gate.credit_gate_status || '—') + ' · headroom ' + headroom]);
+        facts.push(['Ledger as-of', asOf + ' · not live']);
+    }
+
     document.getElementById('dealFacts').innerHTML = facts.map(function (f) {
         return '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted small">' +
             escapeHtml(f[0]) + '</span><span class="small fw-semibold text-end">' + escapeHtml(f[1]) + '</span></div>';
