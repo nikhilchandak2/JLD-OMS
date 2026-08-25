@@ -98,7 +98,33 @@ class RateLimitMiddleware
             ],
         ];
 
-        return $rules[$routeKey] ?? null;
+        return $rules[$routeKey] ?? $this->prefixRule($method, $path);
+    }
+
+    /**
+     * Mutating CRM / credit / data-feed routes share one write budget, matching
+     * the global CSRF layer. Exact-match rules above stay stricter (imports).
+     *
+     * @return array{key:string,max_requests:int,window_seconds:int}|null
+     */
+    private function prefixRule(string $method, string $path): ?array
+    {
+        if (!in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+            return null;
+        }
+        if (
+            str_starts_with($path, '/api/crm')
+            || str_starts_with($path, '/api/credit')
+            || str_starts_with($path, '/api/data-feeds')
+        ) {
+            return [
+                'key' => 'crm_write',
+                'max_requests' => $this->readIntEnv('RATE_LIMIT_CRM_WRITE_MAX', 60, 1, 10000),
+                'window_seconds' => $this->readIntEnv('RATE_LIMIT_CRM_WRITE_WINDOW_SECONDS', 60, 10, 86400),
+            ];
+        }
+
+        return null;
     }
 
     private function resolveClientIdentifier(): string

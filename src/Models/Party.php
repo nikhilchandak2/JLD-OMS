@@ -37,8 +37,11 @@ class Party
     public ?float $monthlyConsumptionTon = null;
     public ?float $avgPricePerTon = null;
     public ?string $currentSupplierDetails = null;
+    /** @deprecated TASK 4: superseded by crm_contacts.relationship_strength. Do not drop yet. */
     public ?int $relationWithPurchase = null;
+    /** @deprecated TASK 4: superseded by crm_contacts.relationship_strength. Do not drop yet. */
     public ?int $relationWithInternalTeam = null;
+    /** @deprecated TASK 4: superseded by structured pipeline + contact influence. Do not drop yet. */
     public ?int $probabilityOfConversion = null;
     public ?string $visitDescription = null;
     public ?string $followupNotes = null;

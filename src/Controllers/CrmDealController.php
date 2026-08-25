@@ -188,10 +188,10 @@ class CrmDealController
 
     public function reasonCodes(): void
     {
-        $this->run(function () {
+        $this->run(function (array $actor) {
             $appliesTo = isset($_GET['applies_to']) && $_GET['applies_to'] !== '' ? (string)$_GET['applies_to'] : null;
 
-            return ['data' => $this->dealService->reasonCodes($appliesTo)];
+            return ['data' => $this->dealService->reasonCodes($appliesTo, $actor)];
         });
     }
 

@@ -144,6 +144,7 @@ class PartyController
                 'number_of_plants', 'general_notes',
                 'funnel_stage', 'industry_type', 'tiles_subtype',
                 'monthly_consumption_ton', 'avg_price_per_ton', 'current_supplier_details',
+                // TASK 4: star ratings superseded by crm_contacts influence/strength. Kept, not dropped.
                 'relation_with_purchase', 'relation_with_internal_team', 'probability_of_conversion',
                 'visit_description', 'followup_notes', 'visit_samples_provided'
             ];

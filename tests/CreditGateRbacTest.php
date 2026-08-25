@@ -88,6 +88,20 @@ class CreditGateRbacTest extends CreditGateTestCase
                         [(int)$deal['party_id']]
                     );
                     break;
+                case 'handoff_packet_transferred':
+                    (new \App\Services\HandoffService())->create([
+                        'packet_type' => \App\Services\HandoffService::TYPE_SALES_TO_DISPATCH,
+                        'deal_id' => $dealId,
+                        'payload' => [
+                            'grades' => [['grade_code' => 'J-11', 'spec' => '12mm body']],
+                            'quantity_tonnes' => 40,
+                            'packing' => '50 kg bags',
+                            'delivery_timeline' => 'Within 7 days of PO',
+                            'delivery_terms' => 'ex_works',
+                            'special_handling_notes' => 'None',
+                        ],
+                    ], $this->admin);
+                    break;
                 default:
                     $captured[$criterion['field_key']] = 'test value';
             }

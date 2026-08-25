@@ -93,6 +93,7 @@
                 <div class="tab-pane fade" id="profileTabFunnel">
                     <div class="row g-2">
                         <div class="col-md-6"><label class="form-label">Funnel stage</label><select class="form-select" id="profileFunnelStage"><option value="">–</option></select></div>
+                        <div class="col-12"><div class="alert alert-secondary py-2 small mb-0">The star ratings below are superseded by structured contact influence / relationship strength. They are kept for historical rows and will be deprecated — do not treat them as the account score.</div></div>
                         <div class="col-12"><strong class="text-muted">Ratings (1–5 stars)</strong></div>
                         <div class="col-md-4"><label class="form-label">Relation with Purchase</label><select class="form-select" id="profileRelationPurchase"><option value="">–</option><option value="1">1 ★</option><option value="2">2 ★★</option><option value="3">3 ★★★</option><option value="4">4 ★★★★</option><option value="5">5 ★★★★★</option></select></div>
                         <div class="col-md-4"><label class="form-label">Relation with Internal Team</label><select class="form-select" id="profileRelationInternal"><option value="">–</option><option value="1">1 ★</option><option value="2">2 ★★</option><option value="3">3 ★★★</option><option value="4">4 ★★★★</option><option value="5">5 ★★★★★</option></select></div>

@@ -5,7 +5,14 @@
             <h1 class="page-title mb-1">CRM Dashboard</h1>
         </div>
         <div class="d-flex gap-2 align-items-center">
-            <a href="/crm/deals/new" class="btn btn-success px-3 py-2"><i class="bi bi-lightning-charge me-1"></i>New enquiry</a>
+            <a href="/crm/visits/new" class="btn btn-success px-3 py-2"><i class="bi bi-geo-alt me-1"></i>Log visit</a>
+            <a href="/crm/visits/overdue" class="btn btn-outline-danger px-3"><i class="bi bi-clock-history me-1"></i>Overdue follow-ups</a>
+            <a href="/crm/dormancy" class="btn btn-outline-warning px-3"><i class="bi bi-thermometer-half me-1"></i>Dormant accounts</a>
+            <a href="/crm/forecasts" class="btn btn-outline-primary px-3"><i class="bi bi-clipboard-data me-1"></i>Forecast</a>
+            <a href="/crm/pipeline" class="btn btn-outline-primary px-3"><i class="bi bi-bar-chart me-1"></i>Pipeline</a>
+            <?php if (in_array($user['role'] ?? '', ['admin', 'crm'], true)): ?>
+            <a href="/crm/escalations" class="btn btn-outline-dark px-3"><i class="bi bi-exclamation-octagon me-1"></i>Escalation inbox</a>
+            <?php endif; ?>
             <a href="/crm/deals" class="btn btn-outline-primary px-3"><i class="bi bi-kanban me-1"></i>Deals</a>
             <a href="/crm/technical-queue" class="btn btn-outline-secondary px-3"><i class="bi bi-tools me-1"></i>Technical queue</a>
             <a href="/crm/parties/new" class="btn btn-success px-3"><i class="bi bi-plus-lg me-1"></i>Add New</a>
@@ -18,6 +25,14 @@
 </div>
 
 <div id="error-container" class="error-message mb-3"></div>
+
+<div class="card mb-3">
+    <div class="card-body py-3">
+        <label class="form-label small mb-1" for="accountSearchInput">Search contacts, competitors, and issues</label>
+        <input type="search" class="form-control" id="accountSearchInput" placeholder="Type at least two characters…" autocomplete="off">
+        <div class="list-group mt-2" id="accountSearchResults"></div>
+    </div>
+</div>
 
 <div class="row g-3 mt-0">
     <div class="col-12">
@@ -137,6 +152,7 @@ const isAdmin = <?= (($user['role'] ?? '') === 'admin') ? 'true' : 'false' ?>;
 const currentUserId = <?= (int)($user['id'] ?? 0) ?>;
 
 document.addEventListener('DOMContentLoaded', async function() {
+    if (window.AccountContext) AccountContext.mountSearch({ inputId: 'accountSearchInput', resultsId: 'accountSearchResults' });
     const activityPartyFilter = document.getElementById('activityPartyFilter');
     const activityOwnerFilter = document.getElementById('activityOwnerFilter');
     const btnClearActivityFilter = document.getElementById('btnClearActivityFilter');

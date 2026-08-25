@@ -13,6 +13,7 @@ use App\Repositories\CrmDealStageEventRepository;
 use App\Repositories\CrmSampleRepository;
 use App\Repositories\CrmStageExitCriteriaRepository;
 use App\Repositories\CrmTechnicalFlagRepository;
+use App\Repositories\HandoffPacketRepository;
 
 /**
  * The only writer of crm_deals.stage and crm_deals.status.
@@ -58,6 +59,7 @@ class DealStageService
         'decision_maker_contact',
         'sample_sent',
         'credit_gate_cleared',
+        'handoff_packet_transferred',
     ];
 
     private Database $database;
@@ -74,6 +76,7 @@ class DealStageService
     private CrmDealPolicy $policy;
     private CreditGateService $creditGate;
     private CreditOverrideService $creditOverrides;
+    private HandoffPacketRepository $handoffPackets;
     private array $config;
 
     public function __construct()
@@ -92,6 +95,7 @@ class DealStageService
         $this->policy = new CrmDealPolicy();
         $this->creditGate = new CreditGateService();
         $this->creditOverrides = new CreditOverrideService();
+        $this->handoffPackets = new HandoffPacketRepository();
         $this->config = require __DIR__ . '/../../config/crm_pipeline.php';
     }
 
@@ -421,6 +425,7 @@ class DealStageService
         $this->policy->assertCan($actor['role'] ?? null, CrmDealPolicy::MOVE_DEAL);
         $this->requireDeal($dealId);
 
+        $before = $this->criteriaValues->findByDeal($dealId);
         $allowedKeys = array_column($this->exitCriteria->findAllActive(), 'field_key');
         foreach ($values as $fieldKey => $value) {
             if (!in_array($fieldKey, $allowedKeys, true) || in_array($fieldKey, self::DERIVED_CRITERIA, true)) {
@@ -433,6 +438,16 @@ class DealStageService
                 $actor['id'] ?? null
             );
         }
+
+        $after = $this->criteriaValues->findByDeal($dealId);
+        $this->audit->log(
+            $actor['id'] ?? null,
+            'crm_deal_criteria_values',
+            $dealId,
+            'UPDATE',
+            $before,
+            $after
+        );
 
         return $this->evaluateExitCriteria($dealId);
     }
@@ -470,6 +485,9 @@ class DealStageService
                 return empty($samples) ? null : 'yes (' . count($samples) . ')';
             case 'credit_gate_cleared':
                 return $this->creditGateClearedValue($deal);
+            case 'handoff_packet_transferred':
+                $packet = $this->handoffPackets->currentSalesToDispatch((int)$deal['id']);
+                return $packet === null ? null : 'packet #' . (int)$packet['id'];
             default:
                 return null;
         }
@@ -529,9 +547,11 @@ class DealStageService
         $totals = [];
         $previousStage = null;
         $previousAt = null;
+        $tz = new \DateTimeZone('Asia/Kolkata');
+        $now = (new \DateTimeImmutable('now', $tz))->getTimestamp();
 
         foreach ($events as $event) {
-            $occurredAt = strtotime((string)$event['occurred_at']);
+            $occurredAt = (new \DateTimeImmutable((string)$event['occurred_at'], $tz))->getTimestamp();
             if ($previousStage !== null && $previousAt !== null) {
                 $totals[$previousStage] = ($totals[$previousStage] ?? 0) + max(0, $occurredAt - $previousAt);
             }
@@ -540,7 +560,7 @@ class DealStageService
         }
 
         if ($previousStage !== null && $previousAt !== null) {
-            $totals[$previousStage] = ($totals[$previousStage] ?? 0) + max(0, time() - $previousAt);
+            $totals[$previousStage] = ($totals[$previousStage] ?? 0) + max(0, $now - $previousAt);
         }
 
         ksort($totals);

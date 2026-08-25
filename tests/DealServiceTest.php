@@ -97,8 +97,10 @@ class DealServiceTest extends CrmPipelineTestCase
                 'grades' => str_repeat('X', 300),
             ], $this->admin);
             self::fail('An oversized grade code should fail the capture.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            throw $e;
         } catch (\Throwable $e) {
-            // expected
+            // expected: grade insert fails after the deal row is written
         }
 
         $after = $this->database->fetch("SELECT COUNT(*) AS c FROM crm_deals WHERE party_id = ?", [$partyId]);

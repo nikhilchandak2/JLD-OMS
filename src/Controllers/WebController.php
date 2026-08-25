@@ -123,6 +123,25 @@ class WebController
         ]);
     }
     
+    public function dispatchHandoffs(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing', 'accounts', 'crm', 'sales'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Handoff access required']);
+            return;
+        }
+        $user = $this->authService->getCurrentUser();
+        $this->renderTemplate('dispatch-handoffs', [
+            'title' => 'Handoff packets',
+            'user' => $user,
+            'csrf_token' => CsrfMiddleware::getToken(),
+            'can_ack_sales' => $this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing']),
+            'can_create_accounts' => $this->authService->hasAnyRole(['admin', 'dispatch', 'order_processing', 'accounts']),
+            'can_ack_accounts' => $this->authService->hasAnyRole(['admin', 'accounts']),
+        ]);
+    }
+
     /**
      * Dispatch dashboard – queue of pending/partial orders awaiting dispatch.
      */
@@ -767,6 +786,14 @@ class WebController
         ]);
     }
 
+    public function crmPartyBriefing(string $id): void
+    {
+        $this->renderCrmPipelinePage('crm/briefing', 'Account briefing', [
+            'party_id' => (int)$id,
+            'can_write_handover' => $this->authService->hasAnyRole(['admin', 'crm', 'sales']),
+        ]);
+    }
+
     public function crmPartyDetail(string $id): void
     {
         $this->requireAuth();
@@ -818,6 +845,50 @@ class WebController
     public function crmTechnicalQueue(): void
     {
         $this->renderCrmPipelinePage('crm/technical-queue', 'Technical queue - CRM');
+    }
+
+    public function crmVisitNew(): void
+    {
+        $this->renderCrmPipelinePage('crm/visit-log', 'Log visit', [
+            'party_id' => (int)($_GET['party_id'] ?? 0),
+            'deal_id' => (int)($_GET['deal_id'] ?? 0),
+        ]);
+    }
+
+    public function crmVisitsOverdue(): void
+    {
+        $this->renderCrmPipelinePage('crm/visits-overdue', 'Overdue follow-ups');
+    }
+
+    public function crmDormancy(): void
+    {
+        $this->renderCrmPipelinePage('crm/dormancy', 'Dormant accounts');
+    }
+
+    public function crmEscalations(): void
+    {
+        $this->requireAuth();
+        if (!$this->authService->hasAnyRole(['admin', 'crm'])) {
+            http_response_code(403);
+            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'Director inbox is for admin and CRM.']);
+            return;
+        }
+        $this->renderCrmPipelinePage('crm/escalations', 'Escalation inbox');
+    }
+
+    public function crmForecasts(): void
+    {
+        $this->renderCrmPipelinePage('crm/forecast', 'Monthly forecast');
+    }
+
+    public function crmForecastActuals(): void
+    {
+        $this->renderCrmPipelinePage('crm/forecast-actuals', 'Forecast vs actual');
+    }
+
+    public function crmPipeline(): void
+    {
+        $this->renderCrmPipelinePage('crm/pipeline', 'Pipeline');
     }
 
     public function dataFeeds(): void

@@ -1,5 +1,6 @@
 <?php
 $dispatchUri = $_SERVER['REQUEST_URI'] ?? '';
+$onHandoffs = strpos($dispatchUri, '/dispatch/handoffs') === 0;
 $onDaily = strpos($dispatchUri, '/dispatch/daily') === 0;
 $onUploads = strpos($dispatchUri, '/dispatch/uploads') === 0;
 $onInvoices = strpos($dispatchUri, '/dispatch/invoices') === 0;
@@ -10,12 +11,18 @@ $onQueue = strpos($dispatchUri, '/dispatch') === 0
     && !$onUploads
     && !$onInvoices
     && !$onHistory
-    && !$onRejectTransfers;
+    && !$onRejectTransfers
+    && !$onHandoffs;
 ?>
 <ul class="nav nav-pills mb-4">
     <li class="nav-item">
         <a class="nav-link <?= $onQueue ? 'active' : '' ?>" href="/dispatch">
             <i class="bi bi-list-check me-1"></i> Dispatch Queue
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?= $onHandoffs ? 'active' : '' ?>" href="/dispatch/handoffs">
+            <i class="bi bi-arrow-left-right me-1"></i> Handoffs
         </a>
     </li>
     <li class="nav-item">

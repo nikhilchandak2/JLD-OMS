@@ -44,6 +44,13 @@
         </div>
 
         <div class="card mb-3">
+            <div class="card-header">Sales → Dispatch packet</div>
+            <div class="card-body" id="dealHandoffRoot">
+                <p class="text-muted small mb-0">Loading…</p>
+            </div>
+        </div>
+
+        <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>Technical queries</span>
                 <button class="btn btn-sm btn-outline-primary" id="btnRaiseFlag">Raise technical query</button>
@@ -56,6 +63,10 @@
         <div class="card mb-3">
             <div class="card-header">Deal</div>
             <div class="card-body" id="dealFacts"></div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-header">Account knowledge</div>
+            <div class="card-body" id="dealAccountContext"><p class="text-muted small mb-0">Loading…</p></div>
         </div>
         <div class="card">
             <div class="card-header">Stage history</div>
@@ -161,6 +172,8 @@ function render() {
     renderFacts(d);
     renderFlags(d);
     renderHistory(d);
+    if (window.AccountContext) AccountContext.mountDeal(d);
+    if (window.HandoffUI) HandoffUI.mountDeal(d);
 }
 
 function renderCriteria(criteria) {

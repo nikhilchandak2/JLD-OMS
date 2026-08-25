@@ -16,7 +16,11 @@ class CrmContactRepository
 
     public function findByParty(int $partyId): array
     {
-        $sql = "SELECT * FROM crm_contacts WHERE party_id = ? ORDER BY is_primary DESC, name ASC";
+        $sql = "SELECT c.*, u.name AS introduced_by_name
+                FROM crm_contacts c
+                LEFT JOIN users u ON u.id = c.introduced_by_user_id
+                WHERE c.party_id = ?
+                ORDER BY c.is_primary DESC, c.name ASC";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$partyId]);
         $list = [];
@@ -28,7 +32,10 @@ class CrmContactRepository
 
     public function findById(int $id): ?CrmContact
     {
-        $sql = "SELECT * FROM crm_contacts WHERE id = ?";
+        $sql = "SELECT c.*, u.name AS introduced_by_name
+                FROM crm_contacts c
+                LEFT JOIN users u ON u.id = c.introduced_by_user_id
+                WHERE c.id = ?";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -37,7 +44,11 @@ class CrmContactRepository
 
     public function create(CrmContact $contact): CrmContact
     {
-        $sql = "INSERT INTO crm_contacts (party_id, name, role, phone, email, is_primary) VALUES (?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO crm_contacts (
+                    party_id, name, role, phone, email, is_primary,
+                    influence_level, relationship_strength, introduced_by_user_id,
+                    introduced_on, preferred_channel, preferred_language, context_notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([
             $contact->partyId,
@@ -46,6 +57,13 @@ class CrmContactRepository
             $contact->phone,
             $contact->email,
             $contact->isPrimary ? 1 : 0,
+            $contact->influenceLevel ?: 'unknown',
+            $contact->relationshipStrength ?: 'unknown',
+            $contact->introducedByUserId,
+            $contact->introducedOn,
+            $contact->preferredChannel,
+            $contact->preferredLanguage,
+            $contact->contextNotes,
         ]);
         $contact->id = (int)$this->database->getConnection()->lastInsertId();
         return $this->findById($contact->id);
@@ -53,7 +71,11 @@ class CrmContactRepository
 
     public function update(int $id, array $data): ?CrmContact
     {
-        $allowed = ['name', 'role', 'phone', 'email', 'is_primary'];
+        $allowed = [
+            'name', 'role', 'phone', 'email', 'is_primary',
+            'influence_level', 'relationship_strength', 'introduced_by_user_id',
+            'introduced_on', 'preferred_channel', 'preferred_language', 'context_notes',
+        ];
         $fields = [];
         $values = [];
         foreach ($allowed as $f) {

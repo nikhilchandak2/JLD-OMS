@@ -11,6 +11,8 @@ class Database
     private static array $connections = [];
     private static array $transactionDepth = [];
     private static array $transactionAborted = [];
+    private static int $queryCount = 0;
+    private static bool $countingQueries = false;
 
     private array $config;
     private string $key;
@@ -56,9 +58,8 @@ class Database
     }
     
     /**
-     * Transactions nest: only the outermost begin/commit reaches MySQL, so a service that
-     * opens a transaction and calls another service or repository that does the same still
-     * commits or rolls back as one unit.
+     * Nested begin/commit/rollback use SAVEPOINT so an inner rollback undoes only that
+     * block. The outermost begin/commit is the real MySQL transaction.
      */
     public function beginTransaction(): bool
     {
@@ -71,6 +72,8 @@ class Database
             return $started;
         }
 
+        $depth = self::$transactionDepth[$this->key];
+        $connection->exec('SAVEPOINT jld_sp_' . $depth);
         self::$transactionDepth[$this->key]++;
         return true;
     }
@@ -81,6 +84,7 @@ class Database
 
         if (self::$transactionDepth[$this->key] > 1) {
             self::$transactionDepth[$this->key]--;
+            $connection->exec('RELEASE SAVEPOINT jld_sp_' . self::$transactionDepth[$this->key]);
             return true;
         }
 
@@ -106,7 +110,7 @@ class Database
 
         if (self::$transactionDepth[$this->key] > 1) {
             self::$transactionDepth[$this->key]--;
-            self::$transactionAborted[$this->key] = true;
+            $connection->exec('ROLLBACK TO SAVEPOINT jld_sp_' . self::$transactionDepth[$this->key]);
             return true;
         }
 
@@ -125,8 +129,24 @@ class Database
         return $this->getConnection()->inTransaction();
     }
     
+    public static function beginCountingQueries(): void
+    {
+        self::$queryCount = 0;
+        self::$countingQueries = true;
+    }
+
+    public static function takeQueryCount(): int
+    {
+        self::$countingQueries = false;
+
+        return self::$queryCount;
+    }
+
     public function query(string $sql, array $params = []): \PDOStatement
     {
+        if (self::$countingQueries) {
+            self::$queryCount++;
+        }
         $stmt = $this->getConnection()->prepare($sql);
         $stmt->execute($params);
         return $stmt;

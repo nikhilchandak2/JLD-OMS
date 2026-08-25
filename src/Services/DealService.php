@@ -31,6 +31,7 @@ class DealService
     private DealStageService $stageService;
     private CreditGateService $creditGate;
     private CreditGatePolicy $creditPolicy;
+    private AccountContextService $accountContext;
     private array $config;
 
     public function __construct()
@@ -47,6 +48,7 @@ class DealService
         $this->stageService = new DealStageService();
         $this->creditGate = new CreditGateService();
         $this->creditPolicy = new CreditGatePolicy();
+        $this->accountContext = new AccountContextService();
         $this->config = require __DIR__ . '/../../config/crm_pipeline.php';
     }
 
@@ -189,6 +191,9 @@ class DealService
             $deal['credit_gate'] = $this->creditSnapshotForDeal($deal, $actor['role'] ?? null);
         }
 
+        $deal['account_context'] = $this->accountContext->snapshotForParty((int)$deal['party_id'], $actor);
+        $deal['handoff_packet'] = (new HandoffService())->currentSalesToDispatchForDeal($dealId);
+
         return $this->policy->serializeDeal($deal, $actor['role'] ?? null);
     }
 
@@ -302,8 +307,10 @@ class DealService
         return $summary;
     }
 
-    public function reasonCodes(?string $appliesTo = null): array
+    public function reasonCodes(?string $appliesTo = null, ?array $actor = null): array
     {
+        $this->policy->assertCan($actor['role'] ?? null, CrmDealPolicy::VIEW_DEAL);
+
         return $this->reasonCodes->findActive($appliesTo);
     }
 

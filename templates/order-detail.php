@@ -300,6 +300,17 @@
             </div>
 
             <!-- Dispatch History -->
+            <div class="card mb-4" id="orderHandoffCard">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-arrow-left-right me-2"></i>Dispatch → Accounts packet</h5>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted">Captured in-system even though the invoice is raised in Busy. Receiving teams do not re-type these fields.</p>
+                    <div id="orderHandoffRoot" data-order-id="<?= (int)$order_id ?>"></div>
+                    <div id="handoffError" class="alert alert-danger d-none mt-2" role="alert"></div>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Dispatch History</h5>

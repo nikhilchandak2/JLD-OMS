@@ -41,8 +41,10 @@ class TechnicalFlagService
         $this->config = require __DIR__ . '/../../config/crm_pipeline.php';
     }
 
-    public function queues(?int $companyId = null): array
+    public function queues(array $actor, ?int $companyId = null): array
     {
+        $this->assertMayRead($actor);
+
         return $this->queues->findActive($companyId);
     }
 
@@ -152,6 +154,11 @@ class TechnicalFlagService
         }
 
         $this->flags->resolve($flagId, (int)($actor['id'] ?? 0), $resolutionType, $note);
+        (new EscalationService())->closeForSource(
+            'crm_technical_flags',
+            $flagId,
+            'The technical flag was resolved.'
+        );
         $this->audit->log(
             $actor['id'] ?? null,
             'crm_technical_flags',
@@ -176,6 +183,11 @@ class TechnicalFlagService
         }
 
         $this->flags->cancel($flagId, trim($note));
+        (new EscalationService())->closeForSource(
+            'crm_technical_flags',
+            $flagId,
+            'The technical flag was cancelled.'
+        );
         $this->audit->log(
             $actor['id'] ?? null,
             'crm_technical_flags',

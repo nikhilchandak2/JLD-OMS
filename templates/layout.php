@@ -507,6 +507,47 @@
             font-size: 0.875rem;
         }
         .crm-contact-item:last-child, .crm-activity-item:last-child { border-bottom: none; }
+        .crm-contact-editor-row {
+            border: 1px solid var(--jld-border);
+            border-radius: 0.5rem;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.75rem;
+            background: #fff;
+        }
+        .crm-competitor-row, .crm-issue-row {
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--jld-border);
+            font-size: 0.875rem;
+        }
+        .crm-competitor-row:last-child, .crm-issue-row:last-child { border-bottom: none; }
+        .intel-marker {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 0.15rem 0.4rem;
+            border-radius: 0.25rem;
+            vertical-align: middle;
+        }
+        .intel-marker--factual { background: #1b5e20; color: #fff; }
+        .intel-marker--reported { background: #fff3e0; color: #e65100; border: 1px dashed #ef6c00; }
+        .intel-marker--estimated { background: #eceff1; color: #455a64; border: 1px solid #90a4ae; }
+        .visit-log-form .form-control-lg, .visit-log-form .btn-lg { min-height: 3rem; }
+        .visit-contact-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .visit-contact-chip {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.85rem 1rem;
+            border: 1px solid var(--jld-border);
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            min-height: 3rem;
+        }
+        .visit-contact-chip input { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+        .visit-save { position: sticky; bottom: 0.75rem; z-index: 2; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+        .visit-log-page { max-width: 32rem; }
         .crm-receivable-summary {
             display: flex;
             flex-wrap: wrap;
@@ -1122,8 +1163,13 @@
                             <?php endif; ?>
                             <?php if ($canDispatchDash): ?>
                             <li>
-                                <a class="dropdown-item <?= strpos($reqUri, '/dispatch') === 0 && strpos($reqUri, '/dispatch/history') === false && strpos($reqUri, '/dispatch/daily') === false && strpos($reqUri, '/dispatch/reject-transfers') === false && strpos($reqUri, '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
+                                <a class="dropdown-item <?= strpos($reqUri, '/dispatch') === 0 && strpos($reqUri, '/dispatch/history') === false && strpos($reqUri, '/dispatch/daily') === false && strpos($reqUri, '/dispatch/reject-transfers') === false && strpos($reqUri, '/dispatch/handoffs') === false && strpos($reqUri, '/dispatches') !== 0 ? 'active' : '' ?>" href="/dispatch">
                                     <i class="bi bi-truck-flatbed"></i> Dispatch Dashboard
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item <?= strpos($reqUri, '/dispatch/handoffs') === 0 ? 'active' : '' ?>" href="/dispatch/handoffs">
+                                    <i class="bi bi-arrow-left-right"></i> Handoff packets
                                 </a>
                             </li>
                             <?php endif; ?>
@@ -1209,6 +1255,14 @@
                             <li><a class="dropdown-item <?= $reqUri === '/crm/deals/new' ? 'active' : '' ?>" href="/crm/deals/new"><i class="bi bi-plus-circle"></i> New enquiry</a></li>
                             <li><a class="dropdown-item <?= ($reqUri === '/crm/deals' || preg_match('#^/crm/deals/\d+#', $reqUri)) ? 'active' : '' ?>" href="/crm/deals"><i class="bi bi-kanban"></i> Deals</a></li>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/crm/technical-queue') === 0 ? 'active' : '' ?>" href="/crm/technical-queue"><i class="bi bi-tools"></i> Technical queue</a></li>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/crm/visits/new') === 0 ? 'active' : '' ?>" href="/crm/visits/new"><i class="bi bi-geo-alt"></i> Log visit</a></li>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/crm/visits/overdue') === 0 ? 'active' : '' ?>" href="/crm/visits/overdue"><i class="bi bi-clock-history"></i> Overdue follow-ups</a></li>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/crm/dormancy') === 0 ? 'active' : '' ?>" href="/crm/dormancy"><i class="bi bi-thermometer-half"></i> Dormant accounts</a></li>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/crm/forecasts') === 0 ? 'active' : '' ?>" href="/crm/forecasts"><i class="bi bi-clipboard-data"></i> Monthly forecast</a></li>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/crm/pipeline') === 0 ? 'active' : '' ?>" href="/crm/pipeline"><i class="bi bi-bar-chart"></i> Pipeline</a></li>
+                            <?php if (in_array($r, ['admin', 'crm'], true)): ?>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/crm/escalations') === 0 ? 'active' : '' ?>" href="/crm/escalations"><i class="bi bi-exclamation-octagon"></i> Escalation inbox</a></li>
+                            <?php endif; ?>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/data-feeds') === 0 ? 'active' : '' ?>" href="/data-feeds"><i class="bi bi-cloud-arrow-up"></i> Data feeds</a></li>
                         </ul>
                     </li>
@@ -1241,6 +1295,9 @@
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/reminders') === 0 ? 'active' : '' ?>" href="/admin/reminders"><i class="bi bi-envelope-check"></i> Reminders</a></li>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/tds') === 0 ? 'active' : '' ?>" href="/admin/tds"><i class="bi bi-calculator"></i> TDS</a></li>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/bills/import') === 0 ? 'active' : '' ?>" href="/admin/bills/import"><i class="bi bi-upload"></i> Import Bills (Busy)</a></li>
+                            <?php endif; ?>
+                            <?php if ($r === 'accounts'): ?>
+                            <li><a class="dropdown-item <?= strpos($reqUri, '/dispatch/handoffs') === 0 ? 'active' : '' ?>" href="/dispatch/handoffs"><i class="bi bi-arrow-left-right"></i> Handoff packets</a></li>
                             <?php endif; ?>
                             <?php if ($r === 'admin'): ?>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/admin/users') === 0 ? 'active' : '' ?>" href="/admin/users"><i class="bi bi-people"></i> Users</a></li>
@@ -1423,6 +1480,9 @@
         }
     </script>
     <script src="/js/data-as-of-banner.js"></script>
+    <script src="/js/account-context.js"></script>
+    <script src="/js/visit-log.js"></script>
+    <script src="/js/handoff.js"></script>
 </body>
 </html>
 

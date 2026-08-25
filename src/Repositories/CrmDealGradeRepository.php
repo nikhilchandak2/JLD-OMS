@@ -49,6 +49,10 @@ class CrmDealGradeRepository
 
     public function upsert(int $dealId, string $gradeCode, ?float $qty): void
     {
+        if (strlen($gradeCode) > 64) {
+            throw new \InvalidArgumentException('Grade code exceeds 64 characters.');
+        }
+
         $this->database->query(
             "INSERT INTO crm_deal_grades (deal_id, grade_code, indicative_qty_tonnes)
              VALUES (?, ?, ?)

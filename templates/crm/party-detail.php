@@ -19,8 +19,13 @@
             <p class="profile-meta mb-0 mt-1" id="partyEmailLine" style="display:none;"><i class="bi bi-envelope"></i> <a href="#" id="partyEmailLink" class="text-white text-decoration-none"></a></p>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            <a href="/crm/parties/<?= $party_id ?>/briefing" class="btn btn-light btn-sm"><i class="bi bi-journal-text me-1"></i>Briefing</a>
             <button type="button" class="btn btn-light btn-sm" id="btnEditProfile"><i class="bi bi-pencil me-1"></i>Edit company</button>
             <button type="button" class="btn btn-outline-light btn-sm" id="btnAddContact"><i class="bi bi-person-plus me-1"></i>Add contact</button>
+            <a href="/crm/visits/new?party_id=<?= $party_id ?>" class="btn btn-outline-light btn-sm"><i class="bi bi-geo-alt me-1"></i>Log visit</a>
+            <?php if (in_array($user['role'] ?? '', ['admin', 'crm', 'sales'], true)): ?>
+            <button type="button" class="btn btn-outline-light btn-sm" id="btnSeniorAttention"><i class="bi bi-exclamation-octagon me-1"></i>Needs senior attention</button>
+            <?php endif; ?>
             <?php if (in_array($user['role'] ?? '', ['admin', 'marketing', 'crm'])): ?>
             <a href="/visit-requests?raise_party_id=<?= $party_id ?>" class="btn btn-warning btn-sm"><i class="bi bi-geo-alt me-1"></i>Request technical visit</a>
             <?php endif; ?>
@@ -60,7 +65,43 @@
                 <span><i class="bi bi-people"></i> Contacts</span>
                 <button type="button" class="btn btn-sm btn-outline-primary py-0" id="btnAddContact2"><i class="bi bi-plus"></i></button>
             </div>
-            <div class="card-body" id="contactsList">Loading…</div>
+            <div class="card-body" id="contactEditor">Loading…</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-0">
+    <div class="col-12">
+        <div class="card crm-section-card" id="competitorPanel">
+            <div class="card-header"><span><i class="bi bi-diagram-3"></i> Competitors</span></div>
+            <div class="card-body" data-competitor-body>Loading…</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-0">
+    <div class="col-lg-7">
+        <div class="card crm-section-card" id="issuesPanel">
+            <div class="card-header"><span><i class="bi bi-exclamation-octagon"></i> Issues &amp; complaints</span></div>
+            <div class="card-body" data-issues-body>Loading…</div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card crm-section-card" id="accountContextPanel">
+            <div class="card-header"><span><i class="bi bi-building"></i> Account context</span></div>
+            <div class="card-body" data-context-body>Loading…</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-0">
+    <div class="col-12">
+        <div class="card crm-section-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-geo-alt"></i> Visits</span>
+                <a href="/crm/visits/new?party_id=<?= $party_id ?>" class="btn btn-sm btn-primary py-0"><i class="bi bi-plus me-1"></i>Log visit</a>
+            </div>
+            <div class="card-body" id="visitsList">Loading…</div>
         </div>
     </div>
 </div>
@@ -103,27 +144,6 @@
         <button type="button" class="btn btn-sm btn-primary py-0" id="btnAddActivity"><i class="bi bi-plus me-1"></i>Log activity</button>
     </div>
     <div class="card-body" id="activitiesList">Loading…</div>
-</div>
-
-<!-- Add contact modal -->
-<div class="modal fade" id="contactModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title" id="contactModalTitle">Add contact</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body">
-                <input type="hidden" id="contactId">
-                <div class="mb-3"><label class="form-label">Name *</label><input type="text" class="form-control" id="contactName" required></div>
-                <div class="mb-3"><label class="form-label">Role</label><input type="text" class="form-control" id="contactRole"></div>
-                <div class="mb-3"><label class="form-label">Phone</label><input type="text" class="form-control" id="contactPhone"></div>
-                <div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" id="contactEmail"></div>
-                <div class="form-check"><input class="form-check-input" type="checkbox" id="contactIsPrimary"><label class="form-check-label" for="contactIsPrimary">Primary contact</label></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="btnSaveContact">Save</button>
-            </div>
-        </div>
-    </div>
 </div>
 
 <!-- Add activity modal -->
@@ -199,6 +219,7 @@
                     <div class="tab-pane fade" id="profileTabFunnel">
                         <div class="row g-2">
                             <div class="col-md-6"><label class="form-label">Funnel stage</label><select class="form-select" id="profileFunnelStage"><option value="">–</option></select></div>
+                            <div class="col-12"><div class="alert alert-secondary py-2 small mb-0">The star ratings below are superseded by structured contact influence / relationship strength. They are kept for historical rows and will be deprecated — do not treat them as the account score.</div></div>
                             <div class="col-12"><strong class="text-muted">Ratings (1–5 stars)</strong></div>
                             <div class="col-md-4"><label class="form-label">Relation with Purchase</label><select class="form-select" id="profileRelationPurchase"><option value="">–</option><option value="1">1 ★</option><option value="2">2 ★★</option><option value="3">3 ★★★</option><option value="4">4 ★★★★</option><option value="5">5 ★★★★★</option></select></div>
                             <div class="col-md-4"><label class="form-label">Relation with Internal Team</label><select class="form-select" id="profileRelationInternal"><option value="">–</option><option value="1">1 ★</option><option value="2">2 ★★</option><option value="3">3 ★★★</option><option value="4">4 ★★★★</option><option value="5">5 ★★★★★</option></select></div>
@@ -324,10 +345,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch (e) {
         showError(e.message);
     }
-    loadContacts();
+    if (window.AccountContext) {
+        AccountContext.mountParty({ partyId: partyId, users: userOptions }).catch(function (e) { showError(e.message); });
+    }
     loadSamples();
     loadReceivables();
     loadActivities();
+    loadVisits();
     document.getElementById('profileMonthlyConsumptionTon').addEventListener('input', updateFunnelValueDisplay);
     document.getElementById('profileAvgPricePerTon').addEventListener('input', updateFunnelValueDisplay);
     fillVisitSampleProductDropdowns();
@@ -641,25 +665,30 @@ document.getElementById('btnSaveReceivable').addEventListener('click', async fun
     } catch (e) { showError(e.message); }
 });
 
-async function loadContacts() {
+async function loadVisits() {
+    const el = document.getElementById('visitsList');
+    if (!el) return;
     try {
-        const r = await apiCall('/api/crm/parties/' + partyId + '/contacts');
+        const r = await apiCall('/api/crm/parties/' + partyId + '/visits');
         const list = r.data || [];
-        const el = document.getElementById('contactsList');
-        if (list.length === 0) el.innerHTML = '<p class="text-muted small mb-0">No contacts yet. Click <strong>+</strong> to add.</p>';
-        else {
-            el.innerHTML = list.map(c => `
-                <div class="crm-contact-item d-flex justify-content-between align-items-start">
-                    <div>
-                        <strong>${escapeHtml(c.name)}</strong> ${c.is_primary ? '<span class="badge bg-primary ms-1">Primary</span>' : ''}
-                        <div class="text-muted small mt-1">${escapeHtml(c.role || '')} ${c.phone ? '· ' + escapeHtml(c.phone) : ''} ${c.email ? '· ' + escapeHtml(c.email) : ''}</div>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteContact(${c.id})">Delete</button>
-                </div>
-            `).join('');
+        if (list.length === 0) {
+            el.innerHTML = '<p class="text-muted small mb-0">Not yet recorded. Log a visit after you leave the plant.</p>';
+            return;
         }
+        el.innerHTML = list.map(function (v) {
+            const people = (v.contacts || []).map(function (c) { return escapeHtml(c.name); }).join(', ') || '—';
+            const follow = v.no_followup_needed
+                ? 'No follow-up · ' + escapeHtml(v.no_followup_reason || '')
+                : ('Next touchpoint ' + escapeHtml(v.next_planned_touchpoint || '—'));
+            return '<div class="crm-activity-item">' +
+                '<div class="d-flex justify-content-between gap-2"><strong>' + escapeHtml(v.visit_date) + '</strong>' +
+                '<span class="small text-muted">' + escapeHtml(v.visited_by_name || '') + '</span></div>' +
+                '<div class="small">Met: ' + people + '</div>' +
+                (v.outcome ? '<div class="small mt-1">' + escapeHtml(v.outcome) + '</div>' : '') +
+                '<div class="small text-muted mt-1">' + follow + '</div></div>';
+        }).join('');
     } catch (e) {
-        document.getElementById('contactsList').innerHTML = '<p class="text-danger mb-0">Failed to load contacts.</p>';
+        el.innerHTML = '<p class="text-danger small mb-0">Failed to load visits.</p>';
     }
 }
 
@@ -683,51 +712,31 @@ async function loadActivities() {
     }
 }
 
-document.getElementById('btnAddContact').addEventListener('click', openContactModal);
-document.getElementById('btnAddContact2').addEventListener('click', openContactModal);
-function openContactModal() {
-    document.getElementById('contactModalTitle').textContent = 'Add contact';
-    document.getElementById('contactId').value = '';
-    document.getElementById('contactName').value = '';
-    document.getElementById('contactRole').value = '';
-    document.getElementById('contactPhone').value = '';
-    document.getElementById('contactEmail').value = '';
-    document.getElementById('contactIsPrimary').checked = false;
-    new bootstrap.Modal(document.getElementById('contactModal')).show();
+function triggerAddContact() {
+    const btn = document.querySelector('#contactEditor [data-add-contact]');
+    if (btn) btn.click();
+    const editor = document.getElementById('contactEditor');
+    if (editor) editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+document.getElementById('btnAddContact').addEventListener('click', triggerAddContact);
+document.getElementById('btnAddContact2').addEventListener('click', triggerAddContact);
 
-document.getElementById('btnSaveContact').addEventListener('click', async function() {
-    const name = document.getElementById('contactName').value.trim();
-    if (!name) { showError('Name is required'); return; }
-    const id = document.getElementById('contactId').value;
-    const payload = {
-        name,
-        role: document.getElementById('contactRole').value.trim(),
-        phone: document.getElementById('contactPhone').value.trim(),
-        email: document.getElementById('contactEmail').value.trim(),
-        is_primary: document.getElementById('contactIsPrimary').checked,
-    };
-    try {
-        if (id) {
-            await apiCall('/api/crm/contacts/' + id, { method: 'PUT', body: JSON.stringify(payload) });
-        } else {
-            await apiCall('/api/crm/parties/' + partyId + '/contacts', { method: 'POST', body: JSON.stringify(payload) });
+const btnSenior = document.getElementById('btnSeniorAttention');
+if (btnSenior) {
+    btnSenior.addEventListener('click', async function () {
+        const note = prompt('Why does this need senior attention?');
+        if (!note) return;
+        try {
+            await apiCall('/api/crm/escalations', {
+                method: 'POST',
+                body: JSON.stringify({ party_id: partyId, note: note })
+            });
+            showError('');
+            alert('Flagged for the director inbox.');
+        } catch (e) {
+            showError(e.message);
         }
-        bootstrap.Modal.getInstance(document.getElementById('contactModal')).hide();
-        loadContacts();
-    } catch (e) {
-        showError(e.message);
-    }
-});
-
-async function deleteContact(id) {
-    if (!confirm('Delete this contact?')) return;
-    try {
-        await apiCall('/api/crm/contacts/' + id, { method: 'DELETE' });
-        loadContacts();
-    } catch (e) {
-        showError(e.message);
-    }
+    });
 }
 
 document.getElementById('btnAddActivity').addEventListener('click', function() {

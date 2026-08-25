@@ -89,6 +89,13 @@ if ((int)($ownerCol['c'] ?? 0) === 0) {
 $incremental = [
     'data_feeds' => '047_data_feeds.sql',
     'credit_policy_tiers' => '048_credit_gate.sql',
+    'crm_competitor_positions' => '049_account_context.sql',
+    'crm_visits' => '050_crm_visits.sql',
+    'dormancy_rules' => '051_dormancy_escalation.sql',
+    'forecast_periods' => '052_forecasts.sql',
+    'handoff_packets' => '053_handoff_packets.sql',
+    'party_handover_notes' => '054_handover_notes.sql',
+    'pipeline_deal_snapshot' => '055_pipeline_dashboard.sql',
 ];
 foreach ($incremental as $marker => $file) {
     $missing = $pdo->query("SHOW TABLES LIKE '{$marker}'")->fetch() === false;

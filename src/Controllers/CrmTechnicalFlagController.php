@@ -38,7 +38,7 @@ class CrmTechnicalFlagController
 
     public function queues(): void
     {
-        $this->run(fn() => ['data' => $this->flagService->queues()]);
+        $this->run(fn(array $actor) => ['data' => $this->flagService->queues($actor)]);
     }
 
     public function stats(): void

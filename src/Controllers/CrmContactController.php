@@ -2,7 +2,11 @@
 
 namespace App\Controllers;
 
+use App\Services\AccountContextAuthorizationException;
+use App\Services\AccountContextException;
+use App\Services\AccountContextPolicy;
 use App\Services\AuthService;
+use App\Repositories\AuditLogRepository;
 use App\Repositories\CrmContactRepository;
 use App\Repositories\PartyRepository;
 use App\Models\CrmContact;
@@ -12,29 +16,55 @@ class CrmContactController
     private AuthService $authService;
     private CrmContactRepository $contactRepo;
     private PartyRepository $partyRepo;
+    private AccountContextPolicy $policy;
+    private AuditLogRepository $audit;
+    private array $config;
 
     public function __construct()
     {
         $this->authService = new AuthService();
         $this->contactRepo = new CrmContactRepository();
         $this->partyRepo = new PartyRepository();
+        $this->policy = new AccountContextPolicy();
+        $this->audit = new AuditLogRepository();
+        $this->config = require dirname(__DIR__, 2) . '/config/account_context.php';
     }
 
-    private function requireCrmAccess(): bool
+    private function actor(): ?array
     {
         $user = $this->authService->getCurrentUser();
-        if (!$user || !$this->authService->hasAnyRole(['entry', 'admin', 'crm', 'sales', 'marketing'])) {
-            http_response_code(403);
-            echo json_encode(['error' => 'Entry or Admin access required']);
-            return false;
+        if (!$user) {
+            return null;
         }
-        return true;
+
+        return ['id' => (int)$user['id'], 'role' => $user['role'] ?? null];
+    }
+
+    private function requireCapability(string $capability): ?array
+    {
+        $actor = $this->actor();
+        if ($actor === null) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Authentication required']);
+            return null;
+        }
+        try {
+            $this->policy->assertCan($actor['role'] ?? null, $capability);
+        } catch (AccountContextAuthorizationException $e) {
+            http_response_code(403);
+            echo json_encode(['error' => $e->getMessage()]);
+            return null;
+        }
+
+        return $actor;
     }
 
     public function listByParty(string $partyId): void
     {
         header('Content-Type: application/json');
-        if (!$this->requireCrmAccess()) return;
+        if (!$this->requireCapability(AccountContextPolicy::VIEW_CONTACTS)) {
+            return;
+        }
         $id = (int)$partyId;
         if ($id <= 0) {
             http_response_code(400);
@@ -58,7 +88,9 @@ class CrmContactController
     public function show(string $id): void
     {
         header('Content-Type: application/json');
-        if (!$this->requireCrmAccess()) return;
+        if (!$this->requireCapability(AccountContextPolicy::VIEW_CONTACTS)) {
+            return;
+        }
         $cid = (int)$id;
         $contact = $cid > 0 ? $this->contactRepo->findById($cid) : null;
         if (!$contact) {
@@ -72,30 +104,37 @@ class CrmContactController
     public function create(string $partyId): void
     {
         header('Content-Type: application/json');
-        if (!$this->requireCrmAccess()) return;
+        $actor = $this->requireCapability(AccountContextPolicy::EDIT_CONTACTS);
+        if (!$actor) {
+            return;
+        }
         $pid = (int)$partyId;
         if ($pid <= 0 || !$this->partyRepo->findById($pid)) {
             http_response_code(400);
             echo json_encode(['error' => 'Invalid or unknown party']);
             return;
         }
-        $input = json_decode(file_get_contents('php://input'), true) ?? [];
-        $contact = new CrmContact();
-        $contact->partyId = $pid;
-        $contact->name = trim($input['name'] ?? '');
-        $contact->role = trim($input['role'] ?? '');
-        $contact->phone = trim($input['phone'] ?? '');
-        $contact->email = trim($input['email'] ?? '');
-        $contact->isPrimary = !empty($input['is_primary']);
-        if ($contact->name === '') {
-            http_response_code(400);
-            echo json_encode(['error' => 'Name is required']);
-            return;
-        }
+        $input = $this->input();
         try {
+            $contact = $this->hydrate(new CrmContact(), $input);
+            $contact->partyId = $pid;
+            if ($contact->name === '') {
+                throw new AccountContextException('Name is required');
+            }
             $created = $this->contactRepo->create($contact);
+            $this->audit->log(
+                $actor['id'] ?? null,
+                'crm_contacts',
+                (int)$created->id,
+                'CREATE',
+                null,
+                $created->toArray()
+            );
             http_response_code(201);
             echo json_encode(['success' => true, 'message' => 'Contact created', 'data' => $created->toArray()]);
+        } catch (AccountContextException $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
         } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
@@ -105,7 +144,10 @@ class CrmContactController
     public function update(string $id): void
     {
         header('Content-Type: application/json');
-        if (!$this->requireCrmAccess()) return;
+        $actor = $this->requireCapability(AccountContextPolicy::EDIT_CONTACTS);
+        if (!$actor) {
+            return;
+        }
         $cid = (int)$id;
         $existing = $cid > 0 ? $this->contactRepo->findById($cid) : null;
         if (!$existing) {
@@ -113,25 +155,29 @@ class CrmContactController
             echo json_encode(['error' => 'Contact not found']);
             return;
         }
-        $input = json_decode(file_get_contents('php://input'), true) ?? [];
-        $data = [];
-        if (isset($input['name'])) $data['name'] = trim($input['name']);
-        if (isset($input['role'])) $data['role'] = trim($input['role']);
-        if (isset($input['phone'])) $data['phone'] = trim($input['phone']);
-        if (isset($input['email'])) $data['email'] = trim($input['email']);
-        if (array_key_exists('is_primary', $input)) $data['is_primary'] = !empty($input['is_primary']);
-        if (isset($data['name']) && $data['name'] === '') {
-            http_response_code(400);
-            echo json_encode(['error' => 'Name cannot be empty']);
-            return;
-        }
-        if (empty($data)) {
-            echo json_encode(['success' => true, 'data' => $existing->toArray()]);
-            return;
-        }
+        $input = $this->input();
         try {
+            $data = $this->updatePayload($input);
+            if (isset($data['name']) && $data['name'] === '') {
+                throw new AccountContextException('Name cannot be empty');
+            }
+            if ($data === []) {
+                echo json_encode(['success' => true, 'data' => $existing->toArray()]);
+                return;
+            }
             $updated = $this->contactRepo->update($cid, $data);
+            $this->audit->log(
+                $actor['id'] ?? null,
+                'crm_contacts',
+                $cid,
+                'UPDATE',
+                $existing->toArray(),
+                $updated->toArray()
+            );
             echo json_encode(['success' => true, 'message' => 'Contact updated', 'data' => $updated->toArray()]);
+        } catch (AccountContextException $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
         } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
@@ -141,7 +187,10 @@ class CrmContactController
     public function delete(string $id): void
     {
         header('Content-Type: application/json');
-        if (!$this->requireCrmAccess()) return;
+        $actor = $this->requireCapability(AccountContextPolicy::EDIT_CONTACTS);
+        if (!$actor) {
+            return;
+        }
         $cid = (int)$id;
         if ($cid <= 0) {
             http_response_code(404);
@@ -149,7 +198,16 @@ class CrmContactController
             return;
         }
         try {
-            if ($this->contactRepo->delete($cid)) {
+            $existing = $this->contactRepo->findById($cid);
+            if ($existing && $this->contactRepo->delete($cid)) {
+                $this->audit->log(
+                    $actor['id'] ?? null,
+                    'crm_contacts',
+                    $cid,
+                    'DELETE',
+                    $existing->toArray(),
+                    null
+                );
                 echo json_encode(['success' => true, 'message' => 'Contact deleted']);
             } else {
                 http_response_code(404);
@@ -159,5 +217,132 @@ class CrmContactController
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
+    }
+
+    private function hydrate(CrmContact $contact, array $input): CrmContact
+    {
+        $contact->name = trim((string)($input['name'] ?? ''));
+        $contact->role = trim((string)($input['role'] ?? ''));
+        $contact->phone = trim((string)($input['phone'] ?? ''));
+        $contact->email = trim((string)($input['email'] ?? ''));
+        $contact->isPrimary = !empty($input['is_primary']);
+        $contact->influenceLevel = $this->enumOrDefault(
+            $input['influence_level'] ?? null,
+            'influence_levels',
+            'unknown'
+        );
+        $contact->relationshipStrength = $this->enumOrDefault(
+            $input['relationship_strength'] ?? null,
+            'relationship_strengths',
+            'unknown'
+        );
+        $contact->introducedByUserId = $this->nullableInt($input['introduced_by_user_id'] ?? null);
+        $contact->introducedOn = $this->nullableDate($input['introduced_on'] ?? null);
+        $contact->preferredChannel = $this->enumOrNull($input['preferred_channel'] ?? null, 'preferred_channels');
+        $contact->preferredLanguage = trim((string)($input['preferred_language'] ?? '')) ?: null;
+        $contact->contextNotes = trim((string)($input['context_notes'] ?? '')) ?: null;
+
+        return $contact;
+    }
+
+    /** @return array<string,mixed> */
+    private function updatePayload(array $input): array
+    {
+        $data = [];
+        if (isset($input['name'])) {
+            $data['name'] = trim((string)$input['name']);
+        }
+        if (isset($input['role'])) {
+            $data['role'] = trim((string)$input['role']);
+        }
+        if (isset($input['phone'])) {
+            $data['phone'] = trim((string)$input['phone']);
+        }
+        if (isset($input['email'])) {
+            $data['email'] = trim((string)$input['email']);
+        }
+        if (array_key_exists('is_primary', $input)) {
+            $data['is_primary'] = !empty($input['is_primary']) ? 1 : 0;
+        }
+        if (array_key_exists('influence_level', $input)) {
+            $data['influence_level'] = $this->enumOrDefault($input['influence_level'], 'influence_levels', 'unknown');
+        }
+        if (array_key_exists('relationship_strength', $input)) {
+            $data['relationship_strength'] = $this->enumOrDefault($input['relationship_strength'], 'relationship_strengths', 'unknown');
+        }
+        if (array_key_exists('introduced_by_user_id', $input)) {
+            $data['introduced_by_user_id'] = $this->nullableInt($input['introduced_by_user_id']);
+        }
+        if (array_key_exists('introduced_on', $input)) {
+            $data['introduced_on'] = $this->nullableDate($input['introduced_on']);
+        }
+        if (array_key_exists('preferred_channel', $input)) {
+            $data['preferred_channel'] = $this->enumOrNull($input['preferred_channel'], 'preferred_channels');
+        }
+        if (array_key_exists('preferred_language', $input)) {
+            $data['preferred_language'] = trim((string)$input['preferred_language']) ?: null;
+        }
+        if (array_key_exists('context_notes', $input)) {
+            $data['context_notes'] = trim((string)$input['context_notes']) ?: null;
+        }
+
+        return $data;
+    }
+
+    private function enumOrDefault($value, string $configKey, string $default): string
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+        $value = (string)$value;
+        if (!isset($this->config[$configKey][$value])) {
+            throw new AccountContextException("Invalid {$configKey} value.");
+        }
+
+        return $value;
+    }
+
+    private function enumOrNull($value, string $configKey): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $value = (string)$value;
+        if (!isset($this->config[$configKey][$value])) {
+            throw new AccountContextException("Invalid {$configKey} value.");
+        }
+
+        return $value;
+    }
+
+    private function nullableInt($value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int)$value;
+    }
+
+    private function nullableDate($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $value = (string)$value;
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            throw new AccountContextException('introduced_on must be a date (YYYY-MM-DD).');
+        }
+
+        return $value;
+    }
+
+    /** @return array<string,mixed> */
+    private function input(): array
+    {
+        $raw = file_get_contents('php://input');
+        $decoded = $raw === false || $raw === '' ? null : json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : $_POST;
     }
 }
