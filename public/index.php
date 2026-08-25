@@ -44,6 +44,15 @@ $app = new Application();
 $database = new Database();
 $app->setDatabase($database);
 
+$crmPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+if (
+    str_starts_with($crmPath, '/crm')
+    || str_starts_with($crmPath, '/api/crm')
+    || str_starts_with($crmPath, '/api/parties')
+) {
+    \App\Support\CrmSchemaEnsure::apply();
+}
+
 // Set up router
 $router = new Router();
 

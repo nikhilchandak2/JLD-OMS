@@ -21,8 +21,12 @@ class BriefingRepository
 
     public function party(int $partyId): ?array
     {
+        $credit = TableSchema::hasColumn('parties', 'credit_limit')
+            ? 'credit_limit'
+            : 'NULL AS credit_limit';
+
         return $this->database->fetch(
-            "SELECT id, name, phone, email, address, credit_limit FROM parties WHERE id = ?",
+            "SELECT id, name, phone, email, address, {$credit} FROM parties WHERE id = ?",
             [$partyId]
         );
     }
@@ -30,10 +34,12 @@ class BriefingRepository
     /** @return list<array<string,mixed>> */
     public function contacts(int $partyId): array
     {
+        if (!TableSchema::hasTable('crm_contacts')) {
+            return [];
+        }
+
         return $this->database->fetchAll(
-            "SELECT c.id, c.name, c.role, c.phone, c.email, c.is_primary,
-                    c.influence_level, c.relationship_strength, c.preferred_channel,
-                    c.preferred_language, c.context_notes
+            "SELECT c.*
              FROM crm_contacts c
              WHERE c.party_id = ?
              ORDER BY c.is_primary DESC, c.name ASC",
@@ -44,6 +50,10 @@ class BriefingRepository
     /** @return list<array<string,mixed>> */
     public function currentCompetitors(int $partyId): array
     {
+        if (!TableSchema::hasTable('crm_competitor_positions')) {
+            return [];
+        }
+
         return $this->database->fetchAll(
             "SELECT competitor_name, grade_code, estimated_share_pct, reason_code,
                     reason_note, intelligence_type
@@ -61,13 +71,19 @@ class BriefingRepository
      */
     public function issues(int $partyId, int $resolvedLimit): array
     {
+        if (!TableSchema::hasTable('crm_account_issues')) {
+            return [];
+        }
         $cap = max(30, (int)$resolvedLimit);
+        $order = TableSchema::hasColumn('crm_account_issues', 'status')
+            ? "FIELD(status, 'open', 'escalated', 'resolved'), raised_on DESC, id DESC"
+            : 'raised_on DESC, id DESC';
 
         return $this->database->fetchAll(
-            "SELECT id, issue_type, status, raised_on, description, resolved_on, resolution_note
+            "SELECT *
              FROM crm_account_issues
              WHERE party_id = ?
-             ORDER BY FIELD(status, 'open', 'escalated', 'resolved'), raised_on DESC, id DESC
+             ORDER BY {$order}
              LIMIT {$cap}",
             [$partyId]
         );
@@ -75,6 +91,10 @@ class BriefingRepository
 
     public function lastVisit(int $partyId): ?array
     {
+        if (!TableSchema::hasTable('crm_visits')) {
+            return null;
+        }
+
         return $this->database->fetch(
             "SELECT v.id, v.visit_date, v.purpose, v.outcome, v.next_planned_touchpoint,
                     v.next_action, v.no_followup_needed, u.name AS visited_by_name
@@ -90,6 +110,10 @@ class BriefingRepository
     /** @return list<array<string,mixed>> */
     public function visitContacts(int $visitId): array
     {
+        if (!TableSchema::hasTable('crm_visit_contacts') || !TableSchema::hasTable('crm_contacts')) {
+            return [];
+        }
+
         return $this->database->fetchAll(
             "SELECT c.name, c.role
              FROM crm_visit_contacts vc
@@ -127,6 +151,10 @@ class BriefingRepository
 
     public function forecastPeriod(string $yearMonth): ?array
     {
+        if (!TableSchema::hasTable('forecast_periods')) {
+            return null;
+        }
+
         return $this->database->fetch(
             "SELECT id, period_month, status FROM forecast_periods WHERE period_month = ?",
             [$yearMonth]
@@ -136,6 +164,10 @@ class BriefingRepository
     /** @return list<array<string,mixed>> */
     public function forecastActuals(int $periodId, int $partyId): array
     {
+        if (!TableSchema::hasTable('forecast_actuals')) {
+            return [];
+        }
+
         return $this->database->fetchAll(
             "SELECT grade_code, forecast_low, forecast_high, actual_tonnes, variance_vs_midpoint, as_of
              FROM forecast_actuals
@@ -148,6 +180,9 @@ class BriefingRepository
     /** @return list<array<string,mixed>> */
     public function openDeals(int $partyId): array
     {
+        if (!TableSchema::hasTable('crm_deals')) {
+            return [];
+        }
         $where = ['party_id = ?'];
         if (TableSchema::hasColumn('crm_deals', 'deleted_at')) {
             $where[] = 'deleted_at IS NULL';
@@ -168,15 +203,21 @@ class BriefingRepository
 
     public function partyOutstanding(int $partyId): float
     {
-        $ledger = $this->database->fetch(
-            "SELECT SUM(outstanding_amount) AS total
-             FROM ledger_outstanding
-             WHERE party_id = ?
-               AND business_date = (SELECT MAX(business_date) FROM ledger_outstanding WHERE party_id = ?)",
-            [$partyId, $partyId]
-        );
-        if ($ledger !== null && $ledger['total'] !== null) {
-            return round((float)$ledger['total'], 2);
+        if (TableSchema::hasTable('ledger_outstanding')) {
+            $ledger = $this->database->fetch(
+                "SELECT SUM(outstanding_amount) AS total
+                 FROM ledger_outstanding
+                 WHERE party_id = ?
+                   AND business_date = (SELECT MAX(business_date) FROM ledger_outstanding WHERE party_id = ?)",
+                [$partyId, $partyId]
+            );
+            if ($ledger !== null && $ledger['total'] !== null) {
+                return round((float)$ledger['total'], 2);
+            }
+        }
+
+        if (!TableSchema::hasTable('crm_receivable_entries')) {
+            return 0.0;
         }
 
         $rows = $this->database->fetchAll(
@@ -204,6 +245,9 @@ class BriefingRepository
 
     public function oldestLedgerAsOf(): ?string
     {
+        if (!TableSchema::hasTable('data_feed_runs')) {
+            return null;
+        }
         $row = $this->database->fetch(
             "SELECT MIN(as_of) AS ledger_as_of
              FROM data_feed_runs

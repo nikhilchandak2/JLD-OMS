@@ -8,6 +8,7 @@ use App\Repositories\ForecastActualRepository;
 use App\Repositories\ForecastLineRepository;
 use App\Repositories\ForecastPeriodRepository;
 use App\Repositories\PartyRepository;
+use App\Support\TableSchema;
 
 /**
  * Monthly grade-level forecast. Variance is for production planning by grade
@@ -128,6 +129,17 @@ class ForecastService
     public function worksheet(array $actor, ?string $yearMonth, string $asOf): array
     {
         $this->policy->assertCan($actor['role'] ?? null, ForecastPolicy::VIEW);
+        if (!TableSchema::hasTable('forecast_periods')) {
+            return [
+                'purpose_line' => $this->config['purpose_line'],
+                'as_of' => $asOf,
+                'period' => null,
+                'can_edit' => false,
+                'can_manage_period' => $this->policy->can($actor['role'] ?? null, ForecastPolicy::MANAGE_PERIOD),
+                'accounts' => [],
+                'grades' => $this->gradeCatalogue(),
+            ];
+        }
         $ym = $yearMonth ?: substr($asOf, 0, 7);
         $this->assertYearMonth($ym);
         $period = $this->periods->findByYearMonth($ym);
@@ -449,13 +461,23 @@ class ForecastService
     /** @return array<int,array<string,mixed>> */
     private function assignedParties(?int $ownerUserId): array
     {
-        $sql = "SELECT id, name, assigned_sales_owner FROM parties WHERE is_active = 1";
+        $owner = TableSchema::hasColumn('parties', 'assigned_sales_owner')
+            ? 'assigned_sales_owner'
+            : 'NULL AS assigned_sales_owner';
+        $sql = "SELECT id, name, {$owner} FROM parties";
         $params = [];
-        if ($ownerUserId !== null) {
-            $sql .= " AND assigned_sales_owner = ?";
+        $where = [];
+        if (TableSchema::hasColumn('parties', 'is_active')) {
+            $where[] = 'is_active = 1';
+        }
+        if ($ownerUserId !== null && TableSchema::hasColumn('parties', 'assigned_sales_owner')) {
+            $where[] = 'assigned_sales_owner = ?';
             $params[] = $ownerUserId;
         }
-        $sql .= " ORDER BY name ASC";
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY name ASC';
 
         return $this->database->fetchAll($sql, $params);
     }

@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Core\Database;
 use App\Models\Party;
+use App\Support\TableSchema;
 
 class PartyRepository
 {
@@ -106,11 +107,12 @@ class PartyRepository
             'funnel_stage', 'industry_type', 'tiles_subtype',
             'monthly_consumption_ton', 'avg_price_per_ton', 'current_supplier_details',
             'relation_with_purchase', 'relation_with_internal_team', 'probability_of_conversion',
-            'visit_description', 'followup_notes', 'visit_samples_provided'
+            'visit_description', 'followup_notes', 'visit_samples_provided',
+            'account_tier',
         ];
         
         foreach ($allowedFields as $field) {
-            if (array_key_exists($field, $data)) {
+            if (array_key_exists($field, $data) && TableSchema::hasColumn('parties', $field)) {
                 $fields[] = "$field = ?";
                 $val = $data[$field];
                 if ($field === 'visit_samples_provided' && is_array($val)) {

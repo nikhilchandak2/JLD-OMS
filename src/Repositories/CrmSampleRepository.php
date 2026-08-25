@@ -16,6 +16,9 @@ class CrmSampleRepository
 
     public function findAll(array $filters = []): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_samples')) {
+            return [];
+        }
         $sql = "SELECT * FROM crm_samples WHERE 1=1";
         $params = [];
         if (!empty($filters['party_id'])) {

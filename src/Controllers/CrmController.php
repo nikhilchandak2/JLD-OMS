@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Services\AuthService;
 use App\Repositories\CrmActivityRepository;
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class CrmController
 {
@@ -33,8 +34,11 @@ class CrmController
         try {
             $db = new Database();
             $pdo = $db->getConnection();
-            $stmt = $pdo->query("SELECT COUNT(*) FROM crm_activities WHERE DATE(activity_date) = CURDATE()");
-            $activitiesToday = (int)$stmt->fetchColumn();
+            $activitiesToday = 0;
+            if (TableSchema::hasTable('crm_activities')) {
+                $stmt = $pdo->query("SELECT COUNT(*) FROM crm_activities WHERE DATE(activity_date) = CURDATE()");
+                $activitiesToday = (int)$stmt->fetchColumn();
+            }
             echo json_encode([
                 'success' => true,
                 'data' => [
@@ -87,16 +91,27 @@ class CrmController
         try {
             $pdo = (new Database())->getConnection();
             $stageFilter = isset($_GET['stage']) ? trim($_GET['stage']) : null;
+            $hasFunnel = TableSchema::hasColumn('parties', 'funnel_stage');
+            $hasTon = TableSchema::hasColumn('parties', 'monthly_consumption_ton');
+            $hasPrice = TableSchema::hasColumn('parties', 'avg_price_per_ton');
+            $valueExpr = ($hasTon && $hasPrice)
+                ? '(COALESCE(monthly_consumption_ton, 0) * COALESCE(avg_price_per_ton, 0))'
+                : '0';
             if ($stageFilter !== null && $stageFilter !== '') {
                 if (!isset($stages[$stageFilter])) {
                     http_response_code(400);
                     echo json_encode(['error' => 'Invalid stage']);
                     return;
                 }
+                if (!$hasFunnel) {
+                    echo json_encode(['success' => true, 'data' => [], 'stage' => $stageFilter, 'stage_label' => $stages[$stageFilter]]);
+                    return;
+                }
                 $stmt = $pdo->prepare("
                     SELECT id, name, contact_person, email, funnel_stage,
-                           monthly_consumption_ton, avg_price_per_ton,
-                           (COALESCE(monthly_consumption_ton, 0) * COALESCE(avg_price_per_ton, 0)) AS funnel_value
+                           " . ($hasTon ? 'monthly_consumption_ton' : 'NULL AS monthly_consumption_ton') . ",
+                           " . ($hasPrice ? 'avg_price_per_ton' : 'NULL AS avg_price_per_ton') . ",
+                           {$valueExpr} AS funnel_value
                     FROM parties
                     WHERE funnel_stage = ?
                     ORDER BY name
@@ -115,10 +130,23 @@ class CrmController
                 echo json_encode(['success' => true, 'data' => $list, 'stage' => $stageFilter, 'stage_label' => $stages[$stageFilter]]);
                 return;
             }
+            if (!$hasFunnel) {
+                $summary = [];
+                foreach ($stages as $key => $label) {
+                    $summary[] = [
+                        'stage' => $key,
+                        'label' => $label,
+                        'count' => 0,
+                        'total_value' => 0,
+                    ];
+                }
+                echo json_encode(['success' => true, 'data' => $summary]);
+                return;
+            }
             $stmt = $pdo->query("
                 SELECT funnel_stage,
                        COUNT(*) AS cnt,
-                       SUM(COALESCE(monthly_consumption_ton, 0) * COALESCE(avg_price_per_ton, 0)) AS total_value
+                       SUM({$valueExpr}) AS total_value
                 FROM parties
                 WHERE funnel_stage IS NOT NULL AND funnel_stage != ''
                 GROUP BY funnel_stage

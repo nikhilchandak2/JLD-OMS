@@ -29,12 +29,18 @@ class ForecastLineRepository
     /** @return array<int,array<string,mixed>> */
     public function findForPeriod(?int $ownerUserId, int $periodId): array
     {
-        $sql = "SELECT l.*, p.name AS party_name, p.assigned_sales_owner
+        if (!\App\Support\TableSchema::hasTable('forecast_lines')) {
+            return [];
+        }
+        $ownerSelect = \App\Support\TableSchema::hasColumn('parties', 'assigned_sales_owner')
+            ? 'p.assigned_sales_owner'
+            : 'NULL AS assigned_sales_owner';
+        $sql = "SELECT l.*, p.name AS party_name, {$ownerSelect}
                 FROM forecast_lines l
                 JOIN parties p ON p.id = l.party_id
                 WHERE l.period_id = ?";
         $params = [$periodId];
-        if ($ownerUserId !== null) {
+        if ($ownerUserId !== null && \App\Support\TableSchema::hasColumn('parties', 'assigned_sales_owner')) {
             $sql .= " AND p.assigned_sales_owner = ?";
             $params[] = $ownerUserId;
         }

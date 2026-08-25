@@ -87,6 +87,9 @@ class PipelineDashboardRepository
 
     public function latestAsOf(): ?string
     {
+        if (!TableSchema::hasTable('pipeline_deal_snapshot')) {
+            return null;
+        }
         $row = $this->database->fetch('SELECT MAX(as_of) AS as_of FROM pipeline_deal_snapshot');
         $asOf = $row['as_of'] ?? null;
 
@@ -95,16 +98,28 @@ class PipelineDashboardRepository
 
     public function loadDealsForRebuild(): array
     {
+        if (!TableSchema::hasTable('crm_deals')) {
+            return [];
+        }
         $statusSelect = TableSchema::hasColumn('crm_deals', 'status') ? 'd.status' : "'active' AS status";
         $deleted = TableSchema::hasColumn('crm_deals', 'deleted_at') ? 'd.deleted_at IS NULL' : '1=1';
+        $ownerSelect = TableSchema::hasColumn('crm_deals', 'owner_user_id')
+            ? 'd.owner_user_id'
+            : (TableSchema::hasColumn('crm_deals', 'assigned_to') ? 'd.assigned_to AS owner_user_id' : 'NULL AS owner_user_id');
+        $ownerJoin = TableSchema::hasColumn('crm_deals', 'owner_user_id')
+            ? 'LEFT JOIN users u ON u.id = d.owner_user_id'
+            : (TableSchema::hasColumn('crm_deals', 'assigned_to')
+                ? 'LEFT JOIN users u ON u.id = d.assigned_to'
+                : 'LEFT JOIN users u ON 1=0');
+        $inquiry = TableSchema::hasColumn('crm_deals', 'inquiry_date') ? 'd.inquiry_date' : 'NULL AS inquiry_date';
 
         return $this->database->fetchAll(
-            "SELECT d.id AS deal_id, d.stage, {$statusSelect}, d.owner_user_id, u.name AS owner_name,
+            "SELECT d.id AS deal_id, d.stage, {$statusSelect}, {$ownerSelect}, u.name AS owner_name,
                     d.party_id, p.name AS party_name, d.title, d.value AS indicative_value,
-                    d.inquiry_date
+                    {$inquiry}
              FROM crm_deals d
              JOIN parties p ON p.id = d.party_id
-             LEFT JOIN users u ON u.id = d.owner_user_id
+             {$ownerJoin}
              WHERE {$deleted}
              ORDER BY d.id"
         );
@@ -112,6 +127,10 @@ class PipelineDashboardRepository
 
     public function loadEventsForRebuild(): array
     {
+        if (!TableSchema::hasTable('crm_deal_stage_events')) {
+            return [];
+        }
+
         return $this->database->fetchAll(
             "SELECT deal_id, from_stage, to_stage, from_status, to_status, occurred_at
              FROM crm_deal_stage_events
@@ -121,8 +140,13 @@ class PipelineDashboardRepository
 
     public function loadFlagsForRebuild(): array
     {
+        if (!TableSchema::hasTable('crm_technical_flags')) {
+            return [];
+        }
+        $statusSelect = TableSchema::hasColumn('crm_technical_flags', 'status') ? 'status' : "'open' AS status";
+
         return $this->database->fetchAll(
-            "SELECT deal_id, status, created_at, resolved_at, updated_at
+            "SELECT deal_id, {$statusSelect}, created_at, resolved_at, updated_at
              FROM crm_technical_flags
              WHERE deal_id IS NOT NULL"
         );
@@ -130,6 +154,10 @@ class PipelineDashboardRepository
 
     public function loadGradesForRebuild(): array
     {
+        if (!TableSchema::hasTable('crm_deal_grades')) {
+            return [];
+        }
+
         return $this->database->fetchAll(
             "SELECT deal_id, grade_code FROM crm_deal_grades ORDER BY deal_id, grade_code"
         );
@@ -142,7 +170,7 @@ class PipelineDashboardRepository
     public function byStageSql(array $filters): array
     {
         $sql = "SELECT s.stage, COUNT(*) AS deal_count, SUM(s.indicative_value) AS indicative_value
-                FROM pipeline_deal_snapshot s FORCE INDEX (idx_pipeline_snapshot_stage)
+                FROM pipeline_deal_snapshot s " . TableSchema::forceIndex('pipeline_deal_snapshot', 'idx_pipeline_snapshot_stage') . "
                 WHERE s.as_of = ?"
             . (TableSchema::hasColumn('pipeline_deal_snapshot', 'status') ? " AND s.status = 'active'" : '');
         $params = [$filters['as_of']];
@@ -175,6 +203,9 @@ class PipelineDashboardRepository
     /** @return array<int,array<string,mixed>> */
     public function byStage(array $filters): array
     {
+        if (!TableSchema::hasTable('pipeline_deal_snapshot')) {
+            return [];
+        }
         [$sql, $params] = $this->byStageSql($filters);
 
         return $this->database->fetchAll($sql, $params);
@@ -198,7 +229,7 @@ class PipelineDashboardRepository
                        f.owner_user_id, f.owner_name,
                        f.current_dwell_seconds, f.current_hold_seconds,
                        f.lifetime_seconds, f.hold_seconds
-                FROM pipeline_time_in_stage_facts f FORCE INDEX (idx_pipeline_tis_current)
+                FROM pipeline_time_in_stage_facts f " . TableSchema::forceIndex('pipeline_time_in_stage_facts', 'idx_pipeline_tis_current') . "
                 WHERE f.as_of = ?
                   AND f.is_current = 1"
             . (TableSchema::hasColumn('pipeline_time_in_stage_facts', 'status') ? " AND f.status = 'active'" : '');
@@ -232,6 +263,9 @@ class PipelineDashboardRepository
     /** @return array<int,array<string,mixed>> */
     public function timeInStageRows(array $filters): array
     {
+        if (!TableSchema::hasTable('pipeline_time_in_stage_facts')) {
+            return [];
+        }
         [$sql, $params] = $this->timeInStageSql($filters);
 
         return $this->database->fetchAll($sql, $params);

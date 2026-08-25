@@ -44,11 +44,17 @@ class CrmDealStageEventRepository
 
     public function findByDeal(int $dealId): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_deal_stage_events')) {
+            return [];
+        }
+        $reasonJoin = \App\Support\TableSchema::hasTable('crm_deal_reason_codes')
+            ? 'LEFT JOIN crm_deal_reason_codes r ON r.id = e.reason_code_id'
+            : 'LEFT JOIN crm_deal_reason_codes r ON 1=0';
         return $this->database->fetchAll(
             "SELECT e.*, u.name AS actor_name, r.label AS reason_label
              FROM crm_deal_stage_events e
              LEFT JOIN users u ON u.id = e.actor_user_id
-             LEFT JOIN crm_deal_reason_codes r ON r.id = e.reason_code_id
+             {$reasonJoin}
              WHERE e.deal_id = ?
              ORDER BY e.occurred_at ASC, e.id ASC",
             [$dealId]

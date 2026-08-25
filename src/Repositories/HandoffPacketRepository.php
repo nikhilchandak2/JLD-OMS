@@ -62,6 +62,9 @@ class HandoffPacketRepository
 
     public function currentSalesToDispatch(int $dealId): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('handoff_packets')) {
+            return null;
+        }
         $row = $this->database->fetch(
             "SELECT p.*
              FROM handoff_packets p
@@ -82,6 +85,9 @@ class HandoffPacketRepository
      */
     public function findAll(array $filters = []): array
     {
+        if (!\App\Support\TableSchema::hasTable('handoff_packets')) {
+            return [];
+        }
         $sql = "SELECT p.*,
                        d.title AS deal_title,
                        COALESCE(deal_party.name, order_party.name) AS party_name,

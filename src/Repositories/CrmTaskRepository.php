@@ -20,6 +20,9 @@ class CrmTaskRepository
      */
     public function findMine(int $assigneeId): array
     {
+        if (!TableSchema::hasTable('crm_tasks')) {
+            return [];
+        }
         $statusOrder = TableSchema::hasColumn('crm_tasks', 'status')
             ? "CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END,"
             : '';
@@ -51,6 +54,9 @@ class CrmTaskRepository
      */
     public function findAll(): array
     {
+        if (!TableSchema::hasTable('crm_tasks')) {
+            return [];
+        }
         $statusOrder = TableSchema::hasColumn('crm_tasks', 'status')
             ? "CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END,"
             : '';
@@ -77,19 +83,24 @@ class CrmTaskRepository
 
     public function create(CrmTask $task): CrmTask
     {
-        $sql = "INSERT INTO crm_tasks (title, description, party_id, due_date, status, assigned_to, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)";
-
-        $stmt = $this->database->getConnection()->prepare($sql);
-        $stmt->execute([
+        $fields = ['title', 'description', 'party_id', 'due_date', 'assigned_to', 'created_by'];
+        $values = [
             $task->title,
             $task->description,
             $task->partyId,
             $task->dueDate,
-            $task->status,
             $task->assignedTo,
             $task->createdBy,
-        ]);
+        ];
+        if (TableSchema::hasColumn('crm_tasks', 'status')) {
+            $fields[] = 'status';
+            $values[] = $task->status;
+        }
+        $placeholders = implode(', ', array_fill(0, count($fields), '?'));
+        $sql = 'INSERT INTO crm_tasks (' . implode(', ', $fields) . ') VALUES (' . $placeholders . ')';
+
+        $stmt = $this->database->getConnection()->prepare($sql);
+        $stmt->execute($values);
 
         $task->id = (int)$this->database->getConnection()->lastInsertId();
         return $this->findById($task->id);
@@ -117,7 +128,7 @@ class CrmTaskRepository
         $values = [];
 
         foreach ($allowed as $f) {
-            if (array_key_exists($f, $data)) {
+            if (array_key_exists($f, $data) && ($f !== 'status' || TableSchema::hasColumn('crm_tasks', 'status'))) {
                 $fields[] = $f . ' = ?';
                 $values[] = $data[$f];
             }

@@ -16,6 +16,9 @@ class PartyHandoverNoteRepository
     /** @return list<array<string,mixed>> */
     public function findActiveByParty(int $partyId): array
     {
+        if (!\App\Support\TableSchema::hasTable('party_handover_notes')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT n.id, n.party_id, n.author_user_id, n.note, n.created_at, n.is_active,
                     u.name AS author_name

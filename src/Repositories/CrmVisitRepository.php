@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class CrmVisitRepository
 {
@@ -67,6 +68,9 @@ class CrmVisitRepository
     /** @return array<int,array<string,mixed>> */
     public function findByParty(int $partyId): array
     {
+        if (!TableSchema::hasTable('crm_visits')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT v.*, u.name AS visited_by_name
              FROM crm_visits v
@@ -96,9 +100,15 @@ class CrmVisitRepository
      */
     public function overdueSql(?int $visitedByUserId): array
     {
-        $force = $visitedByUserId !== null
-            ? 'FORCE INDEX (idx_visits_overdue)'
-            : 'FORCE INDEX (idx_visits_touchpoint)';
+        if (!TableSchema::hasTable('crm_visits')) {
+            return ['SELECT NULL AS id WHERE 1 = 0', []];
+        }
+        $force = '';
+        if ($visitedByUserId !== null && TableSchema::hasIndex('crm_visits', 'idx_visits_overdue')) {
+            $force = 'FORCE INDEX (idx_visits_overdue)';
+        } elseif ($visitedByUserId === null && TableSchema::hasIndex('crm_visits', 'idx_visits_touchpoint')) {
+            $force = 'FORCE INDEX (idx_visits_touchpoint)';
+        }
         $sql = "SELECT v.*, p.name AS party_name, u.name AS visited_by_name
                 FROM crm_visits v {$force}
                 JOIN parties p ON p.id = v.party_id

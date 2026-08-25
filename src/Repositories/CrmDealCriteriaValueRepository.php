@@ -21,6 +21,9 @@ class CrmDealCriteriaValueRepository
     /** @return array<string,string> field_key => value_text */
     public function findByDeal(int $dealId): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_deal_criteria_values')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT field_key, value_text FROM crm_deal_criteria_values WHERE deal_id = ?",
             [$dealId]

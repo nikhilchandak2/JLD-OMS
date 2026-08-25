@@ -20,6 +20,9 @@ class ForecastPeriodRepository
 
     public function findByYearMonth(string $yearMonth): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_periods')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM forecast_periods WHERE period_month = ?",
             [$yearMonth]
@@ -29,6 +32,9 @@ class ForecastPeriodRepository
     /** @return array<int,array<string,mixed>> */
     public function listRecent(int $limit = 12): array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_periods')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT * FROM forecast_periods ORDER BY period_month DESC LIMIT {$limit}"
         );
@@ -66,6 +72,9 @@ class ForecastPeriodRepository
     /** @return array<int,array<string,mixed>> */
     public function findOpenOrLocked(): array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_periods')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT * FROM forecast_periods WHERE status IN ('open', 'locked') ORDER BY period_month DESC"
         );

@@ -76,6 +76,9 @@ class EscalationRepository
      */
     public function findInbox(?string $status = null): array
     {
+        if (!\App\Support\TableSchema::hasTable('escalations')) {
+            return [];
+        }
         $sql = "SELECT e.*, p.name AS party_name, u.name AS triggered_by_name,
                        a.name AS acknowledged_by_name
                 FROM escalations e

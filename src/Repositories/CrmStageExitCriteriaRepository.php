@@ -19,6 +19,9 @@ class CrmStageExitCriteriaRepository
 
     public function findByStage(int $stage): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_stage_exit_criteria')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT id, stage, field_key, is_mandatory, label, help_text, sort_order
              FROM crm_stage_exit_criteria
@@ -30,6 +33,9 @@ class CrmStageExitCriteriaRepository
 
     public function findAllActive(): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_stage_exit_criteria')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT id, stage, field_key, is_mandatory, label, help_text, sort_order
              FROM crm_stage_exit_criteria

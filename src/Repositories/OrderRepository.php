@@ -6,6 +6,7 @@ use App\Core\Database;
 use App\Models\Order;
 use App\Support\DispatchSchema;
 use App\Support\OrderSchema;
+use App\Support\TableSchema;
 
 class OrderRepository
 {
@@ -354,31 +355,36 @@ class OrderRepository
     
     public function generateOrderNumber(int $companyId): string
     {
+        $hasPrefix = TableSchema::hasColumn('companies', 'order_prefix');
         $company = $this->database->fetch(
-            'SELECT id, name, order_prefix FROM companies WHERE id = ? LIMIT 1',
+            $hasPrefix
+                ? 'SELECT id, name, order_prefix FROM companies WHERE id = ? LIMIT 1'
+                : 'SELECT id, name FROM companies WHERE id = ? LIMIT 1',
             [$companyId]
         );
         if (!$company) {
             throw new \RuntimeException("Company {$companyId} not found for order number generation");
         }
 
-        $prefix = strtoupper(trim((string)($company['order_prefix'] ?? '')));
+        $prefix = $hasPrefix ? strtoupper(trim((string)($company['order_prefix'] ?? ''))) : '';
         if ($prefix === '') {
             $prefix = \App\Support\OrderPrefix::suggestFromName((string)$company['name']);
-            try {
-                $this->database->execute(
-                    'UPDATE companies SET order_prefix = ? WHERE id = ? AND (order_prefix IS NULL OR order_prefix = \'\')',
-                    [$prefix, $companyId]
+            if ($hasPrefix) {
+                try {
+                    $this->database->execute(
+                        'UPDATE companies SET order_prefix = ? WHERE id = ? AND (order_prefix IS NULL OR order_prefix = \'\')',
+                        [$prefix, $companyId]
+                    );
+                } catch (\Throwable $ignored) {
+                    // Unique collision — keep suggested prefix for this number only
+                }
+                $reloaded = $this->database->fetch(
+                    'SELECT order_prefix FROM companies WHERE id = ? LIMIT 1',
+                    [$companyId]
                 );
-            } catch (\Throwable $ignored) {
-                // Unique collision — keep suggested prefix for this number only
-            }
-            $reloaded = $this->database->fetch(
-                'SELECT order_prefix FROM companies WHERE id = ? LIMIT 1',
-                [$companyId]
-            );
-            if (!empty($reloaded['order_prefix'])) {
-                $prefix = strtoupper(trim((string)$reloaded['order_prefix']));
+                if (!empty($reloaded['order_prefix'])) {
+                    $prefix = strtoupper(trim((string)$reloaded['order_prefix']));
+                }
             }
         }
 

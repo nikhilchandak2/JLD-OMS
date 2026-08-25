@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class CrmDealGradeRepository
 {
@@ -15,6 +16,10 @@ class CrmDealGradeRepository
 
     public function findByDeal(int $dealId): array
     {
+        if (!TableSchema::hasTable('crm_deal_grades')) {
+            return [];
+        }
+
         return $this->database->fetchAll(
             "SELECT id, deal_id, grade_code, indicative_qty_tonnes
              FROM crm_deal_grades
@@ -27,7 +32,7 @@ class CrmDealGradeRepository
     /** Grades for many deals in one query, so a list view does not go N+1. */
     public function findByDeals(array $dealIds): array
     {
-        if (empty($dealIds)) {
+        if (empty($dealIds) || !TableSchema::hasTable('crm_deal_grades')) {
             return [];
         }
         $placeholders = implode(',', array_fill(0, count($dealIds), '?'));

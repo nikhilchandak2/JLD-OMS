@@ -73,54 +73,71 @@ class CompanyRepository
             $company->orderPrefix = \App\Support\OrderPrefix::suggestFromName($company->name);
         }
 
-        $sql = "
-            INSERT INTO companies (name, code, order_prefix, address, phone, email, contact_person, gst_number, pan_number, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ";
-
-        $this->database->execute($sql, [
+        $fields = ['name', 'code', 'address', 'phone', 'email', 'contact_person', 'gst_number', 'pan_number'];
+        $values = [
             $company->name,
             $company->code,
-            $company->orderPrefix !== '' ? $company->orderPrefix : null,
             $company->address,
             $company->phone,
             $company->email,
             $company->contactPerson,
             $company->gstNumber,
             $company->panNumber,
-            $company->status
-        ]);
+        ];
+        if (TableSchema::hasColumn('companies', 'order_prefix')) {
+            $fields[] = 'order_prefix';
+            $values[] = $company->orderPrefix !== '' ? $company->orderPrefix : null;
+        }
+        if (TableSchema::hasColumn('companies', 'status')) {
+            $fields[] = 'status';
+            $values[] = $company->status;
+        }
+        $placeholders = implode(', ', array_fill(0, count($fields), '?'));
+        $this->database->execute(
+            'INSERT INTO companies (' . implode(', ', $fields) . ') VALUES (' . $placeholders . ')',
+            $values
+        );
 
         return (int)$this->database->lastInsertId();
     }
 
     public function update(Company $company): bool
     {
-        $sql = "
-            UPDATE companies 
-            SET name = ?, code = ?, order_prefix = ?, address = ?, phone = ?, email = ?, 
-                contact_person = ?, gst_number = ?, pan_number = ?, status = ?
-            WHERE id = ?
-        ";
-
-        return $this->database->execute($sql, [
+        $sets = [
+            'name = ?', 'code = ?', 'address = ?', 'phone = ?', 'email = ?',
+            'contact_person = ?', 'gst_number = ?', 'pan_number = ?',
+        ];
+        $values = [
             $company->name,
             $company->code,
-            $company->orderPrefix !== '' ? $company->orderPrefix : null,
             $company->address,
             $company->phone,
             $company->email,
             $company->contactPerson,
             $company->gstNumber,
             $company->panNumber,
-            $company->status,
-            $company->id
-        ]);
+        ];
+        if (TableSchema::hasColumn('companies', 'order_prefix')) {
+            $sets[] = 'order_prefix = ?';
+            $values[] = $company->orderPrefix !== '' ? $company->orderPrefix : null;
+        }
+        if (TableSchema::hasColumn('companies', 'status')) {
+            $sets[] = 'status = ?';
+            $values[] = $company->status;
+        }
+        $values[] = $company->id;
+
+        return $this->database->execute(
+            'UPDATE companies SET ' . implode(', ', $sets) . ' WHERE id = ?',
+            $values
+        );
     }
 
     public function delete(int $id): bool
     {
-        // Soft delete by setting status to inactive
+        if (!TableSchema::hasColumn('companies', 'status')) {
+            return false;
+        }
         $sql = "UPDATE companies SET status = 'inactive' WHERE id = ?";
         return $this->database->execute($sql, [$id]);
     }
@@ -138,7 +155,7 @@ class CompanyRepository
             FROM companies c
             LEFT JOIN orders o ON c.id = o.company_id
             LEFT JOIN dispatches d ON o.id = d.order_id
-            WHERE c.status = 'active'
+            WHERE " . (TableSchema::hasColumn('companies', 'status') ? "c.status = 'active'" : '1=1') . "
             GROUP BY c.id, c.name, c.code
             ORDER BY c.name ASC
         ";

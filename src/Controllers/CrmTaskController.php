@@ -33,19 +33,25 @@ class CrmTaskController
         }
 
         $all = isset($_GET['all']) && (string)$_GET['all'] === '1';
-        $list = [];
-        if ($all && $this->authService->hasRole('admin')) {
-            $list = $this->taskRepo->findAll();
-        } else {
-            $list = $this->taskRepo->findMine((int)$user['id']);
-        }
+        try {
+            $list = [];
+            if ($all && $this->authService->hasRole('admin')) {
+                $list = $this->taskRepo->findAll();
+            } else {
+                $list = $this->taskRepo->findMine((int)$user['id']);
+            }
 
-        echo json_encode([
-            'success' => true,
-            'data' => array_map(static function (CrmTask $t) {
-                return $t->toArray();
-            }, $list)
-        ]);
+            echo json_encode([
+                'success' => true,
+                'data' => array_map(static function (CrmTask $t) {
+                    return $t->toArray();
+                }, $list)
+            ]);
+        } catch (\Throwable $e) {
+            error_log($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to process the request']);
+        }
     }
 
     /**

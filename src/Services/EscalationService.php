@@ -12,6 +12,7 @@ use App\Repositories\CrmDealRepository;
 use App\Repositories\EscalationRepository;
 use App\Repositories\EscalationRuleRepository;
 use App\Repositories\PartyRepository;
+use App\Support\TableSchema;
 
 /**
  * Escalations freeze context at trigger time. Nightly runs never re-raise an
@@ -497,9 +498,16 @@ class EscalationService
     /** @return array<int,array<string,mixed>> */
     private function overdueIssues(string $asOf): array
     {
+        if (!TableSchema::hasTable('crm_account_issues')) {
+            return [];
+        }
+        $statusPred = TableSchema::hasColumn('crm_account_issues', 'status')
+            ? "status IN ('open', 'escalated')"
+            : '1=1';
+
         return $this->database->fetchAll(
             "SELECT * FROM crm_account_issues
-             WHERE status IN ('open', 'escalated')
+             WHERE {$statusPred}
                AND DATE_ADD(raised_on, INTERVAL resolution_window_days DAY) <= ?",
             [$asOf]
         );
@@ -508,6 +516,10 @@ class EscalationService
     /** @return array<int,array<string,mixed>> */
     private function delayedOrders(string $asOf, int $thresholdDays): array
     {
+        if (!TableSchema::hasColumn('orders', 'scheduled_dispatch_date')) {
+            return [];
+        }
+
         return $this->database->fetchAll(
             "SELECT id, party_id, company_id, order_no, scheduled_dispatch_date, status
              FROM orders
@@ -521,10 +533,20 @@ class EscalationService
     /** @return array<int,array<string,mixed>> */
     private function overdueFlags(string $asOf, int $thresholdDays): array
     {
+        if (!TableSchema::hasTable('crm_technical_flags')) {
+            return [];
+        }
+        $statusPred = TableSchema::hasColumn('crm_technical_flags', 'status')
+            ? "status IN ('open', 'claimed')"
+            : '1=1';
+        $statusSelect = TableSchema::hasColumn('crm_technical_flags', 'status')
+            ? 'status'
+            : "'open' AS status";
+
         return $this->database->fetchAll(
-            "SELECT id, party_id, deal_id, expected_turnaround_at, status
+            "SELECT id, party_id, deal_id, expected_turnaround_at, {$statusSelect}
              FROM crm_technical_flags
-             WHERE status IN ('open', 'claimed')
+             WHERE {$statusPred}
                AND expected_turnaround_at IS NOT NULL
                AND DATE_ADD(expected_turnaround_at, INTERVAL ? DAY) < DATE_ADD(?, INTERVAL 1 DAY)",
             [$thresholdDays, $asOf]

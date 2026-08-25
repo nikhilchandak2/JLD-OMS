@@ -16,6 +16,9 @@ class CrmReceivableEntryRepository
 
     public function findByParty(int $partyId): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_receivable_entries')) {
+            return [];
+        }
         $sql = "SELECT * FROM crm_receivable_entries WHERE party_id = ? ORDER BY entry_date DESC, id DESC";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$partyId]);
@@ -29,6 +32,9 @@ class CrmReceivableEntryRepository
     /** Outstanding = sum(invoices) - sum(payments) - sum(adjustments reducing balance) */
     public function getOutstandingForParty(int $partyId): float
     {
+        if (!\App\Support\TableSchema::hasTable('crm_receivable_entries')) {
+            return 0.0;
+        }
         $sql = "SELECT entry_type, SUM(amount) AS total FROM crm_receivable_entries WHERE party_id = ? GROUP BY entry_type";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$partyId]);

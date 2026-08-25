@@ -184,16 +184,37 @@ class DealService
         $deal['grades'] = $this->grades->findByDeal($dealId);
         $deal['is_on_technical_hold'] = $this->flags->hasOpenFlag($dealId);
         $deal['open_technical_flags'] = $this->flags->findQueue(['deal_id' => $dealId, 'open_only' => 1]);
-        $deal['exit_criteria'] = $this->stageService->evaluateExitCriteria($dealId);
-        $deal['history'] = $this->stageService->history($dealId);
-        $deal['time_in_stage_seconds'] = $this->stageService->timeInStage($dealId);
-
-        if ((int)$deal['stage'] >= 5) {
-            $deal['credit_gate'] = $this->creditSnapshotForDeal($deal, $actor['role'] ?? null);
+        try {
+            $deal['exit_criteria'] = $this->stageService->evaluateExitCriteria($dealId);
+            $deal['history'] = $this->stageService->history($dealId);
+            $deal['time_in_stage_seconds'] = $this->stageService->timeInStage($dealId);
+        } catch (\Throwable $e) {
+            error_log($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            $deal['exit_criteria'] = [];
+            $deal['history'] = [];
+            $deal['time_in_stage_seconds'] = null;
         }
 
-        $deal['account_context'] = $this->accountContext->snapshotForParty((int)$deal['party_id'], $actor);
-        $deal['handoff_packet'] = (new HandoffService())->currentSalesToDispatchForDeal($dealId);
+        if ((int)($deal['stage'] ?? 0) >= 5) {
+            try {
+                $deal['credit_gate'] = $this->creditSnapshotForDeal($deal, $actor['role'] ?? null);
+            } catch (\Throwable $e) {
+                error_log($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            }
+        }
+
+        try {
+            $deal['account_context'] = $this->accountContext->snapshotForParty((int)$deal['party_id'], $actor);
+        } catch (\Throwable $e) {
+            error_log($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            $deal['account_context'] = null;
+        }
+        try {
+            $deal['handoff_packet'] = (new HandoffService())->currentSalesToDispatchForDeal($dealId);
+        } catch (\Throwable $e) {
+            error_log($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            $deal['handoff_packet'] = null;
+        }
 
         return $this->policy->serializeDeal($deal, $actor['role'] ?? null);
     }

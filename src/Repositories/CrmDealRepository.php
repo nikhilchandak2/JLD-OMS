@@ -33,6 +33,27 @@ class CrmDealRepository
      */
     public function findAll(array $filters = [], int $limit = 200): array
     {
+        if (!TableSchema::hasTable('crm_deals')) {
+            return [];
+        }
+        $ownerJoin = TableSchema::hasColumn('crm_deals', 'owner_user_id')
+            ? 'LEFT JOIN users u ON u.id = d.owner_user_id'
+            : (TableSchema::hasColumn('crm_deals', 'assigned_to')
+                ? 'LEFT JOIN users u ON u.id = d.assigned_to'
+                : 'LEFT JOIN users u ON 1=0');
+        $reasonJoin = TableSchema::hasTable('crm_deal_reason_codes') && TableSchema::hasColumn('crm_deals', 'lost_reason_code_id')
+            ? 'LEFT JOIN crm_deal_reason_codes r ON r.id = d.lost_reason_code_id'
+            : 'LEFT JOIN crm_deal_reason_codes r ON 1=0';
+        $flagJoin = TableSchema::hasTable('crm_technical_flags')
+            ? "LEFT JOIN (
+                    SELECT deal_id, COUNT(*) AS open_flags, MIN(created_at) AS oldest_open_flag_at
+                    FROM crm_technical_flags
+                    WHERE " . $this->technicalFlagOpenPredicate() . "
+                      AND deal_id IS NOT NULL
+                    GROUP BY deal_id
+                ) f ON f.deal_id = d.id"
+            : 'LEFT JOIN (SELECT NULL AS deal_id, NULL AS open_flags, NULL AS oldest_open_flag_at) f ON 1=0';
+
         $sql = "SELECT d.*,
                        p.name AS party_name,
                        u.name AS owner_name,
@@ -41,15 +62,9 @@ class CrmDealRepository
                        f.oldest_open_flag_at
                 FROM crm_deals d
                 JOIN parties p ON p.id = d.party_id
-                LEFT JOIN users u ON u.id = d.owner_user_id
-                LEFT JOIN crm_deal_reason_codes r ON r.id = d.lost_reason_code_id
-                LEFT JOIN (
-                    SELECT deal_id, COUNT(*) AS open_flags, MIN(created_at) AS oldest_open_flag_at
-                    FROM crm_technical_flags
-                    WHERE " . $this->technicalFlagOpenPredicate() . "
-                      AND deal_id IS NOT NULL
-                    GROUP BY deal_id
-                ) f ON f.deal_id = d.id
+                {$ownerJoin}
+                {$reasonJoin}
+                {$flagJoin}
                 WHERE " . $this->notDeletedPredicate('d');
         $params = [];
 
@@ -65,11 +80,11 @@ class CrmDealRepository
             $sql .= " AND d.party_id = ?";
             $params[] = (int)$filters['party_id'];
         }
-        if (!empty($filters['owner_user_id'])) {
+        if (!empty($filters['owner_user_id']) && TableSchema::hasColumn('crm_deals', 'owner_user_id')) {
             $sql .= " AND d.owner_user_id = ?";
             $params[] = (int)$filters['owner_user_id'];
         }
-        if (!empty($filters['company_id'])) {
+        if (!empty($filters['company_id']) && TableSchema::hasColumn('crm_deals', 'company_id')) {
             $sql .= " AND d.company_id = ?";
             $params[] = (int)$filters['company_id'];
         }
@@ -84,24 +99,44 @@ class CrmDealRepository
 
     public function create(array $data): int
     {
+        $values = [
+            'party_id' => $data['party_id'],
+            'title' => $data['title'],
+        ];
+        $optional = [
+            'company_id' => $data['company_id'] ?? null,
+            'source' => $data['source'] ?? 'other',
+            'indicative_quantity_tonnes' => $data['indicative_quantity_tonnes'] ?? null,
+            'inquiry_date' => $data['inquiry_date'] ?? null,
+            'value' => $data['value'] ?? null,
+            'expected_close_date' => $data['expected_close_date'] ?? null,
+            'notes' => $data['notes'] ?? null,
+        ];
+        foreach ($optional as $column => $value) {
+            if (TableSchema::hasColumn('crm_deals', $column)) {
+                $values[$column] = $value;
+            }
+        }
+        if (TableSchema::hasColumn('crm_deals', 'stage')) {
+            $values['stage'] = 1;
+        }
+        if (TableSchema::hasColumn('crm_deals', 'status')) {
+            $values['status'] = 'active';
+        }
+        if (TableSchema::hasColumn('crm_deals', 'stage_entered_at')) {
+            $values['stage_entered_at'] = date('Y-m-d H:i:s');
+        }
+        if (TableSchema::hasColumn('crm_deals', 'owner_user_id')) {
+            $values['owner_user_id'] = $data['owner_user_id'] ?? null;
+        } elseif (TableSchema::hasColumn('crm_deals', 'assigned_to')) {
+            $values['assigned_to'] = $data['owner_user_id'] ?? null;
+        }
+
+        $columns = array_keys($values);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
         $this->database->query(
-            "INSERT INTO crm_deals
-                (party_id, company_id, title, stage, status, stage_entered_at, source,
-                 indicative_quantity_tonnes, inquiry_date, value, expected_close_date,
-                 owner_user_id, notes)
-             VALUES (?, ?, ?, 1, 'active', NOW(), ?, ?, ?, ?, ?, ?, ?)",
-            [
-                $data['party_id'],
-                $data['company_id'] ?? null,
-                $data['title'],
-                $data['source'],
-                $data['indicative_quantity_tonnes'] ?? null,
-                $data['inquiry_date'],
-                $data['value'] ?? null,
-                $data['expected_close_date'] ?? null,
-                $data['owner_user_id'] ?? null,
-                $data['notes'] ?? null,
-            ]
+            'INSERT INTO crm_deals (' . implode(', ', $columns) . ') VALUES (' . $placeholders . ')',
+            array_values($values)
         );
 
         return (int)$this->database->lastInsertId();
@@ -119,10 +154,21 @@ class CrmDealRepository
         $fields = [];
         $values = [];
         foreach ($allowed as $field) {
-            if (array_key_exists($field, $data)) {
-                $fields[] = "{$field} = ?";
-                $values[] = $data[$field];
+            if (!array_key_exists($field, $data)) {
+                continue;
             }
+            if ($field === 'owner_user_id' && !TableSchema::hasColumn('crm_deals', 'owner_user_id')) {
+                if (TableSchema::hasColumn('crm_deals', 'assigned_to')) {
+                    $fields[] = 'assigned_to = ?';
+                    $values[] = $data[$field];
+                }
+                continue;
+            }
+            if (!TableSchema::hasColumn('crm_deals', $field)) {
+                continue;
+            }
+            $fields[] = "{$field} = ?";
+            $values[] = $data[$field];
         }
         if (empty($fields)) {
             return;
@@ -139,17 +185,31 @@ class CrmDealRepository
      */
     public function applyTransition(int $id, int $stage, string $status, ?int $lostReasonCodeId, bool $resetStageClock): void
     {
-        $sql = "UPDATE crm_deals
-                SET stage = ?, status = ?, lost_reason_code_id = ?"
-            . ($resetStageClock ? ", stage_entered_at = NOW()" : "")
-            . ", updated_at = NOW()
-                WHERE id = ? AND " . $this->notDeletedPredicate();
-
-        $this->database->query($sql, [$stage, $status, $lostReasonCodeId, $id]);
+        $sets = ['stage = ?'];
+        $params = [$stage];
+        if (TableSchema::hasColumn('crm_deals', 'status')) {
+            $sets[] = 'status = ?';
+            $params[] = $status;
+        }
+        if (TableSchema::hasColumn('crm_deals', 'lost_reason_code_id')) {
+            $sets[] = 'lost_reason_code_id = ?';
+            $params[] = $lostReasonCodeId;
+        }
+        if ($resetStageClock && TableSchema::hasColumn('crm_deals', 'stage_entered_at')) {
+            $sets[] = 'stage_entered_at = NOW()';
+        }
+        $params[] = $id;
+        $this->database->query(
+            'UPDATE crm_deals SET ' . implode(', ', $sets) . ', updated_at = NOW() WHERE id = ? AND ' . $this->notDeletedPredicate(),
+            $params
+        );
     }
 
     public function softDelete(int $id): void
     {
+        if (!TableSchema::hasColumn('crm_deals', 'deleted_at')) {
+            return;
+        }
         $this->database->query(
             "UPDATE crm_deals SET deleted_at = NOW(), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL",
             [$id]
@@ -158,6 +218,9 @@ class CrmDealRepository
 
     public function countActiveByStage(): array
     {
+        if (!TableSchema::hasTable('crm_deals')) {
+            return [];
+        }
         $where = [$this->notDeletedPredicate()];
         if (TableSchema::hasColumn('crm_deals', 'status')) {
             $where[] = "`status` = 'active'";

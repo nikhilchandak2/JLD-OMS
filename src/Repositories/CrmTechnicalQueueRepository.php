@@ -15,6 +15,9 @@ class CrmTechnicalQueueRepository
 
     public function findActive(?int $companyId = null): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_technical_queues')) {
+            return [];
+        }
         $sql = "SELECT id, company_id, name FROM crm_technical_queues WHERE is_active = 1";
         $params = [];
         if ($companyId !== null) {

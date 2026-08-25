@@ -9,6 +9,7 @@ use App\Repositories\CrmAccountIssueRepository;
 use App\Repositories\CrmCompetitorPositionRepository;
 use App\Repositories\CrmContactRepository;
 use App\Repositories\PartyRepository;
+use App\Support\TableSchema;
 
 /**
  * Composes the account-context snapshot used by the party record, the deal
@@ -192,37 +193,67 @@ class AccountContextService
         $like = '%' . $this->escapeLike($query) . '%';
         $boolean = $this->toBooleanQuery($query);
 
+        $contactMatch = TableSchema::hasIndex('crm_contacts', 'ft_crm_contacts_name')
+            ? "MATCH(c.name) AGAINST(? IN BOOLEAN MODE) OR c.name LIKE ? ESCAPE '\\\\'"
+            : "c.name LIKE ? ESCAPE '\\\\'";
+        $contactParams = TableSchema::hasIndex('crm_contacts', 'ft_crm_contacts_name')
+            ? [$boolean, $like]
+            : [$like];
+        $contactSelect = TableSchema::hasColumn('crm_contacts', 'influence_level')
+            ? 'c.id, c.party_id, c.name, c.role, c.influence_level, p.name AS party_name'
+            : "c.id, c.party_id, c.name, c.role, 'unknown' AS influence_level, p.name AS party_name";
+
         $contacts = $this->database->fetchAll(
-            "SELECT c.id, c.party_id, c.name, c.role, c.influence_level, p.name AS party_name
+            "SELECT {$contactSelect}
              FROM crm_contacts c
              JOIN parties p ON p.id = c.party_id
-             WHERE MATCH(c.name) AGAINST(? IN BOOLEAN MODE) OR c.name LIKE ? ESCAPE '\\\\'
+             WHERE {$contactMatch}
              ORDER BY c.name
              LIMIT 25",
-            [$boolean, $like]
+            $contactParams
         );
 
-        $issues = $this->database->fetchAll(
-            "SELECT i.id, i.party_id, i.issue_type, i.status, i.description, i.raised_on, p.name AS party_name
-             FROM crm_account_issues i
-             JOIN parties p ON p.id = i.party_id
-             WHERE MATCH(i.description) AGAINST(? IN BOOLEAN MODE) OR i.description LIKE ? ESCAPE '\\\\'
-             ORDER BY i.raised_on DESC
-             LIMIT 25",
-            [$boolean, $like]
-        );
+        $issueMatch = TableSchema::hasIndex('crm_account_issues', 'ft_issue_description')
+            ? "MATCH(i.description) AGAINST(? IN BOOLEAN MODE) OR i.description LIKE ? ESCAPE '\\\\'"
+            : "i.description LIKE ? ESCAPE '\\\\'";
+        $issueParams = TableSchema::hasIndex('crm_account_issues', 'ft_issue_description')
+            ? [$boolean, $like]
+            : [$like];
+        $issueStatus = TableSchema::hasColumn('crm_account_issues', 'status')
+            ? 'i.status'
+            : "'open' AS status";
+
+        $issues = TableSchema::hasTable('crm_account_issues')
+            ? $this->database->fetchAll(
+                "SELECT i.id, i.party_id, i.issue_type, {$issueStatus}, i.description, i.raised_on, p.name AS party_name
+                 FROM crm_account_issues i
+                 JOIN parties p ON p.id = i.party_id
+                 WHERE {$issueMatch}
+                 ORDER BY i.raised_on DESC
+                 LIMIT 25",
+                $issueParams
+            )
+            : [];
 
         $competitors = [];
-        if ($this->policy->can($actor['role'] ?? null, AccountContextPolicy::VIEW_COMPETITOR)) {
+        if ($this->policy->can($actor['role'] ?? null, AccountContextPolicy::VIEW_COMPETITOR)
+            && TableSchema::hasTable('crm_competitor_positions')
+        ) {
+            $compMatch = TableSchema::hasIndex('crm_competitor_positions', 'ft_competitor_name')
+                ? "MATCH(c.competitor_name) AGAINST(? IN BOOLEAN MODE) OR c.competitor_name LIKE ? ESCAPE '\\\\'"
+                : "c.competitor_name LIKE ? ESCAPE '\\\\'";
+            $compParams = TableSchema::hasIndex('crm_competitor_positions', 'ft_competitor_name')
+                ? [$boolean, $like]
+                : [$like];
             $competitors = $this->database->fetchAll(
                 "SELECT c.id, c.party_id, c.competitor_name, c.grade_code, c.intelligence_type,
                         c.is_current, c.estimated_share_pct, p.name AS party_name
                  FROM crm_competitor_positions c
                  JOIN parties p ON p.id = c.party_id
-                 WHERE MATCH(c.competitor_name) AGAINST(? IN BOOLEAN MODE) OR c.competitor_name LIKE ? ESCAPE '\\\\'
+                 WHERE {$compMatch}
                  ORDER BY c.is_current DESC, c.recorded_at DESC
                  LIMIT 25",
-                [$boolean, $like]
+                $compParams
             );
             $competitors = array_map(function (array $row) {
                 $row['id'] = (int)$row['id'];

@@ -70,6 +70,9 @@ class ForecastActualRepository
     /** @return array<int,array<string,mixed>> */
     public function byGrade(int $periodId): array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_actuals')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT grade_code,
                     SUM(forecast_low) AS forecast_low,
@@ -88,6 +91,9 @@ class ForecastActualRepository
     /** @return array<int,array<string,mixed>> */
     public function byAccount(int $periodId): array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_actuals')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT a.party_id, p.name AS party_name,
                     SUM(a.forecast_low) AS forecast_low,
@@ -107,6 +113,9 @@ class ForecastActualRepository
     /** @return array<int,array<string,mixed>> */
     public function linesForPeriod(int $periodId): array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_lines')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT * FROM forecast_lines WHERE period_id = ?",
             [$periodId]

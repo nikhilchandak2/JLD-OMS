@@ -16,6 +16,9 @@ class CrmActivityRepository
 
     public function findAll(array $filters = []): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_activities')) {
+            return [];
+        }
         $sql = "SELECT a.*, u.name AS created_by_name, p.name AS party_name FROM crm_activities a
                 LEFT JOIN users u ON a.created_by = u.id
                 LEFT JOIN parties p ON a.party_id = p.id

@@ -15,6 +15,9 @@ class CrmDealReasonCodeRepository
 
     public function findActive(?string $appliesTo = null): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_deal_reason_codes')) {
+            return [];
+        }
         $sql = "SELECT id, code, label, applies_to FROM crm_deal_reason_codes WHERE is_active = 1";
         $params = [];
         if ($appliesTo !== null) {

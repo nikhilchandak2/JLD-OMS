@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class CrmAccountIssueRepository
 {
@@ -15,6 +16,9 @@ class CrmAccountIssueRepository
 
     public function findById(int $id): ?array
     {
+        if (!TableSchema::hasTable('crm_account_issues')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT i.*, p.name AS party_name, u.name AS raised_by_name, d.title AS deal_title
              FROM crm_account_issues i
@@ -29,24 +33,34 @@ class CrmAccountIssueRepository
     /** @return array<int,array<string,mixed>> */
     public function findByParty(int $partyId): array
     {
+        if (!TableSchema::hasTable('crm_account_issues')) {
+            return [];
+        }
+        $order = TableSchema::hasColumn('crm_account_issues', 'status')
+            ? "FIELD(i.status, 'open', 'escalated', 'resolved'), i.raised_on DESC, i.id DESC"
+            : 'i.raised_on DESC, i.id DESC';
+
         return $this->database->fetchAll(
             "SELECT i.*, u.name AS raised_by_name, d.title AS deal_title
              FROM crm_account_issues i
              LEFT JOIN users u ON u.id = i.raised_by_user_id
              LEFT JOIN crm_deals d ON d.id = i.deal_id
              WHERE i.party_id = ?
-             ORDER BY FIELD(i.status, 'open', 'escalated', 'resolved'), i.raised_on DESC, i.id DESC",
+             ORDER BY {$order}",
             [$partyId]
         );
     }
 
     public function countsByParty(int $partyId): array
     {
+        $out = ['open' => 0, 'resolved' => 0, 'escalated' => 0];
+        if (!TableSchema::hasTable('crm_account_issues') || !TableSchema::hasColumn('crm_account_issues', 'status')) {
+            return $out;
+        }
         $rows = $this->database->fetchAll(
             "SELECT status, COUNT(*) AS c FROM crm_account_issues WHERE party_id = ? GROUP BY status",
             [$partyId]
         );
-        $out = ['open' => 0, 'resolved' => 0, 'escalated' => 0];
         foreach ($rows as $row) {
             $out[$row['status']] = (int)$row['c'];
         }

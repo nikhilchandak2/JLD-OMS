@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class CrmTechnicalFlagRepository
 {
@@ -44,15 +45,22 @@ class CrmTechnicalFlagRepository
      */
     public function findQueue(array $filters = []): array
     {
+        if (!TableSchema::hasTable('crm_technical_flags')) {
+            return [];
+        }
+
+        $overdue = TableSchema::hasColumn('crm_technical_flags', 'status')
+            ? "(f.status IN ('open', 'claimed')
+                        AND f.expected_turnaround_at IS NOT NULL
+                        AND f.expected_turnaround_at < NOW()) AS is_overdue"
+            : '0 AS is_overdue';
         $sql = "SELECT f.*,
                        q.name AS queue_name,
                        p.name AS party_name,
                        d.title AS deal_title,
                        ru.name AS raised_by_name,
                        cu.name AS claimed_by_name,
-                       (f.status IN ('open', 'claimed')
-                        AND f.expected_turnaround_at IS NOT NULL
-                        AND f.expected_turnaround_at < NOW()) AS is_overdue
+                       {$overdue}
                 FROM crm_technical_flags f
                 JOIN crm_technical_queues q ON q.id = f.routed_to_queue_id
                 JOIN parties p ON p.id = f.party_id
@@ -66,11 +74,11 @@ class CrmTechnicalFlagRepository
             $sql .= " AND f.routed_to_queue_id = ?";
             $params[] = (int)$filters['queue_id'];
         }
-        if (!empty($filters['status'])) {
+        if (!empty($filters['status']) && TableSchema::hasColumn('crm_technical_flags', 'status')) {
             $sql .= " AND f.status = ?";
             $params[] = $filters['status'];
         }
-        if (!empty($filters['open_only'])) {
+        if (!empty($filters['open_only']) && TableSchema::hasColumn('crm_technical_flags', 'status')) {
             $sql .= " AND f.status IN ('open', 'claimed')";
         }
         if (!empty($filters['deal_id'])) {
@@ -89,16 +97,22 @@ class CrmTechnicalFlagRepository
 
     public function hasOpenFlag(?int $dealId, ?int $partyId = null): bool
     {
+        if (!TableSchema::hasTable('crm_technical_flags')) {
+            return false;
+        }
+        $statusPred = TableSchema::hasColumn('crm_technical_flags', 'status')
+            ? "AND status IN ('open', 'claimed')"
+            : '';
         if ($dealId !== null) {
             $row = $this->database->fetch(
                 "SELECT 1 AS found FROM crm_technical_flags
-                 WHERE deal_id = ? AND status IN ('open', 'claimed') LIMIT 1",
+                 WHERE deal_id = ? {$statusPred} LIMIT 1",
                 [$dealId]
             );
         } else {
             $row = $this->database->fetch(
                 "SELECT 1 AS found FROM crm_technical_flags
-                 WHERE party_id = ? AND deal_id IS NULL AND status IN ('open', 'claimed') LIMIT 1",
+                 WHERE party_id = ? AND deal_id IS NULL {$statusPred} LIMIT 1",
                 [$partyId]
             );
         }
@@ -143,17 +157,23 @@ class CrmTechnicalFlagRepository
      */
     public function resolutionStats(?string $fromDate = null, ?string $toDate = null): array
     {
+        if (!TableSchema::hasTable('crm_technical_flags') || !TableSchema::hasTable('crm_technical_queues')) {
+            return [];
+        }
+        $statusOpen = TableSchema::hasColumn('crm_technical_flags', 'status')
+            ? "SUM(f.status IN ('open', 'claimed')) AS still_open,
+                       SUM(f.status = 'resolved') AS resolved,
+                       SUM(f.status IN ('open', 'claimed')
+                           AND f.expected_turnaround_at IS NOT NULL
+                           AND f.expected_turnaround_at < NOW()) AS overdue"
+            : 'COUNT(*) AS still_open, 0 AS resolved, 0 AS overdue';
         $sql = "SELECT q.name AS queue_name,
                        COUNT(*) AS flags_raised,
-                       SUM(f.status IN ('open', 'claimed')) AS still_open,
-                       SUM(f.status = 'resolved') AS resolved,
+                       {$statusOpen},
                        SUM(f.resolution_type = 'site_visit') AS site_visits,
                        ROUND(AVG(CASE WHEN f.resolved_at IS NOT NULL
                                  THEN TIMESTAMPDIFF(HOUR, f.created_at, f.resolved_at) END), 1)
-                         AS avg_resolution_hours,
-                       SUM(f.status IN ('open', 'claimed')
-                           AND f.expected_turnaround_at IS NOT NULL
-                           AND f.expected_turnaround_at < NOW()) AS overdue
+                         AS avg_resolution_hours
                 FROM crm_technical_flags f
                 JOIN crm_technical_queues q ON q.id = f.routed_to_queue_id
                 WHERE 1 = 1";

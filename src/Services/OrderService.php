@@ -14,6 +14,7 @@ use App\Repositories\ScheduledDeliveryRepository;
 use App\Models\Order;
 use App\Models\ScheduledDelivery;
 use App\Support\OrderSchema;
+use App\Support\TableSchema;
 
 class OrderService
 {
@@ -372,7 +373,8 @@ class OrderService
 
     private function validateCompanyExists(int $companyId): void
     {
-        $result = $this->database->fetch("SELECT id FROM companies WHERE id = ? AND status = 'active'", [$companyId]);
+        $statusPred = TableSchema::hasColumn('companies', 'status') ? " AND status = 'active'" : '';
+        $result = $this->database->fetch("SELECT id FROM companies WHERE id = ?{$statusPred}", [$companyId]);
 
         if (!$result) {
             throw new \Exception("Company not found or inactive");
@@ -406,7 +408,7 @@ class OrderService
         }
 
         if ($companyId <= 0) {
-            $row = $this->database->fetch("SELECT id FROM companies WHERE status = 'active' ORDER BY id LIMIT 1");
+            $row = $this->database->fetch(TableSchema::firstActiveCompanyIdSql());
             $companyId = (int)($row['id'] ?? 0);
         }
 

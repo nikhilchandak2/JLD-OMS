@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class AccountDormancySignalRepository
 {
@@ -62,10 +63,29 @@ class AccountDormancySignalRepository
 
     public function activitySnapshotSql(): string
     {
+        $owner = TableSchema::hasColumn('parties', 'assigned_sales_owner')
+            ? 'p.assigned_sales_owner'
+            : 'NULL AS assigned_sales_owner';
+        $tier = TableSchema::hasColumn('parties', 'account_tier')
+            ? 'p.account_tier'
+            : 'NULL AS account_tier';
+        $orderForce = TableSchema::forceIndex('orders', 'idx_orders_party_date');
+        $visitForce = TableSchema::hasTable('crm_visits')
+            ? TableSchema::forceIndex('crm_visits', 'idx_visits_party_date')
+            : '';
+        $visitJoin = TableSchema::hasTable('crm_visits')
+            ? "LEFT JOIN (
+                    SELECT v.party_id, MAX(v.visit_date) AS last_visit_date
+                    FROM crm_visits v {$visitForce}
+                    GROUP BY v.party_id
+                ) last_v ON last_v.party_id = p.id"
+            : 'LEFT JOIN (SELECT NULL AS party_id, NULL AS last_visit_date) last_v ON 1=0';
+        $active = TableSchema::hasColumn('parties', 'is_active') ? 'p.is_active = 1' : '1=1';
+
         return "SELECT p.id AS party_id,
                        p.name AS party_name,
-                       p.assigned_sales_owner,
-                       p.account_tier,
+                       {$owner},
+                       {$tier},
                        last_o.last_order_date,
                        last_o.last_order_company_id,
                        DATEDIFF(?, last_o.last_order_date) AS days_since_last_order,
@@ -77,15 +97,11 @@ class AccountDormancySignalRepository
                            MAX(o.order_date) AS last_order_date,
                            SUBSTRING_INDEX(GROUP_CONCAT(o.company_id ORDER BY o.order_date DESC, o.id DESC), ',', 1)
                              AS last_order_company_id
-                    FROM orders o FORCE INDEX (idx_orders_party_date)
+                    FROM orders o {$orderForce}
                     GROUP BY o.party_id
                 ) last_o ON last_o.party_id = p.id
-                LEFT JOIN (
-                    SELECT v.party_id, MAX(v.visit_date) AS last_visit_date
-                    FROM crm_visits v FORCE INDEX (idx_visits_party_date)
-                    GROUP BY v.party_id
-                ) last_v ON last_v.party_id = p.id
-                WHERE p.is_active = 1";
+                {$visitJoin}
+                WHERE {$active}";
     }
 
     /** @return array<int,array<string,mixed>> */
@@ -103,7 +119,7 @@ class AccountDormancySignalRepository
     {
         return $this->database->fetchAll(
             "EXPLAIN SELECT o.party_id, MAX(o.order_date) AS last_order_date
-             FROM orders o FORCE INDEX (idx_orders_party_date)
+             FROM orders o " . TableSchema::forceIndex('orders', 'idx_orders_party_date') . "
              GROUP BY o.party_id"
         );
     }
@@ -113,13 +129,22 @@ class AccountDormancySignalRepository
      */
     public function findForDate(string $computedOn, ?int $ownerUserId = null): array
     {
-        $sql = "SELECT s.*, p.name AS party_name, p.assigned_sales_owner, u.name AS owner_name
+        if (!TableSchema::hasTable('account_dormancy_signals')) {
+            return [];
+        }
+        $ownerSelect = TableSchema::hasColumn('parties', 'assigned_sales_owner')
+            ? 'p.assigned_sales_owner'
+            : 'NULL AS assigned_sales_owner';
+        $ownerJoin = TableSchema::hasColumn('parties', 'assigned_sales_owner')
+            ? 'LEFT JOIN users u ON u.id = p.assigned_sales_owner'
+            : 'LEFT JOIN users u ON 1=0';
+        $sql = "SELECT s.*, p.name AS party_name, {$ownerSelect}, u.name AS owner_name
                 FROM account_dormancy_signals s
                 JOIN parties p ON p.id = s.party_id
-                LEFT JOIN users u ON u.id = p.assigned_sales_owner
+                {$ownerJoin}
                 WHERE s.computed_on = ?";
         $params = [$computedOn];
-        if ($ownerUserId !== null) {
+        if ($ownerUserId !== null && TableSchema::hasColumn('parties', 'assigned_sales_owner')) {
             $sql .= " AND p.assigned_sales_owner = ?";
             $params[] = $ownerUserId;
         }
