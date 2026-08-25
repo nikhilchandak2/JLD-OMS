@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Core\Database;
 use App\Repositories\CrmDealRepository;
 use App\Support\OrderSchema;
+use App\Support\TableSchema;
 
 /**
  * Repeat-order fast path (B7). No deal record is created. The credit gate is
@@ -76,12 +77,21 @@ class DirectOrderCaptureService
             ];
         }
 
+        $statusSelect = TableSchema::hasColumn('crm_deals', 'status') ? 'd.status' : "'active' AS status";
+        $where = ['d.party_id = ?'];
+        if (TableSchema::hasColumn('crm_deals', 'status')) {
+            $where[] = "d.status = 'active'";
+        }
+        if (TableSchema::hasColumn('crm_deals', 'deleted_at')) {
+            $where[] = 'd.deleted_at IS NULL';
+        }
+
         $openDeals = $this->database->fetchAll(
-            "SELECT d.id, d.title, d.stage, d.status, d.value,
+            "SELECT d.id, d.title, d.stage, {$statusSelect}, d.value,
                     GROUP_CONCAT(g.grade_code ORDER BY g.grade_code SEPARATOR ', ') AS grades
              FROM crm_deals d
              LEFT JOIN crm_deal_grades g ON g.deal_id = d.id
-             WHERE d.party_id = ? AND d.status = 'active' AND d.deleted_at IS NULL
+             WHERE " . implode(' AND ', $where) . "
              GROUP BY d.id
              ORDER BY d.stage DESC, d.id DESC",
             [$partyId]

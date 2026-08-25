@@ -7,6 +7,7 @@ use App\Repositories\AuditLogRepository;
 use App\Repositories\CreditOverrideEventRepository;
 use App\Repositories\CreditOverrideRequestRepository;
 use App\Support\OrderSchema;
+use App\Support\TableSchema;
 
 /**
  * Override state machine. Legality is the table below, not if-chains. Every
@@ -139,7 +140,7 @@ class CreditOverrideService
     {
         $companyId = (int)($deal['company_id'] ?? 0);
         if ($companyId <= 0) {
-            $row = $this->database->fetch("SELECT id FROM companies WHERE status = 'active' ORDER BY id LIMIT 1");
+            $row = $this->database->fetch(TableSchema::firstActiveCompanyIdSql());
             $companyId = (int)($row['id'] ?? 0);
         }
         if ($companyId <= 0) {

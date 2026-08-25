@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 /**
  * SQL for crm_deals. Soft-deleted rows are excluded here (I12) so no caller has to remember.
@@ -22,7 +23,7 @@ class CrmDealRepository
     public function findById(int $id): ?array
     {
         return $this->database->fetch(
-            "SELECT * FROM crm_deals WHERE id = ? AND deleted_at IS NULL",
+            "SELECT * FROM crm_deals WHERE id = ? AND " . $this->notDeletedPredicate(),
             [$id]
         );
     }
@@ -45,13 +46,14 @@ class CrmDealRepository
                 LEFT JOIN (
                     SELECT deal_id, COUNT(*) AS open_flags, MIN(created_at) AS oldest_open_flag_at
                     FROM crm_technical_flags
-                    WHERE status IN ('open', 'claimed') AND deal_id IS NOT NULL
+                    WHERE " . $this->technicalFlagOpenPredicate() . "
+                      AND deal_id IS NOT NULL
                     GROUP BY deal_id
                 ) f ON f.deal_id = d.id
-                WHERE d.deleted_at IS NULL";
+                WHERE " . $this->notDeletedPredicate('d');
         $params = [];
 
-        if (!empty($filters['status'])) {
+        if (!empty($filters['status']) && TableSchema::hasColumn('crm_deals', 'status')) {
             $sql .= " AND d.status = ?";
             $params[] = $filters['status'];
         }
@@ -75,7 +77,7 @@ class CrmDealRepository
             $sql .= " AND f.open_flags IS NOT NULL";
         }
 
-        $sql .= " ORDER BY d.stage DESC, d.stage_entered_at ASC LIMIT " . max(1, min(1000, $limit));
+        $sql .= " ORDER BY d.stage DESC, " . (TableSchema::hasColumn('crm_deals', 'stage_entered_at') ? 'd.stage_entered_at' : 'd.created_at') . " ASC LIMIT " . max(1, min(1000, $limit));
 
         return $this->database->fetchAll($sql, $params);
     }
@@ -141,7 +143,7 @@ class CrmDealRepository
                 SET stage = ?, status = ?, lost_reason_code_id = ?"
             . ($resetStageClock ? ", stage_entered_at = NOW()" : "")
             . ", updated_at = NOW()
-                WHERE id = ? AND deleted_at IS NULL";
+                WHERE id = ? AND " . $this->notDeletedPredicate();
 
         $this->database->query($sql, [$stage, $status, $lostReasonCodeId, $id]);
     }
@@ -156,12 +158,36 @@ class CrmDealRepository
 
     public function countActiveByStage(): array
     {
+        $where = [$this->notDeletedPredicate()];
+        if (TableSchema::hasColumn('crm_deals', 'status')) {
+            $where[] = "`status` = 'active'";
+        }
+
         return $this->database->fetchAll(
             "SELECT stage, COUNT(*) AS deals
              FROM crm_deals
-             WHERE status = 'active' AND deleted_at IS NULL
+             WHERE " . implode(' AND ', $where) . "
              GROUP BY stage
              ORDER BY stage"
         );
+    }
+
+    private function notDeletedPredicate(string $alias = ''): string
+    {
+        if (!TableSchema::hasColumn('crm_deals', 'deleted_at')) {
+            return '1=1';
+        }
+        $col = $alias !== '' ? "{$alias}.deleted_at" : '`deleted_at`';
+
+        return "{$col} IS NULL";
+    }
+
+    private function technicalFlagOpenPredicate(): string
+    {
+        if (!TableSchema::hasColumn('crm_technical_flags', 'status')) {
+            return '1=1';
+        }
+
+        return "`status` IN ('open', 'claimed')";
     }
 }

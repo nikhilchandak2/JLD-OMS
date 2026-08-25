@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Core\Database;
 use App\Support\DispatchSchema;
+use App\Support\TableSchema;
 
 /**
  * Bounded lookups for the new-rep briefing. Order/dispatch history is aggregated
@@ -147,10 +148,19 @@ class BriefingRepository
     /** @return list<array<string,mixed>> */
     public function openDeals(int $partyId): array
     {
+        $where = ['party_id = ?'];
+        if (TableSchema::hasColumn('crm_deals', 'deleted_at')) {
+            $where[] = 'deleted_at IS NULL';
+        }
+        if (TableSchema::hasColumn('crm_deals', 'status')) {
+            $where[] = "`status` = 'active'";
+        }
+
         return $this->database->fetchAll(
-            "SELECT id, title, stage, status, stage_entered_at
+            "SELECT id, title, stage, " . (TableSchema::hasColumn('crm_deals', 'status') ? 'status' : "'active' AS status") . ",
+                    " . (TableSchema::hasColumn('crm_deals', 'stage_entered_at') ? 'stage_entered_at' : 'created_at AS stage_entered_at') . "
              FROM crm_deals
-             WHERE party_id = ? AND deleted_at IS NULL AND status = 'active'
+             WHERE " . implode(' AND ', $where) . "
              ORDER BY stage DESC, id DESC",
             [$partyId]
         );

@@ -10,6 +10,7 @@ use App\Repositories\CrmDealReasonCodeRepository;
 use App\Repositories\CrmDealStageEventRepository;
 use App\Repositories\CrmTechnicalFlagRepository;
 use App\Repositories\PartyRepository;
+use App\Support\TableSchema;
 
 /**
  * Deal lifecycle outside the state machine: capture, grades, listing, soft delete.
@@ -328,7 +329,7 @@ class DealService
     {
         $companyId = (int)($deal['company_id'] ?? 0);
         if ($companyId <= 0) {
-            $row = $this->database->fetch("SELECT id FROM companies WHERE status = 'active' ORDER BY id LIMIT 1");
+            $row = $this->database->fetch(TableSchema::firstActiveCompanyIdSql());
             $companyId = (int)($row['id'] ?? 0);
         }
         $proposed = isset($deal['value']) && $deal['value'] !== null && $deal['value'] !== ''

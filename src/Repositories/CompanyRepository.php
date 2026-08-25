@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Core\Database;
 use App\Models\Company;
+use App\Support\TableSchema;
 
 class CompanyRepository
 {
@@ -23,7 +24,11 @@ class CompanyRepository
 
     public function findActive(): array
     {
-        $sql = "SELECT * FROM companies WHERE status = 'active' ORDER BY name ASC";
+        $sql = "SELECT * FROM companies";
+        if (TableSchema::hasColumn('companies', 'status')) {
+            $sql .= " WHERE status = 'active'";
+        }
+        $sql .= " ORDER BY name ASC";
         $results = $this->database->fetchAll($sql);
         return array_map(fn($data) => new Company($data), $results);
     }
@@ -39,7 +44,7 @@ class CompanyRepository
             SELECT c.*
             FROM companies c
             LEFT JOIN orders o ON o.company_id = c.id
-            WHERE c.status = 'active'
+            WHERE " . (TableSchema::hasColumn('companies', 'status') ? "c.status = 'active'" : '1=1') . "
             GROUP BY c.id
             ORDER BY MAX(o.order_date) IS NULL ASC, MAX(o.order_date) DESC, COUNT(o.id) DESC, c.id ASC
             LIMIT 1

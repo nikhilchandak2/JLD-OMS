@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 use App\Models\CrmTask;
 
 class CrmTaskRepository
@@ -19,6 +20,9 @@ class CrmTaskRepository
      */
     public function findMine(int $assigneeId): array
     {
+        $statusOrder = TableSchema::hasColumn('crm_tasks', 'status')
+            ? "CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END,"
+            : '';
         $sql = "SELECT t.*,
                        u.name AS assigned_to_name,
                        p.name AS party_name
@@ -27,7 +31,7 @@ class CrmTaskRepository
                 LEFT JOIN parties p ON p.id = t.party_id
                 WHERE t.assigned_to = ?
                 ORDER BY 
-                    CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END,
+                    {$statusOrder}
                     (t.due_date IS NULL) ASC,
                     t.due_date ASC,
                     t.id DESC";
@@ -47,6 +51,9 @@ class CrmTaskRepository
      */
     public function findAll(): array
     {
+        $statusOrder = TableSchema::hasColumn('crm_tasks', 'status')
+            ? "CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END,"
+            : '';
         $sql = "SELECT t.*,
                        u.name AS assigned_to_name,
                        p.name AS party_name
@@ -54,7 +61,7 @@ class CrmTaskRepository
                 LEFT JOIN users u ON u.id = t.assigned_to
                 LEFT JOIN parties p ON p.id = t.party_id
                 ORDER BY 
-                    CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END,
+                    {$statusOrder}
                     (t.due_date IS NULL) ASC,
                     t.due_date ASC,
                     t.id DESC";

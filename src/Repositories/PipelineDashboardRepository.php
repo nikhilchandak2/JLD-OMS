@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 /**
  * Nightly pipeline dashboard snapshots. Dashboards read only these tables.
@@ -94,14 +95,17 @@ class PipelineDashboardRepository
 
     public function loadDealsForRebuild(): array
     {
+        $statusSelect = TableSchema::hasColumn('crm_deals', 'status') ? 'd.status' : "'active' AS status";
+        $deleted = TableSchema::hasColumn('crm_deals', 'deleted_at') ? 'd.deleted_at IS NULL' : '1=1';
+
         return $this->database->fetchAll(
-            "SELECT d.id AS deal_id, d.stage, d.status, d.owner_user_id, u.name AS owner_name,
+            "SELECT d.id AS deal_id, d.stage, {$statusSelect}, d.owner_user_id, u.name AS owner_name,
                     d.party_id, p.name AS party_name, d.title, d.value AS indicative_value,
                     d.inquiry_date
              FROM crm_deals d
              JOIN parties p ON p.id = d.party_id
              LEFT JOIN users u ON u.id = d.owner_user_id
-             WHERE d.deleted_at IS NULL
+             WHERE {$deleted}
              ORDER BY d.id"
         );
     }
@@ -139,8 +143,8 @@ class PipelineDashboardRepository
     {
         $sql = "SELECT s.stage, COUNT(*) AS deal_count, SUM(s.indicative_value) AS indicative_value
                 FROM pipeline_deal_snapshot s FORCE INDEX (idx_pipeline_snapshot_stage)
-                WHERE s.as_of = ?
-                  AND s.status = 'active'";
+                WHERE s.as_of = ?"
+            . (TableSchema::hasColumn('pipeline_deal_snapshot', 'status') ? " AND s.status = 'active'" : '');
         $params = [$filters['as_of']];
 
         if ($filters['owner_user_id'] !== null) {
@@ -196,8 +200,8 @@ class PipelineDashboardRepository
                        f.lifetime_seconds, f.hold_seconds
                 FROM pipeline_time_in_stage_facts f FORCE INDEX (idx_pipeline_tis_current)
                 WHERE f.as_of = ?
-                  AND f.is_current = 1
-                  AND f.status = 'active'";
+                  AND f.is_current = 1"
+            . (TableSchema::hasColumn('pipeline_time_in_stage_facts', 'status') ? " AND f.status = 'active'" : '');
         $params = [$filters['as_of']];
 
         if ($filters['owner_user_id'] !== null) {

@@ -14,6 +14,7 @@ use App\Repositories\CrmSampleRepository;
 use App\Repositories\CrmStageExitCriteriaRepository;
 use App\Repositories\CrmTechnicalFlagRepository;
 use App\Repositories\HandoffPacketRepository;
+use App\Support\TableSchema;
 
 /**
  * The only writer of crm_deals.stage and crm_deals.status.
@@ -501,7 +502,7 @@ class DealStageService
 
         $companyId = (int)($deal['company_id'] ?? 0);
         if ($companyId <= 0) {
-            $row = $this->database->fetch("SELECT id FROM companies WHERE status = 'active' ORDER BY id LIMIT 1");
+            $row = $this->database->fetch(TableSchema::firstActiveCompanyIdSql());
             $companyId = (int)($row['id'] ?? 0);
         }
         if ($companyId <= 0) {
