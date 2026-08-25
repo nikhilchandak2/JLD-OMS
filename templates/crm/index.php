@@ -1,11 +1,13 @@
-<!-- CRM Dashboard – 5-stage funnel (company-based pipeline) -->
+<!-- CRM Dashboard — 7-stage deals, visits, dormancy (not the old 5-stage funnel) -->
 <div class="page-header mb-4">
     <div class="d-flex justify-content-between align-items-end flex-wrap gap-3">
         <div>
             <h1 class="page-title mb-1">CRM Dashboard</h1>
+            <p class="page-subtitle mb-0">New business lives on deals. Repeat orders stay off the pipeline.</p>
         </div>
-        <div class="d-flex gap-2 align-items-center">
-            <a href="/crm/visits/new" class="btn btn-success px-3 py-2"><i class="bi bi-geo-alt me-1"></i>Log visit</a>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <a href="/crm/deals/new" class="btn btn-success px-3"><i class="bi bi-plus-circle me-1"></i>New enquiry</a>
+            <a href="/crm/visits/new" class="btn btn-outline-success px-3"><i class="bi bi-geo-alt me-1"></i>Log visit</a>
             <a href="/crm/visits/overdue" class="btn btn-outline-danger px-3"><i class="bi bi-clock-history me-1"></i>Overdue follow-ups</a>
             <a href="/crm/dormancy" class="btn btn-outline-warning px-3"><i class="bi bi-thermometer-half me-1"></i>Dormant accounts</a>
             <a href="/crm/forecasts" class="btn btn-outline-primary px-3"><i class="bi bi-clipboard-data me-1"></i>Forecast</a>
@@ -13,18 +15,19 @@
             <?php if (in_array($user['role'] ?? '', ['admin', 'crm'], true)): ?>
             <a href="/crm/escalations" class="btn btn-outline-dark px-3"><i class="bi bi-exclamation-octagon me-1"></i>Escalation inbox</a>
             <?php endif; ?>
-            <a href="/crm/deals" class="btn btn-outline-primary px-3"><i class="bi bi-kanban me-1"></i>Deals</a>
+            <a href="/crm/deals" class="btn btn-primary px-3"><i class="bi bi-kanban me-1"></i>Deals</a>
             <a href="/crm/technical-queue" class="btn btn-outline-secondary px-3"><i class="bi bi-tools me-1"></i>Technical queue</a>
-            <a href="/crm/parties/new" class="btn btn-success px-3"><i class="bi bi-plus-lg me-1"></i>Add New</a>
-            <a href="/admin/parties" class="btn btn-primary px-4" title="<?= isset($user) ? htmlspecialchars(ucfirst($user['role'] ?? 'User')) : 'User' ?>"><i class="bi bi-person-circle me-2"></i>Parties</a>
-            <a href="/crm/funnel" class="btn btn-primary px-4">
-                <i class="bi bi-funnel me-2"></i>Open Funnel
-            </a>
+            <a href="/crm/parties/new" class="btn btn-outline-success px-3"><i class="bi bi-plus-lg me-1"></i>Add company</a>
+            <a href="/admin/parties" class="btn btn-outline-primary px-3"><i class="bi bi-person-circle me-1"></i>Parties</a>
         </div>
     </div>
 </div>
 
 <div id="error-container" class="error-message mb-3"></div>
+
+<div class="d-flex flex-wrap gap-2 mb-3" id="dealStageSummary">
+    <span class="text-muted small">Loading pipeline…</span>
+</div>
 
 <div class="card mb-3">
     <div class="card-body py-3">
@@ -153,6 +156,7 @@ const currentUserId = <?= (int)($user['id'] ?? 0) ?>;
 
 document.addEventListener('DOMContentLoaded', async function() {
     if (window.AccountContext) AccountContext.mountSearch({ inputId: 'accountSearchInput', resultsId: 'accountSearchResults' });
+    loadDealSummary();
     const activityPartyFilter = document.getElementById('activityPartyFilter');
     const activityOwnerFilter = document.getElementById('activityOwnerFilter');
     const btnClearActivityFilter = document.getElementById('btnClearActivityFilter');
@@ -228,6 +232,24 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('btnClearTaskForm').addEventListener('click', clearTaskForm);
     }
 });
+async function loadDealSummary() {
+    const el = document.getElementById('dealStageSummary');
+    if (!el) return;
+    try {
+        const res = await apiCall('/api/crm/deals/summary');
+        const stages = (res.data && res.data.stages) || [];
+        if (!stages.length) {
+            el.innerHTML = '<a class="small" href="/crm/deals/new">Capture the first enquiry</a>';
+            return;
+        }
+        el.innerHTML = stages.map(function (s) {
+            return '<a class="badge bg-light text-dark border py-2 px-3 text-decoration-none" href="/crm/deals?stage=' + s.stage + '">' +
+                s.stage + '. ' + escapeHtml(s.label) + ' <strong class="ms-1">' + s.active_deals + '</strong></a>';
+        }).join('');
+    } catch (e) {
+        el.innerHTML = '<span class="text-danger small">' + escapeHtml(e.message) + '</span>';
+    }
+}
 function escapeHtml(s) {
     if (s == null) return '';
     const d = document.createElement('div');
@@ -303,7 +325,7 @@ async function loadActivityFeed(force = false) {
                 '</div>' +
                 '</div>'
             );
-        }).join('') + '<div class="pt-2"><a class="small text-decoration-none" href="/crm/funnel">Open funnel</a></div>';
+        }).join('') + '<div class="pt-2"><a class="small text-decoration-none" href="/crm/deals">Open deals</a></div>';
     } catch (e) {
         statusEl.textContent = 'Offline';
         el.innerHTML = '<p class="text-muted small mb-0">Unable to load activity feed.</p>';

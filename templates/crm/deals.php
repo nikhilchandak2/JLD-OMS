@@ -65,9 +65,9 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    loadSummary();
-    loadDeals();
+document.addEventListener('DOMContentLoaded', async function () {
+    await loadSummary();
+    await loadDeals();
     ['filterStatus', 'filterStage', 'filterHold'].forEach(function (id) {
         document.getElementById(id).addEventListener('change', loadDeals);
     });
@@ -84,6 +84,8 @@ async function loadSummary() {
             return '<span class="badge bg-light text-dark border py-2 px-3">' + s.stage + '. ' +
                 escapeHtml(s.label) + ' <strong class="ms-1">' + s.active_deals + '</strong></span>';
         }).join('');
+        const qs = new URLSearchParams(window.location.search);
+        if (qs.get('stage')) document.getElementById('filterStage').value = qs.get('stage');
     } catch (e) {
         showDealsError(e.message);
     }
@@ -96,6 +98,8 @@ async function loadDeals() {
     if (status) params.set('status', status);
     if (stage) params.set('stage', stage);
     if (document.getElementById('filterHold').checked) params.set('on_technical_hold', '1');
+    const partyId = new URLSearchParams(window.location.search).get('party_id');
+    if (partyId) params.set('party_id', partyId);
 
     const body = document.getElementById('dealsBody');
     body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Loading…</td></tr>';

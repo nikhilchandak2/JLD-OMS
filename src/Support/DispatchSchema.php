@@ -10,6 +10,54 @@ class DispatchSchema
     private static ?bool $hasStatus = null;
     private static ?bool $hasEwayFile = null;
     private static ?bool $hasTransportDocType = null;
+    private static ?bool $hasLoadingWeight = null;
+    private static ?bool $hasTonsPerTruck = null;
+
+    private static function hasColumn(string $table, string $column): bool
+    {
+        $db = new Database();
+        $row = $db->fetch(
+            "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+            [$table, $column]
+        );
+
+        return ((int)($row['c'] ?? 0)) > 0;
+    }
+
+    public static function hasLoadingWeightColumn(): bool
+    {
+        if (self::$hasLoadingWeight === null) {
+            self::$hasLoadingWeight = self::hasColumn('dispatches', 'loading_weight_tons');
+        }
+
+        return self::$hasLoadingWeight;
+    }
+
+    public static function hasTonsPerTruckColumn(): bool
+    {
+        if (self::$hasTonsPerTruck === null) {
+            self::$hasTonsPerTruck = self::hasColumn('orders', 'tons_per_truck');
+        }
+
+        return self::$hasTonsPerTruck;
+    }
+
+    /**
+     * Dispatched tonnes expression that works when loading_weight_tons / tons_per_truck
+     * have not been migrated onto this database yet.
+     */
+    public static function tonnesExpr(string $dispatchAlias = 'd', string $orderAlias = 'o'): string
+    {
+        $trucks = self::hasTonsPerTruckColumn()
+            ? "{$dispatchAlias}.dispatch_qty_trucks * COALESCE({$orderAlias}.tons_per_truck, 40)"
+            : "{$dispatchAlias}.dispatch_qty_trucks * 40";
+        if (self::hasLoadingWeightColumn()) {
+            return "COALESCE({$dispatchAlias}.loading_weight_tons, {$trucks})";
+        }
+
+        return $trucks;
+    }
 
     public static function hasCompanyTransportDocTypeColumn(): bool
     {

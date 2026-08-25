@@ -110,6 +110,7 @@ class AccountContextController
             http_response_code(400);
             echo json_encode(array_merge(['error' => $e->getMessage()], $e->getDetails()));
         } catch (\Throwable $e) {
+            error_log($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             http_response_code(500);
             echo json_encode(['error' => 'Failed to process the request', 'message' => $e->getMessage()]);
         }

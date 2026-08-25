@@ -1251,7 +1251,6 @@
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item <?= ($reqUri === '/crm' || $reqUri === '/crm/') ? 'active' : '' ?>" href="/crm"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
-                            <li><a class="dropdown-item <?= strpos($reqUri, '/crm/funnel') === 0 ? 'active' : '' ?>" href="/crm/funnel"><i class="bi bi-funnel"></i> Funnel</a></li>
                             <li><a class="dropdown-item <?= $reqUri === '/crm/deals/new' ? 'active' : '' ?>" href="/crm/deals/new"><i class="bi bi-plus-circle"></i> New enquiry</a></li>
                             <li><a class="dropdown-item <?= ($reqUri === '/crm/deals' || preg_match('#^/crm/deals/\d+#', $reqUri)) ? 'active' : '' ?>" href="/crm/deals"><i class="bi bi-kanban"></i> Deals</a></li>
                             <li><a class="dropdown-item <?= strpos($reqUri, '/crm/technical-queue') === 0 ? 'active' : '' ?>" href="/crm/technical-queue"><i class="bi bi-tools"></i> Technical queue</a></li>
@@ -1365,7 +1364,10 @@
             }
             
             if (!response.ok) {
-                throw new Error(data.error || data.message || 'Request failed');
+                const parts = [];
+                if (data.error) parts.push(data.error);
+                if (data.message && data.message !== data.error) parts.push(data.message);
+                throw new Error(parts.join(' — ') || 'Request failed');
             }
             
             return data;

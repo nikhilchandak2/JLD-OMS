@@ -110,7 +110,7 @@ class BriefingRepository
 
         return $this->database->fetchAll(
             "SELECT UPPER(p.code) AS grade_code,
-                    SUM(COALESCE(d.loading_weight_tons, d.dispatch_qty_trucks * COALESCE(o.tons_per_truck, 40))) AS tonnes
+                    SUM(" . DispatchSchema::tonnesExpr('d', 'o') . ") AS tonnes
              FROM dispatches d
              JOIN orders o ON o.id = d.order_id
              JOIN products p ON p.id = o.product_id

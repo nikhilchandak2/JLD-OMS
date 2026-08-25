@@ -3,7 +3,7 @@
 <nav aria-label="breadcrumb" class="mb-2">
     <ol class="breadcrumb mb-0">
         <li class="breadcrumb-item"><a href="/crm">CRM</a></li>
-        <li class="breadcrumb-item"><a href="/crm/funnel">Funnel</a></li>
+        <li class="breadcrumb-item"><a href="/crm/deals">Deals</a></li>
         <li class="breadcrumb-item active" id="partyBreadcrumb">Company</li>
     </ol>
 </nav>
@@ -38,7 +38,7 @@
 <!-- At a glance: pills -->
 <div class="mb-4">
     <div class="crm-glance-pills" id="atAGlance">
-        <span class="crm-glance-pill"><span class="pill-label">Funnel</span> <span id="glanceFunnelStage">–</span></span>
+        <span class="crm-glance-pill"><span class="pill-label">Deals</span> <span id="glanceFunnelStage"><a href="/crm/deals?party_id=<?= $party_id ?>">Open</a></span></span>
         <span class="crm-glance-pill"><span class="pill-label">Year with us</span> <span id="glanceYear">–</span></span>
         <span class="crm-glance-pill"><span class="pill-label">Order freq.</span> <span id="glanceOrderFreq">–</span></span>
         <span class="crm-glance-pill"><span class="pill-label">Last order</span> <span id="glanceLastOrder">–</span></span>
@@ -184,7 +184,7 @@
                 <ul class="nav nav-tabs mb-3" role="tablist">
                     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#profileTabOverview">Overview</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabProducts">Products & capacity</button></li>
-                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabFunnel">Funnel & ratings</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabFunnel">Ratings</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabVisitDetails">Visit details</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabTechnical">Technical</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabCommercial">Commercial</button></li>
@@ -210,16 +210,15 @@
                             <div class="col-12"><label class="form-label">Products introduced</label><textarea class="form-control" id="profileProductsIntroduced" rows="2" placeholder="e.g. Ball Clay, Kaolin, Feldspar"></textarea></div>
                             <div class="col-md-6"><label class="form-label">Production capacity (monthly)</label><input type="text" class="form-control" id="profileProductionCapacity" placeholder="e.g. 50,000 sq m/day"></div>
                             <div class="col-md-4"><label class="form-label">Monthly consumption (MT)</label><input type="number" class="form-control" id="profileMonthlyConsumptionTon" step="0.01" min="0" placeholder="Display & value calculation"></div>
-                            <div class="col-md-4"><label class="form-label">Avg price per ton (₹)</label><input type="number" class="form-control" id="profileAvgPricePerTon" step="0.01" min="0" placeholder="For funnel value"></div>
-                            <div class="col-md-4"><label class="form-label">Funnel value</label><input type="text" class="form-control" id="profileFunnelValueDisplay" readonly placeholder="Auto: consumption × price"></div>
+                            <div class="col-md-4"><label class="form-label">Avg price per ton (₹)</label><input type="number" class="form-control" id="profileAvgPricePerTon" step="0.01" min="0"></div>
+                            <div class="col-md-4"><label class="form-label">Indicative monthly value</label><input type="text" class="form-control" id="profileFunnelValueDisplay" readonly placeholder="Auto: consumption × price"></div>
                             <div class="col-md-6"><label class="form-label">Target volume (sales target)</label><input type="text" class="form-control" id="profileTargetVolume" placeholder="e.g. 200 MT/year"></div>
                             <div class="col-12"><label class="form-label">Current supplier & other details</label><textarea class="form-control" id="profileCurrentSupplierDetails" rows="3" placeholder="Current supplier and other details"></textarea></div>
                         </div>
                     </div>
                     <div class="tab-pane fade" id="profileTabFunnel">
                         <div class="row g-2">
-                            <div class="col-md-6"><label class="form-label">Funnel stage</label><select class="form-select" id="profileFunnelStage"><option value="">–</option></select></div>
-                            <div class="col-12"><div class="alert alert-secondary py-2 small mb-0">The star ratings below are superseded by structured contact influence / relationship strength. They are kept for historical rows and will be deprecated — do not treat them as the account score.</div></div>
+                            <div class="col-12"><div class="alert alert-secondary py-2 small mb-0">Pipeline stage lives on the deal, not the company. Open <a href="/crm/deals">Deals</a> for new business.</div></div>
                             <div class="col-12"><strong class="text-muted">Ratings (1–5 stars)</strong></div>
                             <div class="col-md-4"><label class="form-label">Relation with Purchase</label><select class="form-select" id="profileRelationPurchase"><option value="">–</option><option value="1">1 ★</option><option value="2">2 ★★</option><option value="3">3 ★★★</option><option value="4">4 ★★★★</option><option value="5">5 ★★★★★</option></select></div>
                             <div class="col-md-4"><label class="form-label">Relation with Internal Team</label><select class="form-select" id="profileRelationInternal"><option value="">–</option><option value="1">1 ★</option><option value="2">2 ★★</option><option value="3">3 ★★★</option><option value="4">4 ★★★★</option><option value="5">5 ★★★★★</option></select></div>
@@ -320,7 +319,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         const sel = document.getElementById('profileAssignedSalesOwner');
         sel.innerHTML = '<option value="">–</option>' + userOptions.map(u => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
         const fs = document.getElementById('profileFunnelStage');
-        fs.innerHTML = '<option value="">–</option>' + Object.entries(stagesConfig.funnel_stages || {}).map(([k,v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v)}</option>`).join('');
+        if (fs) {
+            fs.innerHTML = '<option value="">–</option>' + Object.entries(stagesConfig.funnel_stages || {}).map(([k,v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v)}</option>`).join('');
+        }
         const it = document.getElementById('profileIndustryType');
         it.innerHTML = '<option value="">–</option>' + Object.entries(stagesConfig.industry_types || {}).map(([k,v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v)}</option>`).join('');
         const ts = document.getElementById('profileTilesSubtype');
@@ -386,8 +387,10 @@ function updateFunnelValueDisplay() {
 
 function renderAtAGlance() {
     if (!party) return;
-    const funnelLabel = (stagesConfig.funnel_stages || {})[party.funnel_stage] || party.funnel_stage || '–';
-    document.getElementById('glanceFunnelStage').textContent = funnelLabel;
+    const glance = document.getElementById('glanceFunnelStage');
+    if (glance) {
+        glance.innerHTML = '<a href="/crm/deals?party_id=' + partyId + '">Open</a>';
+    }
     const y = party.year_of_association;
     const orderFreq = { regular: 'Regular', occasional: 'Occasional', trial: 'Trial' }[party.order_frequency] || party.order_frequency || '–';
     const paymentTrack = { good: 'Good', delayed: 'Delayed', overdue: 'Overdue', na: 'N/A' }[party.payment_track] || party.payment_track || '–';
@@ -405,12 +408,11 @@ function renderCompanyProfile() {
     if (!party) return;
     const el = document.getElementById('companyProfile');
     const v = function(x) { return x != null && x !== '' ? escapeHtml(String(x)) : '–'; };
-    const fs = (stagesConfig.funnel_stages || {})[party.funnel_stage] || party.funnel_stage || '–';
     const it = (stagesConfig.industry_types || {})[party.industry_type] || party.industry_type || '–';
     const ts = (stagesConfig.tiles_subtypes || {})[party.tiles_subtype] || party.tiles_subtype || '–';
     const credit = party.credit_limit != null ? '₹' + Number(party.credit_limit).toLocaleString() : '–';
     const terms = party.payment_terms_days != null ? party.payment_terms_days + ' days' : '–';
-    const funnelVal = party.funnel_value != null ? '₹' + Number(party.funnel_value).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '–';
+    const monthlyVal = party.funnel_value != null ? '₹' + Number(party.funnel_value).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '–';
     const star = function(n) { return n != null ? '★'.repeat(n) + ' (' + n + '/5)' : '–'; };
     const sampleProducts = stagesConfig.sample_products || {};
     const samplesProvided = party.visit_samples_provided && Array.isArray(party.visit_samples_provided) ? party.visit_samples_provided : [];
@@ -443,16 +445,15 @@ function renderCompanyProfile() {
         '<dt>Monthly production</dt><dd>' + v(party.production_capacity) + '</dd>' +
         '<dt>Monthly consumption (MT)</dt><dd>' + (party.monthly_consumption_ton != null ? party.monthly_consumption_ton : '–') + '</dd>' +
         '<dt>Avg price/ton</dt><dd>' + (party.avg_price_per_ton != null ? '₹' + Number(party.avg_price_per_ton).toLocaleString() : '–') + '</dd>' +
-        '<dt>Funnel value</dt><dd><strong class="text-primary">' + funnelVal + '</strong></dd>' +
+        '<dt>Indicative monthly value</dt><dd><strong class="text-primary">' + monthlyVal + '</strong></dd>' +
         '<dt>Target volume</dt><dd>' + v(party.target_volume) + '</dd>' +
         '<dt>Current supplier</dt><dd>' + v(party.current_supplier_details) + '</dd>' +
         '</dl></div></div></div>' +
         '</div>' +
         '<div class="row g-3 mt-0">' +
         '<div class="col-md-6"><div class="crm-profile-section">' +
-        '<div class="crm-profile-section-title"><i class="bi bi-funnel"></i> Funnel & ratings</div>' +
+        '<div class="crm-profile-section-title"><i class="bi bi-star"></i> Ratings</div>' +
         '<div class="crm-profile-section-body"><dl class="crm-profile-dl two-cols">' +
-        '<dt>Funnel stage</dt><dd>' + escapeHtml(fs) + '</dd>' +
         '<dt>Relation (Purchase)</dt><dd>' + star(party.relation_with_purchase) + '</dd>' +
         '<dt>Relation (Internal)</dt><dd>' + star(party.relation_with_internal_team) + '</dd>' +
         '<dt>Probability of conversion</dt><dd>' + star(party.probability_of_conversion) + '</dd>' +
@@ -491,7 +492,8 @@ function openProfileModal() {
     updateFunnelValueDisplay();
     document.getElementById('profileTargetVolume').value = party.target_volume || '';
     document.getElementById('profileCurrentSupplierDetails').value = party.current_supplier_details || '';
-    document.getElementById('profileFunnelStage').value = party.funnel_stage || '';
+    const funnelStageEl = document.getElementById('profileFunnelStage');
+    if (funnelStageEl) funnelStageEl.value = party.funnel_stage || '';
     document.getElementById('profileRelationPurchase').value = party.relation_with_purchase != null ? String(party.relation_with_purchase) : '';
     document.getElementById('profileRelationInternal').value = party.relation_with_internal_team != null ? String(party.relation_with_internal_team) : '';
     document.getElementById('profileProbabilityConversion').value = party.probability_of_conversion != null ? String(party.probability_of_conversion) : '';
@@ -552,7 +554,6 @@ document.getElementById('btnSaveProfile').addEventListener('click', async functi
             credit_limit: document.getElementById('profileCreditLimit').value ? parseFloat(document.getElementById('profileCreditLimit').value) : null,
             payment_terms_days: document.getElementById('profilePaymentTermsDays').value ? parseInt(document.getElementById('profilePaymentTermsDays').value, 10) : null,
             general_notes: document.getElementById('profileGeneralNotes').value.trim() || null,
-            funnel_stage: document.getElementById('profileFunnelStage').value || null,
             industry_type: document.getElementById('profileIndustryType').value || null,
             tiles_subtype: document.getElementById('profileTilesSubtype').value || null,
             monthly_consumption_ton: document.getElementById('profileMonthlyConsumptionTon').value ? parseFloat(document.getElementById('profileMonthlyConsumptionTon').value) : null,

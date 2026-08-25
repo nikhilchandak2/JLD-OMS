@@ -2,7 +2,7 @@
 <nav aria-label="breadcrumb" class="mb-2">
     <ol class="breadcrumb mb-0">
         <li class="breadcrumb-item"><a href="/crm">CRM</a></li>
-        <li class="breadcrumb-item"><a href="/crm/funnel">Funnel</a></li>
+        <li class="breadcrumb-item"><a href="/crm/deals">Deals</a></li>
         <li class="breadcrumb-item active">Add new company</li>
     </ol>
 </nav>
@@ -58,7 +58,7 @@
             <ul class="nav nav-tabs mb-3" role="tablist">
                 <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#profileTabOverview">Overview</button></li>
                 <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabProducts">Products & capacity</button></li>
-                <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabFunnel">Funnel & ratings</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabFunnel">Ratings</button></li>
                 <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabVisitDetails">Visit details</button></li>
                 <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabTechnical">Technical</button></li>
                 <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#profileTabCommercial">Commercial</button></li>
@@ -84,16 +84,15 @@
                         <div class="col-12"><label class="form-label">Products introduced</label><textarea class="form-control" id="profileProductsIntroduced" rows="2" placeholder="e.g. Ball Clay, Kaolin, Feldspar"></textarea></div>
                         <div class="col-md-6"><label class="form-label">Production capacity (monthly)</label><input type="text" class="form-control" id="profileProductionCapacity" placeholder="e.g. 50,000 sq m/day"></div>
                         <div class="col-md-4"><label class="form-label">Monthly consumption (MT)</label><input type="number" class="form-control" id="profileMonthlyConsumptionTon" step="0.01" min="0" placeholder="Display & value calculation"></div>
-                        <div class="col-md-4"><label class="form-label">Avg price per ton (₹)</label><input type="number" class="form-control" id="profileAvgPricePerTon" step="0.01" min="0" placeholder="For funnel value"></div>
-                        <div class="col-md-4"><label class="form-label">Funnel value</label><input type="text" class="form-control" id="profileFunnelValueDisplay" readonly placeholder="Auto: consumption × price"></div>
+                        <div class="col-md-4"><label class="form-label">Avg price per ton (₹)</label><input type="number" class="form-control" id="profileAvgPricePerTon" step="0.01" min="0"></div>
+                        <div class="col-md-4"><label class="form-label">Indicative monthly value</label><input type="text" class="form-control" id="profileFunnelValueDisplay" readonly placeholder="Auto: consumption × price"></div>
                         <div class="col-md-6"><label class="form-label">Target volume (sales target)</label><input type="text" class="form-control" id="profileTargetVolume" placeholder="e.g. 200 MT/year"></div>
                         <div class="col-12"><label class="form-label">Current supplier & other details</label><textarea class="form-control" id="profileCurrentSupplierDetails" rows="3" placeholder="Current supplier and other details"></textarea></div>
                     </div>
                 </div>
                 <div class="tab-pane fade" id="profileTabFunnel">
                     <div class="row g-2">
-                        <div class="col-md-6"><label class="form-label">Funnel stage</label><select class="form-select" id="profileFunnelStage"><option value="">–</option></select></div>
-                        <div class="col-12"><div class="alert alert-secondary py-2 small mb-0">The star ratings below are superseded by structured contact influence / relationship strength. They are kept for historical rows and will be deprecated — do not treat them as the account score.</div></div>
+                        <div class="col-12"><div class="alert alert-secondary py-2 small mb-0">New business is captured as a deal, not a company funnel stage. After saving, open <a href="/crm/deals/new">New enquiry</a>.</div></div>
                         <div class="col-12"><strong class="text-muted">Ratings (1–5 stars)</strong></div>
                         <div class="col-md-4"><label class="form-label">Relation with Purchase</label><select class="form-select" id="profileRelationPurchase"><option value="">–</option><option value="1">1 ★</option><option value="2">2 ★★</option><option value="3">3 ★★★</option><option value="4">4 ★★★★</option><option value="5">5 ★★★★★</option></select></div>
                         <div class="col-md-4"><label class="form-label">Relation with Internal Team</label><select class="form-select" id="profileRelationInternal"><option value="">–</option><option value="1">1 ★</option><option value="2">2 ★★</option><option value="3">3 ★★★</option><option value="4">4 ★★★★</option><option value="5">5 ★★★★★</option></select></div>
@@ -153,7 +152,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         const sel = document.getElementById('profileAssignedSalesOwner');
         sel.innerHTML = '<option value="">–</option>' + userOptions.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.name)}</option>`).join('');
         const fs = document.getElementById('profileFunnelStage');
-        fs.innerHTML = '<option value="">–</option>' + Object.entries(stagesConfigNew.funnel_stages || {}).map(([k,v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v)}</option>`).join('');
+        if (fs) {
+            fs.innerHTML = '<option value="">–</option>' + Object.entries(stagesConfigNew.funnel_stages || {}).map(([k,v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v)}</option>`).join('');
+        }
         const it = document.getElementById('profileIndustryType');
         it.innerHTML = '<option value="">–</option>' + Object.entries(stagesConfigNew.industry_types || {}).map(([k,v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v)}</option>`).join('');
         const ts = document.getElementById('profileTilesSubtype');
@@ -227,7 +228,6 @@ document.addEventListener('DOMContentLoaded', async function() {
                 credit_limit: document.getElementById('profileCreditLimit').value ? parseFloat(document.getElementById('profileCreditLimit').value) : null,
                 payment_terms_days: document.getElementById('profilePaymentTermsDays').value ? parseInt(document.getElementById('profilePaymentTermsDays').value, 10) : null,
                 general_notes: document.getElementById('profileGeneralNotes').value.trim() || null,
-                funnel_stage: document.getElementById('profileFunnelStage').value || null,
                 industry_type: document.getElementById('profileIndustryType').value || null,
                 tiles_subtype: document.getElementById('profileTilesSubtype').value || null,
                 monthly_consumption_ton: document.getElementById('profileMonthlyConsumptionTon').value ? parseFloat(document.getElementById('profileMonthlyConsumptionTon').value) : null,

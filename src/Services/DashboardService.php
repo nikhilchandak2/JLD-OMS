@@ -241,14 +241,35 @@ class DashboardService
             WHERE status IN ('pending', 'partial'){$orderAnd}
         ")['count'];
         
-        $totalVehicles = $this->database->fetch("SELECT COUNT(*) as count FROM vehicles")['count'] ?? 0;
-        $activeVehicles = $this->database->fetch("SELECT COUNT(*) as count FROM vehicles WHERE status = 'active'")['count'] ?? 0;
-        $totalTrips = $this->database->fetch("SELECT COUNT(*) as count FROM vehicle_trips")['count'] ?? 0;
-        $todayTrips = $this->database->fetch("
-            SELECT COUNT(*) as count 
-            FROM vehicle_trips 
-            WHERE DATE(start_time) = CURDATE()
-        ")['count'] ?? 0;
+        $totalVehicles = 0;
+        $activeVehicles = 0;
+        $totalTrips = 0;
+        $todayTrips = 0;
+        try {
+            $totalVehicles = (int)($this->database->fetch("SELECT COUNT(*) as count FROM vehicles")['count'] ?? 0);
+            $activeVehicles = $totalVehicles;
+            $vehicleStatus = $this->database->fetch(
+                "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vehicles' AND COLUMN_NAME = 'status'"
+            );
+            if ((int)($vehicleStatus['c'] ?? 0) > 0) {
+                $activeVehicles = (int)($this->database->fetch("SELECT COUNT(*) as count FROM vehicles WHERE status = 'active'")['count'] ?? 0);
+            }
+            $totalTrips = (int)($this->database->fetch("SELECT COUNT(*) as count FROM vehicle_trips")['count'] ?? 0);
+            $startCol = $this->database->fetch(
+                "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vehicle_trips' AND COLUMN_NAME = 'start_time'"
+            );
+            if ((int)($startCol['c'] ?? 0) > 0) {
+                $todayTrips = (int)($this->database->fetch("
+                    SELECT COUNT(*) as count
+                    FROM vehicle_trips
+                    WHERE DATE(start_time) = CURDATE()
+                ")['count'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            // Tracking tables vary by environment; the ops dashboard must still load.
+        }
         
         return [
             'totals' => [

@@ -757,17 +757,8 @@ class WebController
     public function crmFunnel(): void
     {
         $this->requireAuth();
-        if (!$this->authService->hasAnyRole(['entry', 'admin', 'crm', 'sales', 'marketing'])) {
-            http_response_code(403);
-            $this->renderTemplate('error', ['title' => 'Access Denied', 'message' => 'CRM access required']);
-            return;
-        }
-        $user = $this->authService->getCurrentUser();
-        $this->renderTemplate('crm/funnel', [
-            'title' => 'CRM Funnel',
-            'user' => $user,
-            'csrf_token' => CsrfMiddleware::getToken()
-        ]);
+        header('Location: /crm/deals', true, 302);
+        exit;
     }
 
     public function crmPartyNew(): void
