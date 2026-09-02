@@ -29,6 +29,10 @@ class DumperAssignmentController
             return;
         }
         $sql = "SELECT * FROM excavating_machines WHERE is_active = 1 ORDER BY sort_order ASC, id ASC";
+        if (!\App\Support\TableSchema::hasTable('excavating_machines')) {
+            echo json_encode(['success' => true, 'data' => []]);
+            return;
+        }
         $machines = $this->database->fetchAll($sql);
         echo json_encode(['success' => true, 'data' => $machines]);
     }
@@ -78,15 +82,21 @@ class DumperAssignmentController
             echo json_encode(['error' => 'Invalid date']);
             return;
         }
+        if (!\App\Support\TableSchema::hasTable('dumper_assignments') || !\App\Support\TableSchema::hasTable('excavating_machines')) {
+            echo json_encode(['success' => true, 'date' => $date, 'data' => []]);
+            return;
+        }
+        $vehicleNumber = \App\Support\TableSchema::columnExpr('vehicles', ['vehicle_number', 'vehicle_no'], 'v', 'vehicle_number');
+        $vehicleOrder = \App\Support\TableSchema::hasColumn('vehicles', 'vehicle_number') ? 'v.vehicle_number' : 'v.vehicle_no';
         $sql = "
             SELECT a.id, a.assignment_date, a.excavating_machine_id, a.vehicle_id,
                    m.name as machine_name, m.mine_name,
-                   v.vehicle_number
+                   {$vehicleNumber}
             FROM dumper_assignments a
             JOIN excavating_machines m ON m.id = a.excavating_machine_id
             JOIN vehicles v ON v.id = a.vehicle_id
             WHERE a.assignment_date = ?
-            ORDER BY m.sort_order, m.id, v.vehicle_number
+            ORDER BY m.sort_order, m.id, {$vehicleOrder}
         ";
         $rows = $this->database->fetchAll($sql, [$date]);
         $byMachine = [];

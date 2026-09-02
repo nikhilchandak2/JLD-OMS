@@ -60,16 +60,21 @@ class ProductRepository
 
     public function create(Product $product): Product
     {
-        $sql = "INSERT INTO products (code, name, hsn_code, is_active, created_at, updated_at) 
-                VALUES (?, ?, ?, ?, NOW(), NOW())";
-        
-        $stmt = $this->database->getConnection()->prepare($sql);
-        $stmt->execute([
+        $fields = ['code', 'name', 'is_active'];
+        $values = [
             $product->code,
             $product->name,
-            $product->hsnCode !== '' ? $product->hsnCode : null,
-            $product->isActive ? 1 : 0
-        ]);
+            $product->isActive ? 1 : 0,
+        ];
+        if (\App\Support\TableSchema::hasColumn('products', 'hsn_code')) {
+            $fields[] = 'hsn_code';
+            $values[] = $product->hsnCode !== '' ? $product->hsnCode : null;
+        }
+        $placeholders = implode(', ', array_fill(0, count($fields), '?'));
+        $sql = 'INSERT INTO products (' . implode(', ', $fields) . ', created_at, updated_at) VALUES (' . $placeholders . ', NOW(), NOW())';
+        
+        $stmt = $this->database->getConnection()->prepare($sql);
+        $stmt->execute($values);
         
         $product->id = (int)$this->database->getConnection()->lastInsertId();
         return $this->findById($product->id);
@@ -83,7 +88,7 @@ class ProductRepository
         $allowedFields = ['code', 'name', 'hsn_code', 'is_active'];
         
         foreach ($allowedFields as $field) {
-            if (array_key_exists($field, $data)) {
+            if (array_key_exists($field, $data) && ($field !== 'hsn_code' || \App\Support\TableSchema::hasColumn('products', 'hsn_code'))) {
                 $fields[] = "$field = ?";
                 $values[] = $data[$field];
             }

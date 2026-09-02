@@ -16,6 +16,9 @@ class ScheduledDeliveryRepository
 
     public function findByOrderId(int $orderId): array
     {
+        if (!\App\Support\TableSchema::hasTable('scheduled_deliveries')) {
+            return [];
+        }
         $sql = "SELECT * FROM scheduled_deliveries WHERE order_id = ? ORDER BY delivery_sequence ASC";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$orderId]);
@@ -30,6 +33,9 @@ class ScheduledDeliveryRepository
 
     public function findById(int $id): ?ScheduledDelivery
     {
+        if (!\App\Support\TableSchema::hasTable('scheduled_deliveries')) {
+            return null;
+        }
         $sql = "SELECT * FROM scheduled_deliveries WHERE id = ?";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$id]);

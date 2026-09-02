@@ -15,6 +15,9 @@ class CreditOverrideRequestRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('credit_override_requests')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT r.*,
                     p.name AS party_name,
@@ -131,6 +134,9 @@ class CreditOverrideRequestRepository
 
     public function listQueue(array $filters = []): array
     {
+        if (!\App\Support\TableSchema::hasTable('credit_override_requests')) {
+            return [];
+        }
         $sql = "SELECT r.*,
                        p.name AS party_name,
                        c.name AS company_name,
@@ -186,6 +192,9 @@ class CreditOverrideRequestRepository
 
     public function volumeByTier(): array
     {
+        if (!\App\Support\TableSchema::hasTable('credit_override_requests')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT tier, status, COUNT(*) AS count
              FROM credit_override_requests

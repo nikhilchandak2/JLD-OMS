@@ -71,6 +71,12 @@ class OrderSchema
         return self::$hasCreditGateColumns;
     }
 
+    public static function forget(): void
+    {
+        self::$hasBillingPartyColumns = null;
+        self::$hasCreditGateColumns = null;
+    }
+
     /** @return array<int, int> */
     public static function invoicePartyMatchParams(int $partyId): array
     {

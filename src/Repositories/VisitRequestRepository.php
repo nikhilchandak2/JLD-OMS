@@ -15,6 +15,9 @@ class VisitRequestRepository
 
     public function findAll(array $filters = []): array
     {
+        if (!\App\Support\TableSchema::hasTable('visit_requests')) {
+            return [];
+        }
         $sql = "
             SELECT vr.*,
                    p.name AS party_name,

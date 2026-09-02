@@ -42,7 +42,9 @@ class OrderRepository
             LEFT JOIN (
                 SELECT order_id,
                        SUM(dispatch_qty_trucks) as total_dispatched,
-                       SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
+                       " . (DispatchSchema::hasLoadingWeightColumn()
+                           ? 'SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight'
+                           : '0 as total_dispatched_weight') . "
                 FROM dispatches
                 WHERE {$activeWhere}
                 GROUP BY order_id
@@ -123,13 +125,33 @@ class OrderRepository
     {
         $activeWhere = DispatchSchema::activeDispatchWhere();
         $transportDoc = DispatchSchema::companyTransportDocSelect('c');
+        $sched = TableSchema::hasColumn('orders', 'scheduled_dispatch_date')
+            ? 'o.scheduled_dispatch_date'
+            : 'NULL AS scheduled_dispatch_date';
+        $priority = TableSchema::hasColumn('orders', 'priority')
+            ? 'o.priority'
+            : "'normal' AS priority";
+        $credit = TableSchema::hasColumn('parties', 'credit_limit')
+            ? 'pt.credit_limit AS party_credit_limit'
+            : 'NULL AS party_credit_limit';
+        $recvJoin = TableSchema::hasTable('crm_receivable_entries')
+            ? "LEFT JOIN (
+                SELECT party_id,
+                       SUM(CASE WHEN entry_type = 'payment' THEN -amount ELSE amount END) AS outstanding
+                FROM crm_receivable_entries
+                GROUP BY party_id
+            ) recv ON recv.party_id = o.party_id"
+            : 'LEFT JOIN (SELECT NULL AS party_id, 0 AS outstanding) recv ON 1=0';
+        $orderBy = TableSchema::hasColumn('orders', 'priority')
+            ? "ORDER BY FIELD(o.priority, 'urgent', 'normal'), o.order_date ASC, o.id ASC"
+            : 'ORDER BY o.order_date ASC, o.id ASC';
         $sql = "
             SELECT o.id,
                    o.order_no,
                    o.order_date,
-                   o.scheduled_dispatch_date,
+                   {$sched},
                    o.status,
-                   o.priority,
+                   {$priority},
                    o.order_qty_trucks,
                    c.name AS company_name,
                    {$transportDoc},
@@ -140,7 +162,7 @@ class OrderRepository
                    (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) AS remaining_trucks,
                    DATEDIFF(CURDATE(), o.order_date) AS age_days,
                    COALESCE(recv.outstanding, 0) AS party_outstanding,
-                   pt.credit_limit AS party_credit_limit
+                   {$credit}
             FROM orders o
             JOIN companies c ON o.company_id = c.id
             JOIN products p ON o.product_id = p.id
@@ -151,12 +173,7 @@ class OrderRepository
                 WHERE {$activeWhere}
                 GROUP BY order_id
             ) d ON o.id = d.order_id
-            LEFT JOIN (
-                SELECT party_id,
-                       SUM(CASE WHEN entry_type = 'payment' THEN -amount ELSE amount END) AS outstanding
-                FROM crm_receivable_entries
-                GROUP BY party_id
-            ) recv ON recv.party_id = o.party_id
+            {$recvJoin}
             WHERE o.status IN ('pending', 'partial')
         ";
         if (OrderSchema::hasCreditGateColumns()) {
@@ -169,7 +186,7 @@ class OrderRepository
             $params[] = $companyId;
         }
 
-        $sql .= " ORDER BY FIELD(o.priority, 'urgent', 'normal'), o.order_date ASC, o.id ASC";
+        $sql .= " {$orderBy}";
 
         return $this->database->fetchAll($sql, $params);
     }
@@ -199,7 +216,9 @@ class OrderRepository
             LEFT JOIN (
                 SELECT order_id,
                        SUM(dispatch_qty_trucks) as total_dispatched,
-                       SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
+                       " . (DispatchSchema::hasLoadingWeightColumn()
+                           ? 'SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight'
+                           : '0 as total_dispatched_weight') . "
                 FROM dispatches
                 WHERE {$activeWhere}
                 GROUP BY order_id
@@ -232,7 +251,9 @@ class OrderRepository
             LEFT JOIN (
                 SELECT order_id,
                        SUM(dispatch_qty_trucks) as total_dispatched,
-                       SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight
+                       " . (DispatchSchema::hasLoadingWeightColumn()
+                           ? 'SUM(COALESCE(loading_weight_tons, 0)) as total_dispatched_weight'
+                           : '0 as total_dispatched_weight') . "
                 FROM dispatches
                 WHERE {$activeWhere}
                 GROUP BY order_id
@@ -247,104 +268,77 @@ class OrderRepository
     
     public function create(Order $order): int
     {
-        if (OrderSchema::hasBillingPartyColumns()) {
-            $sql = "
-                INSERT INTO orders (company_id, order_no, order_date, scheduled_dispatch_date, product_id, order_qty_trucks, order_qty_mode, order_weight_tons, tons_per_truck, party_id, bill_to_other_party, billing_party_id, priority, is_recurring, delivery_frequency_days, trucks_per_delivery, total_deliveries, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ";
-
-            $this->database->execute($sql, [
-                $order->companyId,
-                $order->orderNo,
-                $order->orderDate,
-                $order->scheduledDispatchDate,
-                $order->productId,
-                $order->orderQtyTrucks,
-                $order->orderQtyMode,
-                $order->orderWeightTons,
-                $order->tonsPerTruck,
-                $order->partyId,
-                $order->billToOtherParty ? 1 : 0,
-                $order->billingPartyId,
-                $order->priority,
-                $order->isRecurring ? 1 : 0,
-                $order->deliveryFrequencyDays,
-                $order->trucksPerDelivery,
-                $order->totalDeliveries,
-                $order->createdBy
-            ]);
-        } else {
-            $sql = "
-                INSERT INTO orders (company_id, order_no, order_date, scheduled_dispatch_date, product_id, order_qty_trucks, order_qty_mode, order_weight_tons, tons_per_truck, party_id, priority, is_recurring, delivery_frequency_days, trucks_per_delivery, total_deliveries, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ";
-
-            $this->database->execute($sql, [
-                $order->companyId,
-                $order->orderNo,
-                $order->orderDate,
-                $order->scheduledDispatchDate,
-                $order->productId,
-                $order->orderQtyTrucks,
-                $order->orderQtyMode,
-                $order->orderWeightTons,
-                $order->tonsPerTruck,
-                $order->partyId,
-                $order->priority,
-                $order->isRecurring ? 1 : 0,
-                $order->deliveryFrequencyDays,
-                $order->trucksPerDelivery,
-                $order->totalDeliveries,
-                $order->createdBy
-            ]);
+        $values = [
+            'company_id' => $order->companyId,
+            'order_no' => $order->orderNo,
+            'order_date' => $order->orderDate,
+            'product_id' => $order->productId,
+            'order_qty_trucks' => $order->orderQtyTrucks,
+            'party_id' => $order->partyId,
+            'created_by' => $order->createdBy,
+        ];
+        $optional = [
+            'scheduled_dispatch_date' => $order->scheduledDispatchDate,
+            'order_qty_mode' => $order->orderQtyMode,
+            'order_weight_tons' => $order->orderWeightTons,
+            'tons_per_truck' => $order->tonsPerTruck,
+            'bill_to_other_party' => $order->billToOtherParty ? 1 : 0,
+            'billing_party_id' => $order->billingPartyId,
+            'priority' => $order->priority,
+            'is_recurring' => $order->isRecurring ? 1 : 0,
+            'delivery_frequency_days' => $order->deliveryFrequencyDays,
+            'trucks_per_delivery' => $order->trucksPerDelivery,
+            'total_deliveries' => $order->totalDeliveries,
+        ];
+        foreach ($optional as $column => $value) {
+            if (TableSchema::hasColumn('orders', $column)) {
+                $values[$column] = $value;
+            }
         }
-        
+        $columns = array_keys($values);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $this->database->execute(
+            'INSERT INTO orders (' . implode(', ', $columns) . ') VALUES (' . $placeholders . ')',
+            array_values($values)
+        );
+
         return (int)$this->database->lastInsertId();
     }
     
     public function update(Order $order): bool
     {
-        if (OrderSchema::hasBillingPartyColumns()) {
-            $sql = "
-                UPDATE orders 
-                SET company_id = ?, order_date = ?, product_id = ?, order_qty_trucks = ?, order_qty_mode = ?, order_weight_tons = ?, tons_per_truck = ?, party_id = ?, bill_to_other_party = ?, billing_party_id = ?, priority = ?
-                WHERE id = ?
-            ";
-
-            return $this->database->execute($sql, [
-                $order->companyId,
-                $order->orderDate,
-                $order->productId,
-                $order->orderQtyTrucks,
-                $order->orderQtyMode,
-                $order->orderWeightTons,
-                $order->tonsPerTruck,
-                $order->partyId,
-                $order->billToOtherParty ? 1 : 0,
-                $order->billingPartyId,
-                $order->priority,
-                $order->id
-            ]);
+        $values = [
+            'company_id' => $order->companyId,
+            'order_date' => $order->orderDate,
+            'product_id' => $order->productId,
+            'order_qty_trucks' => $order->orderQtyTrucks,
+            'party_id' => $order->partyId,
+        ];
+        $optional = [
+            'order_qty_mode' => $order->orderQtyMode,
+            'order_weight_tons' => $order->orderWeightTons,
+            'tons_per_truck' => $order->tonsPerTruck,
+            'bill_to_other_party' => $order->billToOtherParty ? 1 : 0,
+            'billing_party_id' => $order->billingPartyId,
+            'priority' => $order->priority,
+        ];
+        foreach ($optional as $column => $value) {
+            if (TableSchema::hasColumn('orders', $column)) {
+                $values[$column] = $value;
+            }
         }
+        $sets = [];
+        $params = [];
+        foreach ($values as $column => $value) {
+            $sets[] = "{$column} = ?";
+            $params[] = $value;
+        }
+        $params[] = $order->id;
 
-        $sql = "
-            UPDATE orders 
-            SET company_id = ?, order_date = ?, product_id = ?, order_qty_trucks = ?, order_qty_mode = ?, order_weight_tons = ?, tons_per_truck = ?, party_id = ?, priority = ?
-            WHERE id = ?
-        ";
-        
-        return $this->database->execute($sql, [
-            $order->companyId,
-            $order->orderDate,
-            $order->productId,
-            $order->orderQtyTrucks,
-            $order->orderQtyMode,
-            $order->orderWeightTons,
-            $order->tonsPerTruck,
-            $order->partyId,
-            $order->priority,
-            $order->id
-        ]);
+        return $this->database->execute(
+            'UPDATE orders SET ' . implode(', ', $sets) . ' WHERE id = ?',
+            $params
+        );
     }
     
     public function updateStatus(int $orderId, string $status): bool

@@ -59,6 +59,20 @@ class DispatchSchema
         return $trucks;
     }
 
+    public static function loadingWeightSum(string $dispatchAlias = 'd'): string
+    {
+        return self::hasLoadingWeightColumn()
+            ? "COALESCE(SUM({$dispatchAlias}.loading_weight_tons), 0)"
+            : '0';
+    }
+
+    public static function loadingWeightSelect(string $dispatchAlias = 'd'): string
+    {
+        return self::hasLoadingWeightColumn()
+            ? "{$dispatchAlias}.loading_weight_tons"
+            : 'NULL AS loading_weight_tons';
+    }
+
     public static function hasCompanyTransportDocTypeColumn(): bool
     {
         if (self::$hasTransportDocType !== null) {
@@ -120,5 +134,14 @@ class DispatchSchema
         }
         $col = $tableAlias !== '' ? "{$tableAlias}.status" : 'status';
         return "{$col} = 'active'";
+    }
+
+    public static function forget(): void
+    {
+        self::$hasStatus = null;
+        self::$hasEwayFile = null;
+        self::$hasTransportDocType = null;
+        self::$hasLoadingWeight = null;
+        self::$hasTonsPerTruck = null;
     }
 }

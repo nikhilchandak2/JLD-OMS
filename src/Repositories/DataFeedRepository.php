@@ -30,6 +30,9 @@ class DataFeedRepository
 
     public function listAll(): array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feeds')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT f.*, c.name AS company_name, c.code AS company_code, u.name AS owner_name
              FROM data_feeds f

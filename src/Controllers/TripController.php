@@ -35,19 +35,45 @@ class TripController
         }
         
         try {
-            $sql = "
-                SELECT t.*,
-                       v.vehicle_number,
-                       COALESCE(sg.name, 'Pit (Unknown)') as source_geofence_name,
-                       CASE
+            if (!\App\Support\TableSchema::hasTable('vehicle_trips')) {
+                echo json_encode([
+                    'success' => true,
+                    'data' => [],
+                    'stats' => [],
+                    'destination_breakdown' => [],
+                    'destination_breakdown_by_vehicle' => [],
+                    'stoppage_summary_by_vehicle' => [],
+                    'today_stoppage_summary' => [],
+                ]);
+                return;
+            }
+            $startTime = \App\Support\TableSchema::hasColumn('vehicle_trips', 'start_time') ? 't.start_time' : 't.trip_start_time';
+            $endTime = \App\Support\TableSchema::hasColumn('vehicle_trips', 'end_time') ? 't.end_time' : 't.trip_end_time';
+            $vehicleNumber = \App\Support\TableSchema::columnExpr('vehicles', ['vehicle_number', 'vehicle_no'], 'v', 'vehicle_number');
+            $sourceJoin = \App\Support\TableSchema::hasColumn('vehicle_trips', 'source_geofence_id')
+                ? 'LEFT JOIN geofences sg ON t.source_geofence_id = sg.id'
+                : 'LEFT JOIN (SELECT NULL AS id, NULL AS name) sg ON 1=0';
+            $destJoin = \App\Support\TableSchema::hasColumn('vehicle_trips', 'destination_geofence_id')
+                ? 'LEFT JOIN geofences dg ON t.destination_geofence_id = dg.id'
+                : 'LEFT JOIN (SELECT NULL AS id, NULL AS name, NULL AS material_type) dg ON 1=0';
+            $destCase = \App\Support\TableSchema::hasColumn('vehicle_trips', 'destination_geofence_id')
+                ? "CASE
                            WHEN t.status = 'completed' AND t.destination_geofence_id IS NULL THEN 'Other Area'
                            ELSE COALESCE(dg.name, 'N/A')
-                       END as destination_geofence_name,
+                       END as destination_geofence_name"
+                : "COALESCE(t.stockpile_name, 'N/A') as destination_geofence_name";
+            $sql = "
+                SELECT t.*,
+                       {$startTime} AS start_time,
+                       {$endTime} AS end_time,
+                       {$vehicleNumber},
+                       COALESCE(sg.name, 'Pit (Unknown)') as source_geofence_name,
+                       {$destCase},
                        dg.material_type
                 FROM vehicle_trips t
                 JOIN vehicles v ON t.vehicle_id = v.id
-                LEFT JOIN geofences sg ON t.source_geofence_id = sg.id
-                LEFT JOIN geofences dg ON t.destination_geofence_id = dg.id
+                {$sourceJoin}
+                {$destJoin}
                 WHERE 1=1
             ";
             
@@ -59,12 +85,12 @@ class TripController
             }
             
             if (!empty($_GET['start_date'])) {
-                $sql .= " AND t.start_time >= ?";
+                $sql .= " AND {$startTime} >= ?";
                 $params[] = strlen($_GET['start_date']) <= 10 ? $_GET['start_date'] . ' 00:00:00' : $_GET['start_date'];
             }
             
             if (!empty($_GET['end_date'])) {
-                $sql .= " AND t.start_time <= ?";
+                $sql .= " AND {$startTime} <= ?";
                 $endDate = $_GET['end_date'];
                 $params[] = strlen($endDate) <= 10 ? $endDate . ' 23:59:59' : $endDate;
             }
@@ -79,7 +105,7 @@ class TripController
                 $params[] = $_GET['status'];
             }
             
-            $sql .= " ORDER BY t.start_time DESC LIMIT 1000";
+            $sql .= " ORDER BY {$startTime} DESC LIMIT 1000";
             
             $trips = $this->database->fetchAll($sql, $params);
             
@@ -330,13 +356,28 @@ class TripController
     private function getTripStatistics(array $filters): array
     {
         [$whereClause, $statParams] = $this->buildTripFilterClause($filters);
+        $distance = \App\Support\TableSchema::hasColumn('vehicle_trips', 'distance_km')
+            ? 'SUM(distance_km) as total_distance'
+            : (\App\Support\TableSchema::hasColumn('vehicle_trips', 'total_distance')
+                ? 'SUM(total_distance) as total_distance'
+                : '0 as total_distance');
+        $fuel = \App\Support\TableSchema::hasColumn('vehicle_trips', 'fuel_consumed_liters')
+            ? 'SUM(fuel_consumed_liters) as total_fuel_consumed'
+            : (\App\Support\TableSchema::hasColumn('vehicle_trips', 'fuel_consumed')
+                ? 'SUM(fuel_consumed) as total_fuel_consumed'
+                : '0 as total_fuel_consumed');
+        $duration = \App\Support\TableSchema::hasColumn('vehicle_trips', 'duration_minutes')
+            ? 'AVG(duration_minutes) as avg_duration'
+            : (\App\Support\TableSchema::hasColumn('vehicle_trips', 'total_duration')
+                ? 'AVG(total_duration) as avg_duration'
+                : '0 as avg_duration');
         $sql = "
             SELECT 
                 COUNT(*) as total_trips,
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_trips,
-                SUM(distance_km) as total_distance,
-                SUM(fuel_consumed_liters) as total_fuel_consumed,
-                AVG(duration_minutes) as avg_duration
+                {$distance},
+                {$fuel},
+                {$duration}
             FROM vehicle_trips t
             {$whereClause}
         ";
@@ -378,6 +419,9 @@ class TripController
 
     private function getDestinationBreakdown(array $filters): array
     {
+        if (!\App\Support\TableSchema::hasColumn('vehicle_trips', 'destination_geofence_id')) {
+            return [];
+        }
         [$whereClause, $params] = $this->buildTripFilterClause($filters);
 
         $whereClause .= " AND t.status = 'completed' AND t.destination_geofence_id IS NOT NULL";
@@ -398,6 +442,9 @@ class TripController
 
     private function getDestinationBreakdownByVehicle(array $filters): array
     {
+        if (!\App\Support\TableSchema::hasColumn('vehicle_trips', 'destination_geofence_id')) {
+            return [];
+        }
         [$whereClause, $params] = $this->buildTripFilterClause($filters);
 
         $whereClause .= " AND t.status = 'completed' AND t.destination_geofence_id IS NOT NULL";
@@ -441,11 +488,13 @@ class TripController
             $params[] = $filters['vehicle_id'];
         }
         if (!empty($filters['start_date'])) {
-            $whereClause .= " AND t.start_time >= ?";
+            $startCol = \App\Support\TableSchema::hasColumn('vehicle_trips', 'start_time') ? 't.start_time' : 't.trip_start_time';
+            $whereClause .= " AND {$startCol} >= ?";
             $params[] = strlen($filters['start_date']) <= 10 ? $filters['start_date'] . ' 00:00:00' : $filters['start_date'];
         }
         if (!empty($filters['end_date'])) {
-            $whereClause .= " AND t.start_time <= ?";
+            $startCol = \App\Support\TableSchema::hasColumn('vehicle_trips', 'start_time') ? 't.start_time' : 't.trip_start_time';
+            $whereClause .= " AND {$startCol} <= ?";
             $endDate = $filters['end_date'];
             $params[] = strlen($endDate) <= 10 ? $endDate . ' 23:59:59' : $endDate;
         }

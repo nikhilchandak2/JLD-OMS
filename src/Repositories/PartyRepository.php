@@ -55,6 +55,9 @@ class PartyRepository
         if ($gstNumber === '') {
             return null;
         }
+        if (!TableSchema::hasColumn('parties', 'gst_number')) {
+            return null;
+        }
 
         $sql = 'SELECT * FROM parties WHERE gst_number = ?';
         $params = [$gstNumber];
@@ -73,19 +76,23 @@ class PartyRepository
 
     public function create(Party $party): Party
     {
-        $sql = "INSERT INTO parties (name, contact_person, gst_number, phone, email, address, is_active, created_at, updated_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
+        $values = [
+            'name' => $party->name,
+            'contact_person' => $party->contactPerson,
+            'phone' => $party->phone,
+            'email' => $party->email,
+            'address' => $party->address,
+            'is_active' => $party->isActive ? 1 : 0,
+        ];
+        if (TableSchema::hasColumn('parties', 'gst_number')) {
+            $values['gst_number'] = $party->gstNumber !== '' ? $party->gstNumber : null;
+        }
+        $fields = array_keys($values);
+        $sql = 'INSERT INTO parties (' . implode(', ', $fields) . ', created_at, updated_at) VALUES ('
+            . implode(', ', array_fill(0, count($fields), '?')) . ', NOW(), NOW())';
         
         $stmt = $this->database->getConnection()->prepare($sql);
-        $stmt->execute([
-            $party->name,
-            $party->contactPerson,
-            $party->gstNumber !== '' ? $party->gstNumber : null,
-            $party->phone,
-            $party->email,
-            $party->address,
-            $party->isActive ? 1 : 0
-        ]);
+        $stmt->execute(array_values($values));
         
         $party->id = (int)$this->database->getConnection()->lastInsertId();
         return $this->findById($party->id);

@@ -147,6 +147,9 @@ class TdsReportRepository
 
     public function listUploads(int $limit = 25): array
     {
+        if (!\App\Support\TableSchema::hasTable('tds_uploads')) {
+            return [];
+        }
         $limit = max(1, min(100, $limit));
         return $this->database->fetchAll(
             "SELECT u.*, us.name AS uploaded_by_name

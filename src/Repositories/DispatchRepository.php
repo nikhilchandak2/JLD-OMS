@@ -120,31 +120,36 @@ class DispatchRepository
     
     public function create(Dispatch $dispatch): int
     {
-        $sql = "
-            INSERT INTO dispatches (
-                order_id, dispatch_date, dispatch_qty_trucks, status, source_dispatch_id,
-                product_rate, loading_weight_tons, busy_invoice_no, vehicle_no, rawana_no, eway_bill_no, eway_bill_file_path, remarks, dispatched_by
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ";
-        
-        $this->database->execute($sql, [
-            $dispatch->orderId,
-            $dispatch->dispatchDate,
-            $dispatch->dispatchQtyTrucks,
-            $dispatch->status ?? 'active',
-            $dispatch->sourceDispatchId,
-            $dispatch->productRate,
-            $dispatch->loadingWeightTons,
-            $dispatch->busyInvoiceNo,
-            $dispatch->vehicleNo,
-            $dispatch->rawanaNo,
-            $dispatch->ewayBillNo,
-            $dispatch->ewayBillFilePath,
-            $dispatch->remarks,
-            $dispatch->dispatchedBy
-        ]);
-        
+        $values = [
+            'order_id' => $dispatch->orderId,
+            'dispatch_date' => $dispatch->dispatchDate,
+            'dispatch_qty_trucks' => $dispatch->dispatchQtyTrucks,
+            'vehicle_no' => $dispatch->vehicleNo,
+            'remarks' => $dispatch->remarks,
+            'dispatched_by' => $dispatch->dispatchedBy,
+        ];
+        $optional = [
+            'status' => $dispatch->status ?? 'active',
+            'source_dispatch_id' => $dispatch->sourceDispatchId,
+            'product_rate' => $dispatch->productRate,
+            'loading_weight_tons' => $dispatch->loadingWeightTons,
+            'busy_invoice_no' => $dispatch->busyInvoiceNo,
+            'rawana_no' => $dispatch->rawanaNo,
+            'eway_bill_no' => $dispatch->ewayBillNo,
+            'eway_bill_file_path' => $dispatch->ewayBillFilePath,
+        ];
+        foreach ($optional as $column => $value) {
+            if (\App\Support\TableSchema::hasColumn('dispatches', $column)) {
+                $values[$column] = $value;
+            }
+        }
+        $columns = array_keys($values);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $this->database->execute(
+            'INSERT INTO dispatches (' . implode(', ', $columns) . ') VALUES (' . $placeholders . ')',
+            array_values($values)
+        );
+
         return (int)$this->database->lastInsertId();
     }
 
@@ -154,7 +159,7 @@ class DispatchRepository
         $params = [];
 
         foreach (['status', 'rejection_reason', 'transferred_to_dispatch_id', 'source_dispatch_id'] as $col) {
-            if (array_key_exists($col, $data)) {
+            if (array_key_exists($col, $data) && \App\Support\TableSchema::hasColumn('dispatches', $col)) {
                 $fields[] = "{$col} = ?";
                 $params[] = $data[$col];
             }
@@ -171,30 +176,42 @@ class DispatchRepository
     
     public function update(Dispatch $dispatch): bool
     {
-        $sql = "
-            UPDATE dispatches 
-            SET dispatch_date = ?, dispatch_qty_trucks = ?, product_rate = ?, loading_weight_tons = ?, busy_invoice_no = ?, vehicle_no = ?, rawana_no = ?, eway_bill_no = ?, eway_bill_file_path = ?, remarks = ?
-            WHERE id = ?
-        ";
-        
-        return $this->database->execute($sql, [
-            $dispatch->dispatchDate,
-            $dispatch->dispatchQtyTrucks,
-            $dispatch->productRate,
-            $dispatch->loadingWeightTons,
-            $dispatch->busyInvoiceNo,
-            $dispatch->vehicleNo,
-            $dispatch->rawanaNo,
-            $dispatch->ewayBillNo,
-            $dispatch->ewayBillFilePath,
-            $dispatch->remarks,
-            $dispatch->id
-        ]);
+        $values = [
+            'dispatch_date' => $dispatch->dispatchDate,
+            'dispatch_qty_trucks' => $dispatch->dispatchQtyTrucks,
+            'vehicle_no' => $dispatch->vehicleNo,
+            'remarks' => $dispatch->remarks,
+        ];
+        $optional = [
+            'product_rate' => $dispatch->productRate,
+            'loading_weight_tons' => $dispatch->loadingWeightTons,
+            'busy_invoice_no' => $dispatch->busyInvoiceNo,
+            'rawana_no' => $dispatch->rawanaNo,
+            'eway_bill_no' => $dispatch->ewayBillNo,
+            'eway_bill_file_path' => $dispatch->ewayBillFilePath,
+        ];
+        foreach ($optional as $column => $value) {
+            if (\App\Support\TableSchema::hasColumn('dispatches', $column)) {
+                $values[$column] = $value;
+            }
+        }
+        $sets = [];
+        $params = [];
+        foreach ($values as $column => $value) {
+            $sets[] = "{$column} = ?";
+            $params[] = $value;
+        }
+        $params[] = $dispatch->id;
+
+        return $this->database->execute(
+            'UPDATE dispatches SET ' . implode(', ', $sets) . ' WHERE id = ?',
+            $params
+        );
     }
     
     public function findByBusyInvoiceNo(string $invoiceNo): ?Dispatch
     {
-        if ($invoiceNo === '') {
+        if ($invoiceNo === '' || !\App\Support\TableSchema::hasColumn('dispatches', 'busy_invoice_no')) {
             return null;
         }
 
@@ -214,6 +231,9 @@ class DispatchRepository
 
     public function updateEwayBillFile(int $id, string $relativePath): bool
     {
+        if (!DispatchSchema::hasEwayBillFileColumn()) {
+            return false;
+        }
         return $this->database->execute(
             'UPDATE dispatches SET eway_bill_file_path = ? WHERE id = ?',
             [$relativePath, $id]

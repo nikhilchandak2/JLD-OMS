@@ -296,10 +296,13 @@ class AnalyticsController
     private function getPendingSummary(): array
     {
         [$companySql, $companyParams] = $this->ordersCompanyFilter('o');
+        $urgent = \App\Support\TableSchema::hasColumn('orders', 'priority')
+            ? "COUNT(CASE WHEN priority = 'urgent' THEN 1 END) as urgent_pending"
+            : '0 as urgent_pending';
         $sql = "
             SELECT 
                 COUNT(*) as total_pending,
-                COUNT(CASE WHEN priority = 'urgent' THEN 1 END) as urgent_pending,
+                {$urgent},
                 SUM(order_qty_trucks - COALESCE(d.total_dispatched, 0)) as pending_trucks,
                 ROUND(AVG(DATEDIFF(CURDATE(), order_date)), 0) as avg_age
             FROM orders o
@@ -316,6 +319,9 @@ class AnalyticsController
     
     private function getPendingPriorityBreakdown(): array
     {
+        if (!\App\Support\TableSchema::hasColumn('orders', 'priority')) {
+            return [['priority' => 'normal', 'count' => 0]];
+        }
         [$companySql, $companyParams] = $this->ordersCompanyFilter();
         $sql = "
             SELECT priority, COUNT(*) as count
@@ -345,6 +351,9 @@ class AnalyticsController
     
     private function getUrgentOrders(): array
     {
+        if (!\App\Support\TableSchema::hasColumn('orders', 'priority')) {
+            return [];
+        }
         [$companySql, $companyParams] = $this->ordersCompanyFilter('o');
         $sql = "
             SELECT o.id, o.order_no, p.name as party_name,

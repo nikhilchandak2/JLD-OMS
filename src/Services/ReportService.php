@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Support\DispatchSchema;
+use App\Support\TableSchema;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -32,7 +33,7 @@ class ReportService
                    (o.order_qty_trucks - COALESCE(d.total_dispatched, 0)) AS pending_trucks,
                    o.order_date,
                    o.status,
-                   o.priority
+                   " . (TableSchema::hasColumn('orders', 'priority') ? 'o.priority' : "'normal' AS priority") . "
             FROM orders o
             JOIN parties pt ON o.party_id = pt.id
             JOIN products p ON o.product_id = p.id
@@ -468,7 +469,7 @@ class ReportService
             SELECT
                 COUNT(*) AS dispatch_count,
                 COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
-                COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons,
+                " . DispatchSchema::loadingWeightSum('d') . " AS total_weight_tons,
                 COUNT(DISTINCT o.product_id) AS product_count,
                 COUNT(DISTINCT o.party_id) AS party_count
             FROM dispatches d
@@ -485,7 +486,7 @@ class ReportService
                 pt.name AS party_name,
                 COUNT(*) AS dispatch_count,
                 COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
-                COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons
+                " . DispatchSchema::loadingWeightSum('d') . " AS total_weight_tons
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
             JOIN parties pt ON o.party_id = pt.id
@@ -503,7 +504,7 @@ class ReportService
                 p.name AS product_name,
                 COUNT(*) AS dispatch_count,
                 COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
-                COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons
+                " . DispatchSchema::loadingWeightSum('d') . " AS total_weight_tons
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
             JOIN products p ON o.product_id = p.id
@@ -524,7 +525,7 @@ class ReportService
                 p.name AS product_name,
                 COUNT(*) AS dispatch_count,
                 COALESCE(SUM(d.dispatch_qty_trucks), 0) AS total_trucks,
-                COALESCE(SUM(d.loading_weight_tons), 0) AS total_weight_tons
+                " . DispatchSchema::loadingWeightSum('d') . " AS total_weight_tons
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
             JOIN parties pt ON o.party_id = pt.id
@@ -547,12 +548,12 @@ class ReportService
                 pt.name AS party_name,
                 o.order_no,
                 d.dispatch_qty_trucks,
-                d.loading_weight_tons,
-                d.product_rate,
-                d.busy_invoice_no,
-                d.rawana_no,
-                d.eway_bill_no,
-                COALESCE(d.status, 'active') AS status
+                " . DispatchSchema::loadingWeightSelect('d') . ",
+                " . (TableSchema::hasColumn('dispatches', 'product_rate') ? 'd.product_rate' : 'NULL AS product_rate') . ",
+                " . (TableSchema::hasColumn('dispatches', 'busy_invoice_no') ? 'd.busy_invoice_no' : 'NULL AS busy_invoice_no') . ",
+                " . (TableSchema::hasColumn('dispatches', 'rawana_no') ? 'd.rawana_no' : 'NULL AS rawana_no') . ",
+                " . (TableSchema::hasColumn('dispatches', 'eway_bill_no') ? 'd.eway_bill_no' : 'NULL AS eway_bill_no') . ",
+                " . (DispatchSchema::hasDispatchStatusColumn() ? "COALESCE(d.status, 'active') AS status" : "'active' AS status") . "
             FROM dispatches d
             JOIN orders o ON d.order_id = o.id
             JOIN companies c ON o.company_id = c.id

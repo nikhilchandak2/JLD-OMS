@@ -57,10 +57,10 @@ class BusyInvoiceUploadRepository
                        AND table_name = 'busy_daily_invoices'
                        AND column_name = 'upload_id'"
                 );
-                if ((int)($col['c'] ?? 0) === 0) {
+                if ((int)($col['c'] ?? 0) === 0 && \App\Support\TableSchema::hasTable('busy_daily_invoices')) {
                     try {
                         $this->database->getConnection()->exec(
-                            'ALTER TABLE busy_daily_invoices ADD COLUMN upload_id INT NULL AFTER uploaded_by'
+                            'ALTER TABLE busy_daily_invoices ADD COLUMN upload_id INT NULL'
                         );
                         $this->database->getConnection()->exec(
                             'ALTER TABLE busy_daily_invoices ADD INDEX idx_busy_daily_upload (upload_id)'
@@ -126,7 +126,7 @@ class BusyInvoiceUploadRepository
     /** Fill invoice_date_from/to on every upload from linked daily invoices. */
     public function syncAllInvoiceDateRanges(): void
     {
-        if (!$this->hasUploadInvoiceDateColumns()) {
+        if (!$this->hasUploadInvoiceDateColumns() || !\App\Support\TableSchema::hasTable('busy_daily_invoices')) {
             return;
         }
         try {

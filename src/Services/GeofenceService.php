@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class GeofenceService
 {
@@ -328,9 +329,13 @@ class GeofenceService
      */
     private function hydrateGeofenceRow(array $row): array
     {
+        $row['latitude'] = $row['latitude'] ?? $row['center_latitude'] ?? 0;
+        $row['longitude'] = $row['longitude'] ?? $row['center_longitude'] ?? 0;
+        $row['radius_meters'] = $row['radius_meters'] ?? $row['radius'] ?? 0;
         $row['shape_type'] = $row['shape_type'] ?? 'circle';
-        $row['geofence_type'] = strtolower(trim((string)($row['geofence_type'] ?? '')));
-        $row['polygon_points'] = $this->normalizePolygonPoints($row['polygon_points'] ?? null);
+        $row['geofence_type'] = strtolower(trim((string)($row['geofence_type'] ?? $row['zone_type'] ?? '')));
+        $polygon = $row['polygon_points'] ?? $row['polygon_coordinates'] ?? null;
+        $row['polygon_points'] = $this->normalizePolygonPoints($polygon);
         return $row;
     }
     
@@ -339,6 +344,9 @@ class GeofenceService
      */
     private function getPreviousTracking(int $vehicleId): ?object
     {
+        if (!TableSchema::hasTable('gps_tracking_data')) {
+            return null;
+        }
         $sql = "
             SELECT * FROM gps_tracking_data
             WHERE vehicle_id = ?
@@ -382,6 +390,9 @@ class GeofenceService
      */
     public function getActiveGeofences(): array
     {
+        if (!TableSchema::hasTable('geofences')) {
+            return [];
+        }
         $sql = "
             SELECT * FROM geofences
             WHERE is_active = 1
@@ -419,6 +430,9 @@ class GeofenceService
      */
     public function getGeofenceById(int $id): ?array
     {
+        if (!TableSchema::hasTable('geofences')) {
+            return null;
+        }
         $sql = "SELECT * FROM geofences WHERE id = ?";
         $row = $this->database->fetch($sql, [$id]);
         return $row ? $this->hydrateGeofenceRow($row) : null;
@@ -442,23 +456,24 @@ class GeofenceService
             $radiusMeters = max(1, $derived['radius_meters']);
         }
 
-        $sql = "
-            INSERT INTO geofences 
-            (name, geofence_type, material_type, shape_type, latitude, longitude, radius_meters, polygon_points, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ";
-        
-        $this->database->execute($sql, [
-            $data['name'],
-            $data['geofence_type'],
-            $data['material_type'] ?? null,
-            $shapeType,
-            $latitude,
-            $longitude,
-            $radiusMeters,
-            count($polygonPoints) >= 3 ? json_encode($polygonPoints) : null,
-            $data['is_active'] ?? 1
-        ]);
+        $values = [
+            'name' => $data['name'],
+            'material_type' => $data['material_type'] ?? null,
+            'is_active' => $data['is_active'] ?? 1,
+        ];
+        $this->assignGeofenceGeometry($values, $data['geofence_type'] ?? '', $latitude, $longitude, $radiusMeters);
+        if (TableSchema::hasColumn('geofences', 'shape_type')) {
+            $values['shape_type'] = $shapeType;
+        }
+        if (TableSchema::hasColumn('geofences', 'polygon_points')) {
+            $values['polygon_points'] = count($polygonPoints) >= 3 ? json_encode($polygonPoints) : null;
+        }
+        $columns = array_keys($values);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $this->database->execute(
+            'INSERT INTO geofences (' . implode(', ', $columns) . ') VALUES (' . $placeholders . ')',
+            array_values($values)
+        );
         
         return (int)$this->database->lastInsertId();
     }
@@ -481,25 +496,59 @@ class GeofenceService
             $radiusMeters = max(1, $derived['radius_meters']);
         }
 
-        $sql = "
-            UPDATE geofences 
-            SET name = ?, geofence_type = ?, material_type = ?, shape_type = ?,
-                latitude = ?, longitude = ?, radius_meters = ?, polygon_points = ?, is_active = ?
-            WHERE id = ?
-        ";
-        
-        return $this->database->execute($sql, [
-            $data['name'],
-            $data['geofence_type'],
-            $data['material_type'] ?? null,
-            $shapeType,
-            $latitude,
-            $longitude,
-            $radiusMeters,
-            count($polygonPoints) >= 3 ? json_encode($polygonPoints) : null,
-            $data['is_active'] ?? 1,
-            $id
-        ]);
+        $values = [
+            'name' => $data['name'],
+            'material_type' => $data['material_type'] ?? null,
+            'is_active' => $data['is_active'] ?? 1,
+        ];
+        $this->assignGeofenceGeometry($values, $data['geofence_type'] ?? '', $latitude, $longitude, $radiusMeters);
+        $sets = [];
+        $params = [];
+        foreach ($values as $column => $value) {
+            $sets[] = "{$column} = ?";
+            $params[] = $value;
+        }
+        if (TableSchema::hasColumn('geofences', 'shape_type')) {
+            $sets[] = 'shape_type = ?';
+            $params[] = $shapeType;
+        }
+        if (TableSchema::hasColumn('geofences', 'polygon_points')) {
+            $sets[] = 'polygon_points = ?';
+            $params[] = count($polygonPoints) >= 3 ? json_encode($polygonPoints) : null;
+        }
+        $params[] = $id;
+
+        return $this->database->execute(
+            'UPDATE geofences SET ' . implode(', ', $sets) . ' WHERE id = ?',
+            $params
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     */
+    private function assignGeofenceGeometry(array &$values, string $geofenceType, float $latitude, float $longitude, float $radiusMeters): void
+    {
+        if (TableSchema::hasColumn('geofences', 'geofence_type')) {
+            $values['geofence_type'] = $geofenceType;
+        } elseif (TableSchema::hasColumn('geofences', 'zone_type')) {
+            $values['zone_type'] = $geofenceType !== '' ? $geofenceType : 'custom';
+        }
+        if (TableSchema::hasColumn('geofences', 'latitude')) {
+            $values['latitude'] = $latitude;
+        } elseif (TableSchema::hasColumn('geofences', 'center_latitude')) {
+            $values['center_latitude'] = $latitude;
+        }
+        if (TableSchema::hasColumn('geofences', 'longitude')) {
+            $values['longitude'] = $longitude;
+        } elseif (TableSchema::hasColumn('geofences', 'center_longitude')) {
+            $values['center_longitude'] = $longitude;
+        }
+        if (TableSchema::hasColumn('geofences', 'radius_meters')) {
+            $values['radius_meters'] = $radiusMeters;
+        } elseif (TableSchema::hasColumn('geofences', 'radius')) {
+            $values['radius'] = $radiusMeters;
+        }
     }
     
     /**

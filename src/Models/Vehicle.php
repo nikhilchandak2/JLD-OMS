@@ -34,17 +34,17 @@ class Vehicle
     public function fill(array $data): void
     {
         $this->id = $data['id'] ?? 0;
-        $this->vehicleNumber = $data['vehicle_number'] ?? '';
+        $this->vehicleNumber = $data['vehicle_number'] ?? $data['vehicle_no'] ?? '';
         $this->vehicleType = $data['vehicle_type'] ?? 'dumper';
         $this->make = $data['make'] ?? null;
         $this->model = $data['model'] ?? null;
         $this->year = isset($data['year']) ? (int)$data['year'] : null;
-        $this->registrationNumber = $data['registration_number'] ?? null;
+        $this->registrationNumber = $data['registration_number'] ?? $data['registration_no'] ?? null;
         $this->gpsDeviceId = isset($data['gps_device_id']) ? (int)$data['gps_device_id'] : null;
         $this->gpsDeviceImei = $data['gps_device_imei'] ?? $data['imei'] ?? null;
         $this->fuelSensorId = isset($data['fuel_sensor_id']) ? (int)$data['fuel_sensor_id'] : null;
         $this->fuelSensorIdString = $data['fuel_sensor_id_string'] ?? $data['sensor_id'] ?? null;
-        $this->status = $data['status'] ?? 'active';
+        $this->status = $data['status'] ?? (((int)($data['is_active'] ?? 1)) === 1 ? 'active' : 'inactive');
         $this->notes = $data['notes'] ?? null;
         $this->createdAt = $data['created_at'] ?? '';
         $this->updatedAt = $data['updated_at'] ?? '';

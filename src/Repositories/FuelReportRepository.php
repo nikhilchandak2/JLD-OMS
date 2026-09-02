@@ -218,6 +218,9 @@ class FuelReportRepository
 
     public function findUploadsByCategory(string $category, int $limit = 20): array
     {
+        if (!\App\Support\TableSchema::hasTable('fuel_report_uploads')) {
+            return [];
+        }
         $limit = max(1, min(100, $limit));
         return $this->database->fetchAll(
             "SELECT u.*, usr.name AS uploaded_by_name
@@ -236,6 +239,9 @@ class FuelReportRepository
      */
     public function listMonthsForCategory(string $category): array
     {
+        if (!\App\Support\TableSchema::hasTable('fuel_daily_readings')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT DISTINCT DATE_FORMAT(r.reading_date, '%Y-%m') AS ym
              FROM fuel_daily_readings r
@@ -345,6 +351,9 @@ class FuelReportRepository
      */
     public function listMachinesWithStats(string $category, ?string $month = null): array
     {
+        if (!\App\Support\TableSchema::hasTable('fuel_machines')) {
+            return [];
+        }
         $monthOk = $month !== null && preg_match('/^\d{4}-\d{2}$/', $month);
 
         if ($monthOk) {

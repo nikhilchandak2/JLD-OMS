@@ -72,6 +72,9 @@ class CreditApprovalRepository
     /** Counts ALL requests (pending/approved/rejected) raised for a party in the given calendar month. */
     public function countRequestsForPartyInMonth(int $partyId, string $yearMonth): int
     {
+        if (!\App\Support\TableSchema::hasTable('credit_approval_requests')) {
+            return 0;
+        }
         $sql = "
             SELECT COUNT(*) AS cnt
             FROM credit_approval_requests
@@ -83,6 +86,9 @@ class CreditApprovalRepository
 
     public function hasPendingForParty(int $partyId): bool
     {
+        if (!\App\Support\TableSchema::hasTable('credit_approval_requests')) {
+            return false;
+        }
         $sql = "SELECT id FROM credit_approval_requests WHERE party_id = ? AND status = 'pending' LIMIT 1";
         $row = $this->database->fetch($sql, [$partyId]);
         return (bool)$row;
@@ -90,6 +96,9 @@ class CreditApprovalRepository
 
     public function getForOrder(int $orderId): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('credit_approval_requests')) {
+            return null;
+        }
         $sql = "SELECT * FROM credit_approval_requests WHERE order_id = ? LIMIT 1";
         $row = $this->database->fetch($sql, [$orderId]);
         return $row ?: null;
@@ -97,7 +106,15 @@ class CreditApprovalRepository
 
     public function getPendingApprovals(): array
     {
-        // order_id is optional: party-level requests have no order attached.
+        if (!\App\Support\TableSchema::hasTable('credit_approval_requests')) {
+            return [];
+        }
+        $increase = \App\Support\TableSchema::hasColumn('credit_approval_requests', 'requested_limit_increase')
+            ? 'car.requested_limit_increase'
+            : 'NULL AS requested_limit_increase';
+        $reason = \App\Support\TableSchema::hasColumn('credit_approval_requests', 'reason')
+            ? 'car.reason'
+            : 'NULL AS reason';
         $sql = "
             SELECT
                 car.id,
@@ -105,8 +122,8 @@ class CreditApprovalRepository
                 car.party_id,
                 car.outstanding,
                 car.credit_limit,
-                car.requested_limit_increase,
-                car.reason,
+                {$increase},
+                {$reason},
                 car.status,
                 car.requested_at,
                 car.decided_at,

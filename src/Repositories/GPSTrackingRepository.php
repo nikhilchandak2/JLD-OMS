@@ -45,6 +45,9 @@ class GPSTrackingRepository
     
     public function getLatestForVehicle(int $vehicleId): ?GPSTrackingData
     {
+        if (!\App\Support\TableSchema::hasTable('gps_tracking_data')) {
+            return null;
+        }
         $sql = "
             SELECT * FROM gps_tracking_data 
             WHERE vehicle_id = ? 
@@ -59,6 +62,9 @@ class GPSTrackingRepository
     
     public function getLatestForAllVehicles(): array
     {
+        if (!\App\Support\TableSchema::hasTable('gps_tracking_data')) {
+            return [];
+        }
         $sql = "
             SELECT t.*
             FROM gps_tracking_data t
@@ -155,14 +161,18 @@ class GPSTrackingRepository
      */
     public function getPulledDataHistory(?string $vehicleFilter = null, int $limit = 50, int $offset = 0): array
     {
+        if (!\App\Support\TableSchema::hasTable('gps_tracking_data')) {
+            return [];
+        }
         $limit = max(1, min(500, $limit));
         $offset = max(0, $offset);
 
+        $vehicleNumber = \App\Support\TableSchema::columnExpr('vehicles', ['vehicle_number', 'vehicle_no'], 'v', 'vehicle_number');
         $sql = "
             SELECT
                 t.id,
                 t.vehicle_id,
-                v.vehicle_number,
+                {$vehicleNumber},
                 t.device_id,
                 t.latitude,
                 t.longitude,
@@ -176,7 +186,8 @@ class GPSTrackingRepository
         ";
         $params = [];
         if ($vehicleFilter !== null && trim($vehicleFilter) !== '') {
-            $sql .= " AND (v.vehicle_number LIKE ? OR t.device_id LIKE ?)";
+            $numberCol = \App\Support\TableSchema::hasColumn('vehicles', 'vehicle_number') ? 'v.vehicle_number' : 'v.vehicle_no';
+            $sql .= " AND ({$numberCol} LIKE ? OR t.device_id LIKE ?)";
             $like = '%' . trim($vehicleFilter) . '%';
             $params[] = $like;
             $params[] = $like;
@@ -189,6 +200,9 @@ class GPSTrackingRepository
 
     public function countPulledDataHistory(?string $vehicleFilter = null): int
     {
+        if (!\App\Support\TableSchema::hasTable('gps_tracking_data')) {
+            return 0;
+        }
         $sql = "
             SELECT COUNT(*) AS total
             FROM gps_tracking_data t
@@ -197,7 +211,8 @@ class GPSTrackingRepository
         ";
         $params = [];
         if ($vehicleFilter !== null && trim($vehicleFilter) !== '') {
-            $sql .= " AND (v.vehicle_number LIKE ? OR t.device_id LIKE ?)";
+            $numberCol = \App\Support\TableSchema::hasColumn('vehicles', 'vehicle_number') ? 'v.vehicle_number' : 'v.vehicle_no';
+            $sql .= " AND ({$numberCol} LIKE ? OR t.device_id LIKE ?)";
             $like = '%' . trim($vehicleFilter) . '%';
             $params[] = $like;
             $params[] = $like;

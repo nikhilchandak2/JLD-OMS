@@ -236,6 +236,9 @@ class BusyDailyInvoiceRepository
      */
     public function findDaily(array $filters): array
     {
+        if (!\App\Support\TableSchema::hasTable('busy_daily_invoices')) {
+            return [];
+        }
         $where = ['1=1'];
         $params = [];
 

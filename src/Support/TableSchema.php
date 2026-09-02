@@ -94,6 +94,25 @@ class TableSchema
             : "SELECT id FROM companies ORDER BY id LIMIT 1";
     }
 
+    /**
+     * First existing column from $candidates, optionally aliased for SELECT lists.
+     */
+    public static function columnExpr(string $table, array $candidates, string $alias = '', string $as = ''): string
+    {
+        foreach ($candidates as $column) {
+            if (!self::hasColumn($table, $column)) {
+                continue;
+            }
+            $expr = $alias === '' ? "`{$column}`" : "{$alias}.`{$column}`";
+            if ($as !== '' && $as !== $column) {
+                return "{$expr} AS `{$as}`";
+            }
+            return $expr;
+        }
+
+        return $as !== '' ? "NULL AS `{$as}`" : 'NULL';
+    }
+
     public static function forget(): void
     {
         self::$columns = [];

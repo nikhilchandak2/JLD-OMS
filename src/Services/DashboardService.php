@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class DashboardService
 {
@@ -71,7 +72,7 @@ class DashboardService
                 FROM dispatches
                 GROUP BY order_id
             ) d ON o.id = d.order_id
-            WHERE c.status = 'active'
+            WHERE " . (TableSchema::hasColumn('companies', 'status') ? "c.status = 'active'" : '1=1') . "
         ";
         $params = [$startDate, $endDate];
         if ($companyId !== null && $companyId > 0) {

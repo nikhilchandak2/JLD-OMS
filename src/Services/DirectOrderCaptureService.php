@@ -39,17 +39,23 @@ class DirectOrderCaptureService
     {
         $this->policy->assertCan($actor['role'] ?? null, CreditGatePolicy::CAPTURE);
 
-        $history = $this->database->fetchAll(
-            "SELECT p.id AS product_id, p.code, p.name,
-                    o.order_qty_trucks, o.order_qty_mode, o.order_weight_tons, o.tons_per_truck,
-                    o.order_date,
-                    (
+        $qtyMode = TableSchema::hasColumn('orders', 'order_qty_mode') ? 'o.order_qty_mode' : "'trucks' AS order_qty_mode";
+        $weight = TableSchema::hasColumn('orders', 'order_weight_tons') ? 'o.order_weight_tons' : 'NULL AS order_weight_tons';
+        $tons = TableSchema::hasColumn('orders', 'tons_per_truck') ? 'o.tons_per_truck' : '40 AS tons_per_truck';
+        $rate = TableSchema::hasColumn('dispatches', 'product_rate')
+            ? "(
                         SELECT d.product_rate
                         FROM dispatches d
                         WHERE d.order_id = o.id AND d.product_rate IS NOT NULL
                         ORDER BY d.id DESC
                         LIMIT 1
-                    ) AS last_rate
+                    ) AS last_rate"
+            : 'NULL AS last_rate';
+        $history = $this->database->fetchAll(
+            "SELECT p.id AS product_id, p.code, p.name,
+                    o.order_qty_trucks, {$qtyMode}, {$weight}, {$tons},
+                    o.order_date,
+                    {$rate}
              FROM orders o
              JOIN products p ON p.id = o.product_id
              WHERE o.party_id = ?

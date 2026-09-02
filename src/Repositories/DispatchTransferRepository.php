@@ -45,6 +45,18 @@ class DispatchTransferRepository
      */
     public function findAll(array $filters = []): array
     {
+        if (!\App\Support\TableSchema::hasTable('dispatch_transfers')) {
+            return [];
+        }
+        $busyInvoice = \App\Support\TableSchema::hasColumn('dispatches', 'busy_invoice_no')
+            ? 'src_d.busy_invoice_no AS source_invoice_no, tgt_d.busy_invoice_no AS target_invoice_no'
+            : 'NULL AS source_invoice_no, NULL AS target_invoice_no';
+        $srcStatus = \App\Support\TableSchema::hasColumn('dispatches', 'status')
+            ? 'src_d.status AS source_dispatch_status'
+            : "'active' AS source_dispatch_status";
+        $creditJoin = \App\Support\TableSchema::hasTable('credit_notes')
+            ? 'LEFT JOIN credit_notes cn ON cn.dispatch_id = dt.source_dispatch_id'
+            : 'LEFT JOIN (SELECT NULL AS dispatch_id, NULL AS busy_credit_note_no, NULL AS amount, NULL AS note_date) cn ON 1=0';
         $sql = "
             SELECT
                 dt.id,
@@ -58,10 +70,9 @@ class DispatchTransferRepository
                 dt.source_order_id,
                 dt.target_order_id,
                 src_d.dispatch_date AS source_dispatch_date,
-                src_d.busy_invoice_no AS source_invoice_no,
-                src_d.status AS source_dispatch_status,
+                {$busyInvoice},
+                {$srcStatus},
                 tgt_d.dispatch_date AS transfer_date,
-                tgt_d.busy_invoice_no AS target_invoice_no,
                 src_o.order_no AS source_order_no,
                 tgt_o.order_no AS target_order_no,
                 src_p.name AS source_party_name,
@@ -77,7 +88,7 @@ class DispatchTransferRepository
             LEFT JOIN dispatches tgt_d ON dt.target_dispatch_id = tgt_d.id
             LEFT JOIN orders tgt_o ON dt.target_order_id = tgt_o.id
             LEFT JOIN parties tgt_p ON dt.target_party_id = tgt_p.id
-            LEFT JOIN credit_notes cn ON cn.dispatch_id = dt.source_dispatch_id
+            {$creditJoin}
             LEFT JOIN users u ON dt.created_by = u.id
             WHERE 1=1
         ";
@@ -99,6 +110,9 @@ class DispatchTransferRepository
 
     public function count(array $filters = []): int
     {
+        if (!\App\Support\TableSchema::hasTable('dispatch_transfers')) {
+            return 0;
+        }
         $sql = "
             SELECT COUNT(*) AS c
             FROM dispatch_transfers dt
@@ -153,6 +167,9 @@ class DispatchTransferRepository
 
     public function deleteByOrderId(int $orderId): void
     {
+        if (!\App\Support\TableSchema::hasTable('dispatch_transfers')) {
+            return;
+        }
         $this->database->execute(
             "DELETE dt FROM dispatch_transfers dt
              LEFT JOIN dispatches sd ON dt.source_dispatch_id = sd.id
