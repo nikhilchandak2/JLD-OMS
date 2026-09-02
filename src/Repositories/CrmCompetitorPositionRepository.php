@@ -15,6 +15,9 @@ class CrmCompetitorPositionRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_competitor_positions')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT c.*, p.name AS party_name, u.name AS recorded_by_name
              FROM crm_competitor_positions c
@@ -28,6 +31,9 @@ class CrmCompetitorPositionRepository
     /** @return array<int,array<string,mixed>> */
     public function findByParty(int $partyId, ?bool $currentOnly = null): array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_competitor_positions')) {
+            return [];
+        }
         $sql = "SELECT c.*, u.name AS recorded_by_name
                 FROM crm_competitor_positions c
                 LEFT JOIN users u ON u.id = c.recorded_by_user_id
@@ -45,6 +51,9 @@ class CrmCompetitorPositionRepository
 
     public function countCurrent(int $partyId): int
     {
+        if (!\App\Support\TableSchema::hasTable('crm_competitor_positions')) {
+            return 0;
+        }
         $row = $this->database->fetch(
             "SELECT COUNT(*) AS c FROM crm_competitor_positions WHERE party_id = ? AND is_current = 1",
             [$partyId]
@@ -55,6 +64,9 @@ class CrmCompetitorPositionRepository
 
     public function countHistory(int $partyId): int
     {
+        if (!\App\Support\TableSchema::hasTable('crm_competitor_positions')) {
+            return 0;
+        }
         $row = $this->database->fetch(
             "SELECT COUNT(*) AS c FROM crm_competitor_positions WHERE party_id = ? AND is_current = 0",
             [$partyId]

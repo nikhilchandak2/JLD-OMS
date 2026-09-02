@@ -95,6 +95,24 @@ class TableSchema
     }
 
     /**
+     * LEFT JOIN that does not 500 when $table is absent on a lagging database.
+     *
+     * @param list<string> $stubColumns
+     */
+    public static function leftJoinOrStub(string $table, string $alias, string $on, array $stubColumns): string
+    {
+        if (self::hasTable($table)) {
+            return "LEFT JOIN {$table} {$alias} ON {$on}";
+        }
+        $cols = [];
+        foreach ($stubColumns as $column) {
+            $cols[] = "NULL AS `{$column}`";
+        }
+
+        return 'LEFT JOIN (SELECT ' . implode(', ', $cols) . ") {$alias} ON 1=0";
+    }
+
+    /**
      * First existing column from $candidates, optionally aliased for SELECT lists.
      */
     public static function columnExpr(string $table, array $candidates, string $alias = '', string $as = ''): string

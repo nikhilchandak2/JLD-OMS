@@ -44,6 +44,10 @@ class EscalationRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('escalations')) {
+            return null;
+        }
+        $dealJoin = \App\Support\TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = e.deal_id', ['id', 'title']);
         $row = $this->database->fetch(
             "SELECT e.*, p.name AS party_name, u.name AS triggered_by_name,
                     a.name AS acknowledged_by_name, d.title AS deal_title
@@ -51,7 +55,7 @@ class EscalationRepository
              JOIN parties p ON p.id = e.party_id
              LEFT JOIN users u ON u.id = e.triggered_by_user_id
              LEFT JOIN users a ON a.id = e.acknowledged_by_user_id
-             LEFT JOIN crm_deals d ON d.id = e.deal_id
+             {$dealJoin}
              WHERE e.id = ?",
             [$id]
         );
@@ -61,6 +65,9 @@ class EscalationRepository
 
     public function findEpisode(int $partyId, string $triggerType, string $episodeKey): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('escalations')) {
+            return null;
+        }
         $row = $this->database->fetch(
             "SELECT * FROM escalations
              WHERE party_id = ? AND trigger_type = ? AND episode_key = ?
@@ -123,6 +130,9 @@ class EscalationRepository
      */
     public function findOpenForSource(string $sourceTable, int $sourceId): array
     {
+        if (!\App\Support\TableSchema::hasTable('escalations')) {
+            return [];
+        }
         return array_map(
             [$this, 'decode'],
             $this->database->fetchAll(
@@ -138,6 +148,9 @@ class EscalationRepository
      */
     public function findOpenByType(string $triggerType): array
     {
+        if (!\App\Support\TableSchema::hasTable('escalations')) {
+            return [];
+        }
         return array_map(
             [$this, 'decode'],
             $this->database->fetchAll(

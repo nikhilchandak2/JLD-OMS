@@ -19,12 +19,13 @@ class CrmAccountIssueRepository
         if (!TableSchema::hasTable('crm_account_issues')) {
             return null;
         }
+        $dealJoin = TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = i.deal_id', ['id', 'title']);
         return $this->database->fetch(
             "SELECT i.*, p.name AS party_name, u.name AS raised_by_name, d.title AS deal_title
              FROM crm_account_issues i
              JOIN parties p ON p.id = i.party_id
              LEFT JOIN users u ON u.id = i.raised_by_user_id
-             LEFT JOIN crm_deals d ON d.id = i.deal_id
+             {$dealJoin}
              WHERE i.id = ?",
             [$id]
         );
@@ -40,11 +41,12 @@ class CrmAccountIssueRepository
             ? "FIELD(i.status, 'open', 'escalated', 'resolved'), i.raised_on DESC, i.id DESC"
             : 'i.raised_on DESC, i.id DESC';
 
+        $dealJoin = TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = i.deal_id', ['id', 'title']);
         return $this->database->fetchAll(
             "SELECT i.*, u.name AS raised_by_name, d.title AS deal_title
              FROM crm_account_issues i
              LEFT JOIN users u ON u.id = i.raised_by_user_id
-             LEFT JOIN crm_deals d ON d.id = i.deal_id
+             {$dealJoin}
              WHERE i.party_id = ?
              ORDER BY {$order}",
             [$partyId]

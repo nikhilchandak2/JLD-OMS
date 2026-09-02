@@ -15,6 +15,9 @@ class CrmJobRunRepository
 
     public function tryLock(string $jobName, string $lockedBy, int $staleMinutes): bool
     {
+        if (!\App\Support\TableSchema::hasTable('crm_job_locks')) {
+            return false;
+        }
         $this->database->execute(
             "DELETE FROM crm_job_locks
              WHERE job_name = ? AND locked_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)",
@@ -62,6 +65,9 @@ class CrmJobRunRepository
 
     public function latest(string $jobName): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_job_runs')) {
+            return null;
+        }
         $row = $this->database->fetch(
             "SELECT * FROM crm_job_runs WHERE job_name = ? ORDER BY id DESC LIMIT 1",
             [$jobName]

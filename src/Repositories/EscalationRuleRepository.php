@@ -16,6 +16,9 @@ class EscalationRuleRepository
     /** @return array<int,array<string,mixed>> */
     public function findActive(): array
     {
+        if (!\App\Support\TableSchema::hasTable('escalation_rules')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT * FROM escalation_rules WHERE is_active = 1 ORDER BY id ASC"
         );
@@ -23,6 +26,9 @@ class EscalationRuleRepository
 
     public function findActiveByType(string $triggerType, ?int $companyId = null): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('escalation_rules')) {
+            return null;
+        }
         $row = $this->database->fetch(
             "SELECT * FROM escalation_rules
              WHERE is_active = 1 AND trigger_type = ?

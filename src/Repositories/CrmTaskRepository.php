@@ -108,6 +108,9 @@ class CrmTaskRepository
 
     public function findById(int $id): ?CrmTask
     {
+        if (!TableSchema::hasTable('crm_tasks')) {
+            return null;
+        }
         $sql = "SELECT t.*,
                        u.name AS assigned_to_name,
                        p.name AS party_name

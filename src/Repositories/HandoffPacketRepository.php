@@ -40,6 +40,10 @@ class HandoffPacketRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('handoff_packets')) {
+            return null;
+        }
+        $dealJoin = \App\Support\TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = p.deal_id', ['id', 'title', 'party_id']);
         $row = $this->database->fetch(
             "SELECT p.*,
                     d.title AS deal_title,
@@ -48,7 +52,7 @@ class HandoffPacketRepository
                     creator.name AS created_by_name,
                     acker.name AS acknowledged_by_name
              FROM handoff_packets p
-             LEFT JOIN crm_deals d ON d.id = p.deal_id
+             {$dealJoin}
              LEFT JOIN parties party ON party.id = d.party_id
              LEFT JOIN orders o ON o.id = p.order_id
              LEFT JOIN users creator ON creator.id = p.created_by_user_id
@@ -88,6 +92,7 @@ class HandoffPacketRepository
         if (!\App\Support\TableSchema::hasTable('handoff_packets')) {
             return [];
         }
+        $dealJoin = \App\Support\TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = p.deal_id', ['id', 'title', 'party_id']);
         $sql = "SELECT p.*,
                        d.title AS deal_title,
                        COALESCE(deal_party.name, order_party.name) AS party_name,
@@ -95,7 +100,7 @@ class HandoffPacketRepository
                        creator.name AS created_by_name,
                        acker.name AS acknowledged_by_name
                 FROM handoff_packets p
-                LEFT JOIN crm_deals d ON d.id = p.deal_id
+                {$dealJoin}
                 LEFT JOIN parties deal_party ON deal_party.id = d.party_id
                 LEFT JOIN orders o ON o.id = p.order_id
                 LEFT JOIN parties order_party ON order_party.id = o.party_id

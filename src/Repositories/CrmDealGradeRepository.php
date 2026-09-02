@@ -76,6 +76,9 @@ class CrmDealGradeRepository
 
     public function countByDeal(int $dealId): int
     {
+        if (!TableSchema::hasTable('crm_deal_grades')) {
+            return 0;
+        }
         $row = $this->database->fetch(
             "SELECT COUNT(*) AS c FROM crm_deal_grades WHERE deal_id = ?",
             [$dealId]

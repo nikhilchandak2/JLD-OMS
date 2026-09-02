@@ -168,12 +168,14 @@ class CrmReceivableController
         if (!$this->requireCrmAccess()) return;
         try {
             $pdo = (new \App\Core\Database())->getConnection();
-            $sql = "SELECT party_id, SUM(CASE WHEN entry_type = 'invoice' THEN amount WHEN entry_type = 'payment' THEN -amount WHEN entry_type = 'adjustment' THEN amount ELSE 0 END) AS outstanding
-                    FROM crm_receivable_entries GROUP BY party_id HAVING outstanding > 0";
-            $stmt = $pdo->query($sql);
             $byParty = [];
-            while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-                $byParty[(int)$row['party_id']] = (float)$row['outstanding'];
+            if (\App\Support\TableSchema::hasTable('crm_receivable_entries')) {
+                $sql = "SELECT party_id, SUM(CASE WHEN entry_type = 'invoice' THEN amount WHEN entry_type = 'payment' THEN -amount WHEN entry_type = 'adjustment' THEN amount ELSE 0 END) AS outstanding
+                        FROM crm_receivable_entries GROUP BY party_id HAVING outstanding > 0";
+                $stmt = $pdo->query($sql);
+                while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                    $byParty[(int)$row['party_id']] = (float)$row['outstanding'];
+                }
             }
             $parties = $this->partyRepo->findAll();
             $list = [];

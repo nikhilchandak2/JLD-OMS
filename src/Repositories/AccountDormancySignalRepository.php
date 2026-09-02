@@ -155,6 +155,9 @@ class AccountDormancySignalRepository
 
     public function latestForParty(int $partyId): ?array
     {
+        if (!TableSchema::hasTable('account_dormancy_signals')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT s.*, p.name AS party_name
              FROM account_dormancy_signals s

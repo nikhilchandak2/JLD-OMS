@@ -15,11 +15,17 @@ class ForecastLineRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_lines')) {
+            return null;
+        }
         return $this->database->fetch("SELECT * FROM forecast_lines WHERE id = ?", [$id]);
     }
 
     public function findOne(int $periodId, int $partyId, string $gradeCode): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_lines')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM forecast_lines WHERE period_id = ? AND party_id = ? AND grade_code = ?",
             [$periodId, $partyId, $gradeCode]
@@ -51,6 +57,9 @@ class ForecastLineRepository
 
     public function countForParty(int $periodId, int $partyId): int
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_lines')) {
+            return 0;
+        }
         $row = $this->database->fetch(
             "SELECT COUNT(*) AS c FROM forecast_lines WHERE period_id = ? AND party_id = ?",
             [$periodId, $partyId]
@@ -104,6 +113,9 @@ class ForecastLineRepository
     /** @return array<int,int> party ids with a positive forecast in the period */
     public function partyIdsWithPositiveForecast(int $periodId): array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_lines')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT DISTINCT party_id
              FROM forecast_lines

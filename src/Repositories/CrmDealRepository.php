@@ -22,6 +22,9 @@ class CrmDealRepository
 
     public function findById(int $id): ?array
     {
+        if (!TableSchema::hasTable('crm_deals')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM crm_deals WHERE id = ? AND " . $this->notDeletedPredicate(),
             [$id]
@@ -43,7 +46,7 @@ class CrmDealRepository
                 : 'LEFT JOIN users u ON 1=0');
         $reasonJoin = TableSchema::hasTable('crm_deal_reason_codes') && TableSchema::hasColumn('crm_deals', 'lost_reason_code_id')
             ? 'LEFT JOIN crm_deal_reason_codes r ON r.id = d.lost_reason_code_id'
-            : 'LEFT JOIN crm_deal_reason_codes r ON 1=0';
+            : 'LEFT JOIN (SELECT NULL AS id, NULL AS label) r ON 1=0';
         $flagJoin = TableSchema::hasTable('crm_technical_flags')
             ? "LEFT JOIN (
                     SELECT deal_id, COUNT(*) AS open_flags, MIN(created_at) AS oldest_open_flag_at

@@ -106,21 +106,26 @@ class VisitTest extends DatabaseTestCase
     {
         $rep = $this->actor('sales');
         $partyId = $this->createParty();
+        $tz = new \DateTimeZone('Asia/Kolkata');
+        $firstVisit = (new \DateTimeImmutable('-40 days', $tz))->format('Y-m-d');
+        $firstTouch = (new \DateTimeImmutable('-20 days', $tz))->format('Y-m-d');
+        $laterVisit = (new \DateTimeImmutable('-10 days', $tz))->format('Y-m-d');
+        $laterTouch = (new \DateTimeImmutable('+30 days', $tz))->format('Y-m-d');
         $this->visits->log([
             'party_id' => $partyId,
-            'visit_date' => '2026-07-01',
+            'visit_date' => $firstVisit,
             'outcome' => 'Will order next week',
-            'next_planned_touchpoint' => '2026-07-15',
+            'next_planned_touchpoint' => $firstTouch,
         ], $rep);
 
         $overdue = $this->visits->overdue($rep);
         self::assertCount(1, $overdue);
-        self::assertSame('2026-07-15', $overdue[0]['next_planned_touchpoint']);
+        self::assertSame($firstTouch, $overdue[0]['next_planned_touchpoint']);
 
         $this->visits->log([
             'party_id' => $partyId,
-            'visit_date' => '2026-07-20',
-            'next_planned_touchpoint' => '2026-09-01',
+            'visit_date' => $laterVisit,
+            'next_planned_touchpoint' => $laterTouch,
         ], $rep);
         self::assertSame([], $this->visits->overdue($rep), 'A later visit closes the overdue follow-up.');
     }

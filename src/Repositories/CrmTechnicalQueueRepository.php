@@ -31,6 +31,9 @@ class CrmTechnicalQueueRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_technical_queues')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT id, company_id, name, is_active FROM crm_technical_queues WHERE id = ?",
             [$id]
@@ -39,6 +42,9 @@ class CrmTechnicalQueueRepository
 
     public function findDefault(): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_technical_queues')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT id, company_id, name FROM crm_technical_queues
              WHERE is_active = 1

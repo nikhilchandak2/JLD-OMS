@@ -203,15 +203,17 @@ class AccountContextService
             ? 'c.id, c.party_id, c.name, c.role, c.influence_level, p.name AS party_name'
             : "c.id, c.party_id, c.name, c.role, 'unknown' AS influence_level, p.name AS party_name";
 
-        $contacts = $this->database->fetchAll(
-            "SELECT {$contactSelect}
+        $contacts = TableSchema::hasTable('crm_contacts')
+            ? $this->database->fetchAll(
+                "SELECT {$contactSelect}
              FROM crm_contacts c
              JOIN parties p ON p.id = c.party_id
              WHERE {$contactMatch}
              ORDER BY c.name
              LIMIT 25",
-            $contactParams
-        );
+                $contactParams
+            )
+            : [];
 
         $issueMatch = TableSchema::hasIndex('crm_account_issues', 'ft_issue_description')
             ? "MATCH(i.description) AGAINST(? IN BOOLEAN MODE) OR i.description LIKE ? ESCAPE '\\\\'"

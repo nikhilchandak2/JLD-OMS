@@ -49,7 +49,7 @@ class CrmDealStageEventRepository
         }
         $reasonJoin = \App\Support\TableSchema::hasTable('crm_deal_reason_codes')
             ? 'LEFT JOIN crm_deal_reason_codes r ON r.id = e.reason_code_id'
-            : 'LEFT JOIN crm_deal_reason_codes r ON 1=0';
+            : 'LEFT JOIN (SELECT NULL AS id, NULL AS label) r ON 1=0';
         return $this->database->fetchAll(
             "SELECT e.*, u.name AS actor_name, r.label AS reason_label
              FROM crm_deal_stage_events e
@@ -63,6 +63,9 @@ class CrmDealStageEventRepository
 
     public function countByDeal(int $dealId): int
     {
+        if (!\App\Support\TableSchema::hasTable('crm_deal_stage_events')) {
+            return 0;
+        }
         $row = $this->database->fetch(
             "SELECT COUNT(*) AS c FROM crm_deal_stage_events WHERE deal_id = ?",
             [$dealId]

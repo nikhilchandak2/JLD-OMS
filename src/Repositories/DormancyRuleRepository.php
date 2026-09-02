@@ -16,6 +16,9 @@ class DormancyRuleRepository
     /** @return array<int,array<string,mixed>> */
     public function findActive(): array
     {
+        if (!\App\Support\TableSchema::hasTable('dormancy_rules')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT * FROM dormancy_rules WHERE is_active = 1 ORDER BY id ASC"
         );

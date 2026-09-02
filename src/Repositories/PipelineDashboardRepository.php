@@ -23,6 +23,12 @@ class PipelineDashboardRepository
         array $grades,
         array $facts
     ): void {
+        if (!TableSchema::hasTable('pipeline_deal_snapshot')
+            || !TableSchema::hasTable('pipeline_deal_snapshot_grades')
+            || !TableSchema::hasTable('pipeline_time_in_stage_facts')
+        ) {
+            return;
+        }
         $this->database->execute('DELETE FROM pipeline_time_in_stage_facts');
         $this->database->execute('DELETE FROM pipeline_deal_snapshot_grades');
         $this->database->execute('DELETE FROM pipeline_deal_snapshot');
@@ -214,6 +220,9 @@ class PipelineDashboardRepository
     /** @return array<int,array<string,mixed>> */
     public function explainByStage(array $filters): array
     {
+        if (!TableSchema::hasTable('pipeline_deal_snapshot')) {
+            return [];
+        }
         [$sql, $params] = $this->byStageSql($filters);
 
         return $this->database->fetchAll('EXPLAIN ' . $sql, $params);
@@ -274,6 +283,9 @@ class PipelineDashboardRepository
     /** @return array<int,array<string,mixed>> */
     public function explainTimeInStage(array $filters): array
     {
+        if (!TableSchema::hasTable('pipeline_time_in_stage_facts')) {
+            return [];
+        }
         [$sql, $params] = $this->timeInStageSql($filters);
 
         return $this->database->fetchAll('EXPLAIN ' . $sql, $params);
@@ -281,6 +293,9 @@ class PipelineDashboardRepository
 
     public function lifetimeSeconds(int $dealId, int $stage, string $asOf): ?int
     {
+        if (!TableSchema::hasTable('pipeline_time_in_stage_facts')) {
+            return null;
+        }
         $row = $this->database->fetch(
             "SELECT lifetime_seconds FROM pipeline_time_in_stage_facts
              WHERE as_of = ? AND deal_id = ? AND stage = ?",

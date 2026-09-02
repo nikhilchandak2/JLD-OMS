@@ -45,6 +45,9 @@ class CrmSampleRepository
 
     public function findById(int $id): ?CrmSample
     {
+        if (!\App\Support\TableSchema::hasTable('crm_samples')) {
+            return null;
+        }
         $sql = "SELECT * FROM crm_samples WHERE id = ?";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$id]);

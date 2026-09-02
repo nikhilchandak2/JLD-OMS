@@ -37,6 +37,9 @@ class CrmTechnicalFlagRepository
 
     public function findById(int $id): ?array
     {
+        if (!TableSchema::hasTable('crm_technical_flags')) {
+            return null;
+        }
         return $this->database->fetch("SELECT * FROM crm_technical_flags WHERE id = ?", [$id]);
     }
 
@@ -54,6 +57,10 @@ class CrmTechnicalFlagRepository
                         AND f.expected_turnaround_at IS NOT NULL
                         AND f.expected_turnaround_at < NOW()) AS is_overdue"
             : '0 AS is_overdue';
+        $queueJoin = TableSchema::hasTable('crm_technical_queues')
+            ? 'JOIN crm_technical_queues q ON q.id = f.routed_to_queue_id'
+            : 'LEFT JOIN (SELECT NULL AS id, NULL AS name) q ON 1=0';
+        $dealJoin = TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = f.deal_id', ['id', 'title']);
         $sql = "SELECT f.*,
                        q.name AS queue_name,
                        p.name AS party_name,
@@ -62,9 +69,9 @@ class CrmTechnicalFlagRepository
                        cu.name AS claimed_by_name,
                        {$overdue}
                 FROM crm_technical_flags f
-                JOIN crm_technical_queues q ON q.id = f.routed_to_queue_id
+                {$queueJoin}
                 JOIN parties p ON p.id = f.party_id
-                LEFT JOIN crm_deals d ON d.id = f.deal_id
+                {$dealJoin}
                 LEFT JOIN users ru ON ru.id = f.raised_by_user_id
                 LEFT JOIN users cu ON cu.id = f.claimed_by_user_id
                 WHERE 1 = 1";

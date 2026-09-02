@@ -18,6 +18,7 @@ class CreditOverrideRequestRepository
         if (!\App\Support\TableSchema::hasTable('credit_override_requests')) {
             return null;
         }
+        $dealJoin = \App\Support\TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = r.deal_id', ['id', 'title', 'stage']);
         return $this->database->fetch(
             "SELECT r.*,
                     p.name AS party_name,
@@ -33,7 +34,7 @@ class CreditOverrideRequestRepository
              LEFT JOIN users req ON req.id = r.requested_by_user_id
              LEFT JOIN users decider ON decider.id = r.decided_by_user_id
              LEFT JOIN orders o ON o.id = r.order_id
-             LEFT JOIN crm_deals d ON d.id = r.deal_id
+             {$dealJoin}
              WHERE r.id = ?",
             [$id]
         );
@@ -104,6 +105,9 @@ class CreditOverrideRequestRepository
 
     public function findOpenForDeal(int $dealId): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('credit_override_requests')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM credit_override_requests
              WHERE deal_id = ? AND status IN ('pending', 'call_requested')
@@ -114,6 +118,9 @@ class CreditOverrideRequestRepository
 
     public function findOpenForOrder(int $orderId): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('credit_override_requests')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM credit_override_requests
              WHERE order_id = ? AND status IN ('pending', 'call_requested')
@@ -124,6 +131,9 @@ class CreditOverrideRequestRepository
 
     public function findApprovedForDeal(int $dealId): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('credit_override_requests')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM credit_override_requests
              WHERE deal_id = ? AND status IN ('approved', 'approved_with_modified_limit')
@@ -137,6 +147,7 @@ class CreditOverrideRequestRepository
         if (!\App\Support\TableSchema::hasTable('credit_override_requests')) {
             return [];
         }
+        $dealJoin = \App\Support\TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = r.deal_id', ['id', 'title', 'stage']);
         $sql = "SELECT r.*,
                        p.name AS party_name,
                        c.name AS company_name,
@@ -148,7 +159,7 @@ class CreditOverrideRequestRepository
                 JOIN companies c ON c.id = r.company_id
                 LEFT JOIN users req ON req.id = r.requested_by_user_id
                 LEFT JOIN orders o ON o.id = r.order_id
-                LEFT JOIN crm_deals d ON d.id = r.deal_id
+                {$dealJoin}
                 WHERE 1=1";
         $params = [];
 

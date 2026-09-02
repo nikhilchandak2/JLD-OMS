@@ -15,6 +15,9 @@ class ForecastPeriodRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('forecast_periods')) {
+            return null;
+        }
         return $this->database->fetch("SELECT * FROM forecast_periods WHERE id = ?", [$id]);
     }
 

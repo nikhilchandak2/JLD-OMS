@@ -38,6 +38,9 @@ class CrmContactRepository
 
     public function findById(int $id): ?CrmContact
     {
+        if (!\App\Support\TableSchema::hasTable('crm_contacts')) {
+            return null;
+        }
         $introducedJoin = \App\Support\TableSchema::hasColumn('crm_contacts', 'introduced_by_user_id')
             ? 'LEFT JOIN users u ON u.id = c.introduced_by_user_id'
             : 'LEFT JOIN users u ON 1=0';

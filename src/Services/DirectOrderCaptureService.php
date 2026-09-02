@@ -92,19 +92,22 @@ class DirectOrderCaptureService
             $where[] = 'd.deleted_at IS NULL';
         }
 
-        $gradeJoin = TableSchema::hasTable('crm_deal_grades')
-            ? 'LEFT JOIN crm_deal_grades g ON g.deal_id = d.id'
-            : 'LEFT JOIN (SELECT NULL AS deal_id, NULL AS grade_code) g ON 1=0';
-        $openDeals = $this->database->fetchAll(
-            "SELECT d.id, d.title, d.stage, {$statusSelect}, d.value,
-                    GROUP_CONCAT(g.grade_code ORDER BY g.grade_code SEPARATOR ', ') AS grades
-             FROM crm_deals d
-             {$gradeJoin}
-             WHERE " . implode(' AND ', $where) . "
-             GROUP BY d.id
-             ORDER BY d.stage DESC, d.id DESC",
-            [$partyId]
-        );
+        $openDeals = [];
+        if (TableSchema::hasTable('crm_deals')) {
+            $gradeJoin = TableSchema::hasTable('crm_deal_grades')
+                ? 'LEFT JOIN crm_deal_grades g ON g.deal_id = d.id'
+                : 'LEFT JOIN (SELECT NULL AS deal_id, NULL AS grade_code) g ON 1=0';
+            $openDeals = $this->database->fetchAll(
+                "SELECT d.id, d.title, d.stage, {$statusSelect}, d.value,
+                        GROUP_CONCAT(g.grade_code ORDER BY g.grade_code SEPARATOR ', ') AS grades
+                 FROM crm_deals d
+                 {$gradeJoin}
+                 WHERE " . implode(' AND ', $where) . "
+                 GROUP BY d.id
+                 ORDER BY d.stage DESC, d.id DESC",
+                [$partyId]
+            );
+        }
 
         return [
             'party_id' => $partyId,

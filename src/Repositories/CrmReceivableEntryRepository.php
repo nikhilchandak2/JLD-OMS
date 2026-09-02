@@ -47,6 +47,9 @@ class CrmReceivableEntryRepository
 
     public function findById(int $id): ?CrmReceivableEntry
     {
+        if (!\App\Support\TableSchema::hasTable('crm_receivable_entries')) {
+            return null;
+        }
         $sql = "SELECT * FROM crm_receivable_entries WHERE id = ?";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute([$id]);
@@ -76,6 +79,9 @@ class CrmReceivableEntryRepository
     {
         $reference = trim($reference);
         if ($partyId <= 0 || $reference === '') return null;
+        if (!\App\Support\TableSchema::hasTable('crm_receivable_entries')) {
+            return null;
+        }
 
         $sql = "SELECT * FROM crm_receivable_entries
                 WHERE party_id = ? AND entry_type = 'invoice' AND reference = ?

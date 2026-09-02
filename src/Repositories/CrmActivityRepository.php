@@ -63,6 +63,9 @@ class CrmActivityRepository
 
     public function findById(int $id): ?CrmActivity
     {
+        if (!\App\Support\TableSchema::hasTable('crm_activities')) {
+            return null;
+        }
         $sql = "SELECT a.*, u.name AS created_by_name, p.name AS party_name FROM crm_activities a
                 LEFT JOIN users u ON a.created_by = u.id
                 LEFT JOIN parties p ON a.party_id = p.id

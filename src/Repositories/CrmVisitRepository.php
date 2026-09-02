@@ -49,6 +49,9 @@ class CrmVisitRepository
 
     public function findById(int $id): ?array
     {
+        if (!TableSchema::hasTable('crm_visits')) {
+            return null;
+        }
         $row = $this->database->fetch(
             "SELECT v.*, p.name AS party_name, u.name AS visited_by_name
              FROM crm_visits v
@@ -154,6 +157,13 @@ class CrmVisitRepository
             return [];
         }
         $ids = array_map(fn(array $r) => (int)$r['id'], $rows);
+        if (!TableSchema::hasTable('crm_visit_contacts') || !TableSchema::hasTable('crm_contacts')) {
+            foreach ($rows as &$row) {
+                $row['contacts'] = [];
+            }
+
+            return $rows;
+        }
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $links = $this->database->fetchAll(
             "SELECT vc.visit_id, c.id, c.name, c.role, c.phone
@@ -182,6 +192,9 @@ class CrmVisitRepository
     /** @return array<int,array<string,mixed>> */
     private function contactsForVisit(int $visitId): array
     {
+        if (!TableSchema::hasTable('crm_visit_contacts') || !TableSchema::hasTable('crm_contacts')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT c.id, c.name, c.role, c.phone
              FROM crm_visit_contacts vc

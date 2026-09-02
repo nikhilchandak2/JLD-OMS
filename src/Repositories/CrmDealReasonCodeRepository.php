@@ -31,6 +31,9 @@ class CrmDealReasonCodeRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('crm_deal_reason_codes')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT id, code, label, applies_to, is_active FROM crm_deal_reason_codes WHERE id = ?",
             [$id]
