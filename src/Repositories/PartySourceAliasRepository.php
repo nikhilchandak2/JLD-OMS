@@ -15,6 +15,9 @@ class PartySourceAliasRepository
 
     public function find(string $sourceSystem, string $identifier): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('party_source_aliases')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM party_source_aliases WHERE source_system = ? AND source_identifier = ?",
             [$sourceSystem, $identifier]
@@ -23,6 +26,9 @@ class PartySourceAliasRepository
 
     public function mapForSystem(string $sourceSystem): array
     {
+        if (!\App\Support\TableSchema::hasTable('party_source_aliases')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT source_identifier, party_id FROM party_source_aliases WHERE source_system = ?",
             [$sourceSystem]
@@ -54,6 +60,9 @@ class PartySourceAliasRepository
 
     public function listAll(): array
     {
+        if (!\App\Support\TableSchema::hasTable('party_source_aliases')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT a.*, p.name AS party_name
              FROM party_source_aliases a

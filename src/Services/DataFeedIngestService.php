@@ -443,6 +443,9 @@ class DataFeedIngestService
 
     public function afterAliasResolved(array $actor): void
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_rows')) {
+            return;
+        }
         $open = $this->database->fetchAll(
             "SELECT DISTINCT run_id FROM data_feed_rows
              WHERE status = 'rejected' AND rejection_reason = 'unknown_party'"

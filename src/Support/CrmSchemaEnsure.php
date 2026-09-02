@@ -777,6 +777,94 @@ class CrmSchemaEnsure
                 price_band VARCHAR(20) NOT NULL,
                 INDEX idx_tds_lines_upload (upload_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            "CREATE TABLE IF NOT EXISTS data_feeds (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                feed_key VARCHAR(32) NOT NULL,
+                display_name VARCHAR(255) NOT NULL,
+                owner_user_id INT NULL,
+                deadline_local_time TIME NOT NULL DEFAULT '09:00:00',
+                company_id INT NOT NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_feed_company (feed_key, company_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            "CREATE TABLE IF NOT EXISTS data_feed_runs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                feed_key VARCHAR(32) NOT NULL,
+                company_id INT NOT NULL,
+                business_date DATE NOT NULL,
+                uploaded_by_user_id INT NULL,
+                uploaded_at DATETIME NOT NULL,
+                original_filename VARCHAR(255) NOT NULL,
+                file_hash CHAR(64) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'uploaded',
+                rows_total INT NOT NULL DEFAULT 0,
+                rows_accepted INT NOT NULL DEFAULT 0,
+                rows_rejected INT NOT NULL DEFAULT 0,
+                as_of DATETIME NULL,
+                error_summary TEXT NULL,
+                replaces_run_id INT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_feed_run_hash (feed_key, company_id, business_date, file_hash),
+                INDEX idx_feed_company_date (feed_key, company_id, business_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            "CREATE TABLE IF NOT EXISTS data_feed_rows (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                run_id INT NOT NULL,
+                row_number INT NOT NULL,
+                raw TEXT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                rejection_reason VARCHAR(255) NULL,
+                resolved_party_id INT NULL,
+                INDEX idx_run_status (run_id, status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            "CREATE TABLE IF NOT EXISTS party_source_aliases (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                source_system VARCHAR(20) NOT NULL,
+                source_identifier VARCHAR(255) NOT NULL,
+                party_id INT NOT NULL,
+                confidence VARCHAR(20) NOT NULL DEFAULT 'manual',
+                created_by_user_id INT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_source_identifier (source_system, source_identifier)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            "CREATE TABLE IF NOT EXISTS ledger_outstanding (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                run_id INT NOT NULL,
+                company_id INT NOT NULL,
+                party_id INT NOT NULL,
+                business_date DATE NOT NULL,
+                outstanding_amount DECIMAL(14,2) NOT NULL,
+                invoice_no VARCHAR(255) NULL,
+                invoice_date DATE NULL,
+                as_of DATETIME NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ledger_company_date (company_id, business_date),
+                INDEX idx_ledger_party (party_id, business_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            "CREATE TABLE IF NOT EXISTS dispatch_day_entries (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                run_id INT NOT NULL,
+                company_id INT NOT NULL,
+                party_id INT NOT NULL,
+                business_date DATE NOT NULL,
+                grade_code VARCHAR(64) NOT NULL,
+                quantity_tonnes DECIMAL(12,3) NOT NULL,
+                vehicle_no VARCHAR(64) NULL,
+                destination VARCHAR(255) NULL,
+                invoice_no VARCHAR(255) NULL,
+                as_of DATETIME NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_dispatch_company_date (company_id, business_date),
+                INDEX idx_dispatch_party (party_id, business_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            "CREATE TABLE IF NOT EXISTS data_feed_locks (
+                run_id INT PRIMARY KEY,
+                locked_by_user_id INT NULL,
+                locked_at DATETIME NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
         ];
     }
 
@@ -965,6 +1053,29 @@ class CrmSchemaEnsure
                 }
             } catch (Throwable $e) {
                 error_log('CrmSchemaEnsure seed escalation rules: ' . $e->getMessage());
+            }
+        }
+
+        if (TableSchema::hasTable('data_feeds') && TableSchema::hasTable('companies')) {
+            try {
+                $pdo->exec(
+                    "INSERT INTO data_feeds (feed_key, display_name, owner_user_id, deadline_local_time, company_id, is_active)
+                     SELECT 'ledger', CONCAT(c.name, ' — Ledger (Busy outstanding)'), NULL, '09:00:00', c.id, 1
+                     FROM companies c
+                     WHERE NOT EXISTS (
+                       SELECT 1 FROM data_feeds df WHERE df.feed_key = 'ledger' AND df.company_id = c.id
+                     )"
+                );
+                $pdo->exec(
+                    "INSERT INTO data_feeds (feed_key, display_name, owner_user_id, deadline_local_time, company_id, is_active)
+                     SELECT 'dispatch_day_file', CONCAT(c.name, ' — Dispatch day file'), NULL, '18:00:00', c.id, 1
+                     FROM companies c
+                     WHERE NOT EXISTS (
+                       SELECT 1 FROM data_feeds df WHERE df.feed_key = 'dispatch_day_file' AND df.company_id = c.id
+                     )"
+                );
+            } catch (Throwable $e) {
+                error_log('CrmSchemaEnsure seed data feeds: ' . $e->getMessage());
             }
         }
     }

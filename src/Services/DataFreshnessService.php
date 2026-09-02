@@ -131,6 +131,16 @@ class DataFreshnessService
         $now = $this->now($now);
 
         $feeds = $this->feeds->listActiveByKey($feedKey);
+        if ($feeds === []) {
+            return [
+                'feed_key' => $feedKey,
+                'as_of' => null,
+                'state' => self::STATE_MISSING,
+                'lagging_entity' => null,
+                'missing_entities' => [],
+                'entities' => [],
+            ];
+        }
         $entities = [];
         foreach ($feeds as $feed) {
             $entities[] = $this->asOf($feedKey, (int)$feed['company_id'], $now);

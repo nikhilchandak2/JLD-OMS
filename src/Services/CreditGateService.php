@@ -265,6 +265,9 @@ class CreditGateService
 
     private function sumLedgerForPartyCompany(int $partyId, int $companyId, string $businessDate): float
     {
+        if (!\App\Support\TableSchema::hasTable('ledger_outstanding')) {
+            return 0.0;
+        }
         $row = (new \App\Core\Database())->fetch(
             "SELECT COALESCE(SUM(outstanding_amount), 0) AS total
              FROM ledger_outstanding

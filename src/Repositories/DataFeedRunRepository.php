@@ -15,6 +15,9 @@ class DataFeedRunRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_runs')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT r.*, c.name AS company_name, c.code AS company_code, u.name AS uploaded_by_name
              FROM data_feed_runs r
@@ -27,6 +30,9 @@ class DataFeedRunRepository
 
     public function findByHash(string $feedKey, int $companyId, string $businessDate, string $fileHash): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_runs')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM data_feed_runs
              WHERE feed_key = ? AND company_id = ? AND business_date = ? AND file_hash = ?",
@@ -36,6 +42,9 @@ class DataFeedRunRepository
 
     public function findCompletedForDate(string $feedKey, int $companyId, string $businessDate): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_runs')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM data_feed_runs
              WHERE feed_key = ? AND company_id = ? AND business_date = ? AND status = 'completed'
@@ -46,6 +55,9 @@ class DataFeedRunRepository
 
     public function latestCompleted(string $feedKey, int $companyId): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_runs')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM data_feed_runs
              WHERE feed_key = ? AND company_id = ? AND status = 'completed'
@@ -113,6 +125,9 @@ class DataFeedRunRepository
 
     public function latestPerFeed(): array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_runs')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT r.*
              FROM data_feed_runs r

@@ -17,11 +17,17 @@ class DataFeedRepository
 
     public function findById(int $id): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feeds')) {
+            return null;
+        }
         return $this->database->fetch("SELECT * FROM data_feeds WHERE id = ?", [$id]);
     }
 
     public function findByKeyAndCompany(string $feedKey, int $companyId): ?array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feeds')) {
+            return null;
+        }
         return $this->database->fetch(
             "SELECT * FROM data_feeds WHERE feed_key = ? AND company_id = ?",
             [$feedKey, $companyId]
@@ -44,6 +50,9 @@ class DataFeedRepository
 
     public function listActiveByKey(string $feedKey): array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feeds')) {
+            return [];
+        }
         return $this->database->fetchAll(
             "SELECT f.*, c.name AS company_name, c.code AS company_code
              FROM data_feeds f
@@ -77,6 +86,9 @@ class DataFeedRepository
      */
     public function ensureForAllCompanies(): void
     {
+        if (!\App\Support\TableSchema::hasTable('data_feeds')) {
+            return;
+        }
         $companies = $this->database->fetchAll("SELECT id, name FROM companies");
         foreach ($companies as $company) {
             $this->ensureForCompany((int)$company['id'], (string)$company['name']);
@@ -85,6 +97,9 @@ class DataFeedRepository
 
     public function ensureForCompany(int $companyId, ?string $companyName = null): void
     {
+        if (!\App\Support\TableSchema::hasTable('data_feeds')) {
+            return;
+        }
         if ($companyName === null) {
             $row = $this->database->fetch("SELECT name FROM companies WHERE id = ?", [$companyId]);
             $companyName = $row['name'] ?? ('Company ' . $companyId);

@@ -41,6 +41,9 @@ class DataFeedRowRepository
 
     public function findByRun(int $runId): array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_rows')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT * FROM data_feed_rows WHERE run_id = ? ORDER BY row_number",
             [$runId]
@@ -54,6 +57,9 @@ class DataFeedRowRepository
 
     public function findRejected(int $runId): array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_rows')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT * FROM data_feed_rows WHERE run_id = ? AND status = 'rejected' ORDER BY row_number",
             [$runId]
@@ -67,6 +73,9 @@ class DataFeedRowRepository
 
     public function findValid(int $runId): array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_rows')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT * FROM data_feed_rows WHERE run_id = ? AND status = 'valid' ORDER BY row_number",
             [$runId]
@@ -106,6 +115,9 @@ class DataFeedRowRepository
 
     public function unmatchedPartyRows(): array
     {
+        if (!\App\Support\TableSchema::hasTable('data_feed_rows') || !\App\Support\TableSchema::hasTable('data_feed_runs')) {
+            return [];
+        }
         $rows = $this->database->fetchAll(
             "SELECT r.id, r.run_id, r.row_number, r.raw, r.rejection_reason,
                     run.feed_key, run.company_id, run.business_date, run.original_filename,
