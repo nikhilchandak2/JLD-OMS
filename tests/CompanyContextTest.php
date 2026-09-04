@@ -52,6 +52,37 @@ class CompanyContextTest extends DatabaseTestCase
         $this->assertSame($chosen, CompanyContext::getActiveCompanyId());
     }
 
+    public function testAnInactiveExistingSelectionIsCleared(): void
+    {
+        $inactive = $this->createCompany();
+        $active = $this->createCompany();
+        $this->createOrderFor($active, date('Y-m-d', strtotime('+1 day')));
+        CompanyContext::setActiveCompanyId($inactive);
+        $this->database->execute("UPDATE companies SET status = 'inactive' WHERE id = ?", [$inactive]);
+
+        CompanyContext::initializeForUser();
+
+        $this->assertSame($active, CompanyContext::getActiveCompanyId());
+    }
+
+    public function testDemoSeedCompaniesAreDeactivated(): void
+    {
+        $suffix = $this->uniqueSuffix();
+        $this->database->execute(
+            "INSERT INTO companies (name, code, status) VALUES ('JLD Logistics Ltd', ?, 'active')",
+            ['FAKE' . $suffix]
+        );
+        $id = (int)$this->database->lastInsertId();
+        \App\Support\CrmSchemaEnsure::deactivateDemoCompanies($this->database->getConnection());
+
+        $row = $this->database->fetch("SELECT status FROM companies WHERE id = ?", [$id]);
+        $this->assertSame('inactive', $row['status']);
+        $active = (new CompanyRepository())->findActive();
+        foreach ($active as $company) {
+            $this->assertNotSame('JLD Logistics Ltd', $company->name);
+        }
+    }
+
     public function testInactiveCompaniesAreNotChosen(): void
     {
         $inactive = $this->createCompany();

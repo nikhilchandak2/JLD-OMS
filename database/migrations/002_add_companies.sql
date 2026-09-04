@@ -19,21 +19,18 @@ CREATE TABLE IF NOT EXISTS companies (
     INDEX idx_companies_code (code)
 );
 
--- Insert sample JLD Minerals companies first
-INSERT INTO companies (name, code, address, phone, email, contact_person, gst_number, pan_number, status) VALUES
-('JLD Minerals Pvt Ltd', 'JLD001', 'Main Office, Industrial Area, City', '+91-9876543210', 'info@jldminerals.com', 'John Doe', '27ABCDE1234F1Z5', 'ABCDE1234F', 'active'),
-('JLD Mining Operations', 'JLD002', 'Mining Site 1, District ABC', '+91-9876543211', 'mining@jldminerals.com', 'Jane Smith', '27ABCDE1234F2Z6', 'ABCDE1234G', 'active'),
-('JLD Logistics Ltd', 'JLD003', 'Transport Hub, Highway Road', '+91-9876543212', 'logistics@jldminerals.com', 'Mike Johnson', '27ABCDE1234F3Z7', 'ABCDE1234H', 'active'),
-('JLD Processing Unit', 'JLD004', 'Processing Plant, Industrial Zone', '+91-9876543213', 'processing@jldminerals.com', 'Sarah Wilson', '27ABCDE1234F4Z8', 'ABCDE1234I', 'active'),
-('JLD Exports International', 'JLD005', 'Export Terminal, Port Area', '+91-9876543214', 'exports@jldminerals.com', 'David Brown', '27ABCDE1234F5Z9', 'ABCDE1234J', 'active');
+-- Live trading companies are inserted in later migrations (033, 044, 045).
+-- Do not seed demo/fake JLD* legal entities here.
 
 -- Add company_id to orders table (nullable first)
 ALTER TABLE orders ADD COLUMN company_id INT NULL AFTER id;
 
--- Update existing orders to have company_id = 1 (JLD Minerals Pvt Ltd)
-UPDATE orders SET company_id = 1 WHERE company_id IS NULL;
+-- Point any pre-company orders at the first company row if one already exists
+UPDATE orders
+SET company_id = (SELECT id FROM companies ORDER BY id ASC LIMIT 1)
+WHERE company_id IS NULL
+  AND EXISTS (SELECT 1 FROM companies);
 
--- Now make company_id NOT NULL and add foreign key
-ALTER TABLE orders 
+ALTER TABLE orders
 MODIFY COLUMN company_id INT NOT NULL,
 ADD CONSTRAINT fk_orders_company FOREIGN KEY (company_id) REFERENCES companies(id);

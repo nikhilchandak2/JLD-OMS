@@ -44,6 +44,7 @@ class DataFeedRepository
              FROM data_feeds f
              JOIN companies c ON c.id = f.company_id
              LEFT JOIN users u ON u.id = f.owner_user_id
+             WHERE " . (\App\Support\TableSchema::hasColumn('companies', 'status') ? "c.status = 'active'" : '1=1') . "
              ORDER BY f.feed_key, c.name"
         );
     }
@@ -53,11 +54,14 @@ class DataFeedRepository
         if (!\App\Support\TableSchema::hasTable('data_feeds')) {
             return [];
         }
+        $companyActive = \App\Support\TableSchema::hasColumn('companies', 'status')
+            ? "AND c.status = 'active'"
+            : '';
         return $this->database->fetchAll(
             "SELECT f.*, c.name AS company_name, c.code AS company_code
              FROM data_feeds f
              JOIN companies c ON c.id = f.company_id
-             WHERE f.feed_key = ? AND f.is_active = 1
+             WHERE f.feed_key = ? AND f.is_active = 1 {$companyActive}
              ORDER BY c.name",
             [$feedKey]
         );
@@ -89,7 +93,11 @@ class DataFeedRepository
         if (!\App\Support\TableSchema::hasTable('data_feeds')) {
             return;
         }
-        $companies = $this->database->fetchAll("SELECT id, name FROM companies");
+        $sql = "SELECT id, name FROM companies";
+        if (\App\Support\TableSchema::hasColumn('companies', 'status')) {
+            $sql .= " WHERE status = 'active'";
+        }
+        $companies = $this->database->fetchAll($sql);
         foreach ($companies as $company) {
             $this->ensureForCompany((int)$company['id'], (string)$company['name']);
         }

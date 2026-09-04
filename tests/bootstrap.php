@@ -57,7 +57,8 @@ $applySqlFile = static function (PDO $pdo, string $path): void {
                 stripos($msg, '1072') !== false ||
                 stripos($msg, 'Key column') !== false ||
                 stripos($msg, 'RENAME COLUMN') !== false ||
-                stripos($msg, 'prepared statement') !== false;
+                stripos($msg, 'prepared statement') !== false ||
+                stripos($msg, "doesn't exist") !== false;
             if (!$ignorable) {
                 fwrite(STDERR, "Migration {$path} failed: {$msg}\n");
                 throw $e;
@@ -106,4 +107,12 @@ foreach ($incremental as $marker => $file) {
     if ($missing) {
         $applySqlFile($pdo, $migrationsDir . '/' . $file);
     }
+}
+
+$flagsTable = $pdo->query("SHOW TABLES LIKE 'migration_flags'")->fetch() !== false;
+$demoFlag = $flagsTable
+    ? $pdo->query("SELECT 1 FROM migration_flags WHERE name = '056_deactivate_demo_companies' LIMIT 1")->fetch()
+    : false;
+if ($demoFlag === false) {
+    $applySqlFile($pdo, $migrationsDir . '/056_deactivate_demo_companies.sql');
 }

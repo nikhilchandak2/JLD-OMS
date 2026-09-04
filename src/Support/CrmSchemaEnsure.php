@@ -39,6 +39,7 @@ class CrmSchemaEnsure
             foreach (self::indexes() as [$table, $name, $ddl]) {
                 self::addIndex($db, $pdo, $table, $name, $ddl);
             }
+            self::deactivateDemoCompanies($pdo);
             TableSchema::forget();
             OrderSchema::forget();
             DispatchSchema::forget();
@@ -1058,13 +1059,16 @@ class CrmSchemaEnsure
 
         if (TableSchema::hasTable('data_feeds') && TableSchema::hasTable('companies')) {
             try {
+                $activeOnly = TableSchema::hasColumn('companies', 'status')
+                    ? " AND c.status = 'active'"
+                    : '';
                 $pdo->exec(
                     "INSERT INTO data_feeds (feed_key, display_name, owner_user_id, deadline_local_time, company_id, is_active)
                      SELECT 'ledger', CONCAT(c.name, ' — Ledger (Busy outstanding)'), NULL, '09:00:00', c.id, 1
                      FROM companies c
                      WHERE NOT EXISTS (
                        SELECT 1 FROM data_feeds df WHERE df.feed_key = 'ledger' AND df.company_id = c.id
-                     )"
+                     ){$activeOnly}"
                 );
                 $pdo->exec(
                     "INSERT INTO data_feeds (feed_key, display_name, owner_user_id, deadline_local_time, company_id, is_active)
@@ -1072,11 +1076,51 @@ class CrmSchemaEnsure
                      FROM companies c
                      WHERE NOT EXISTS (
                        SELECT 1 FROM data_feeds df WHERE df.feed_key = 'dispatch_day_file' AND df.company_id = c.id
-                     )"
+                     ){$activeOnly}"
                 );
             } catch (Throwable $e) {
                 error_log('CrmSchemaEnsure seed data feeds: ' . $e->getMessage());
             }
+        }
+    }
+
+    /**
+     * Seed/demo legal entities from migration 002. Soft-inactive so historical
+     * orders keep their company_id; the header switcher only lists active rows.
+     *
+     * @return list<string>
+     */
+    public static function demoCompanyNames(): array
+    {
+        return [
+            'JLD Exports International',
+            'JLD Logistics Ltd',
+            'JLD Minerals Pvt Ltd',
+            'JLD Mining Operations',
+            'JLD Processing Unit',
+        ];
+    }
+
+    public static function deactivateDemoCompanies(\PDO $pdo): void
+    {
+        if (!TableSchema::hasTable('companies') || !TableSchema::hasColumn('companies', 'status')) {
+            return;
+        }
+        $names = self::demoCompanyNames();
+        $placeholders = implode(',', array_fill(0, count($names), '?'));
+        try {
+            $stmt = $pdo->prepare("UPDATE companies SET status = 'inactive' WHERE name IN ({$placeholders})");
+            $stmt->execute($names);
+            if (TableSchema::hasTable('data_feeds')) {
+                $stmt = $pdo->prepare(
+                    "UPDATE data_feeds SET is_active = 0
+                     WHERE company_id IN (SELECT id FROM companies WHERE name IN ({$placeholders}))"
+                );
+                $stmt->execute($names);
+            }
+            TableSchema::forget();
+        } catch (Throwable $e) {
+            error_log('CrmSchemaEnsure deactivate demo companies: ' . $e->getMessage());
         }
     }
 

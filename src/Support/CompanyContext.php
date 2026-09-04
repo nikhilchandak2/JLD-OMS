@@ -70,9 +70,16 @@ class CompanyContext
     /** Land on the active company that is actually trading, not the alphabetically first one. */
     public static function initializeForUser(): void
     {
-        if (self::getActiveCompanyId() !== null) {
-            self::getActiveCompany();
-            return;
+        $id = self::getActiveCompanyId();
+        if ($id !== null) {
+            $repo = new CompanyRepository();
+            $company = $repo->findById($id);
+            if ($company && ($company->status ?? '') === 'active') {
+                $_SESSION['active_company_name'] = $company->name;
+                $_SESSION['active_company_code'] = $company->code;
+                return;
+            }
+            self::clear();
         }
 
         $repo = new CompanyRepository();
