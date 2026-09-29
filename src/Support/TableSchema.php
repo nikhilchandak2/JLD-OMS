@@ -113,6 +113,54 @@ class TableSchema
     }
 
     /**
+     * LEFT JOIN that does not name a missing FK column (MySQL 42S22).
+     */
+    public static function leftJoinIfColumn(
+        string $table,
+        string $column,
+        string $joinTable,
+        string $joinAlias,
+        string $on
+    ): string {
+        if (self::hasColumn($table, $column)) {
+            return "LEFT JOIN {$joinTable} {$joinAlias} ON {$on}";
+        }
+
+        return "LEFT JOIN {$joinTable} {$joinAlias} ON 1=0";
+    }
+
+    /**
+     * INSERT listing only columns that exist on a lagging table.
+     *
+     * @param array<string,mixed> $values
+     * @return array{0:string,1:list<mixed>}|null
+     */
+    public static function insertSql(string $table, array $values): ?array
+    {
+        if (!self::hasTable($table)) {
+            return null;
+        }
+        $columns = [];
+        $params = [];
+        foreach ($values as $column => $value) {
+            if (!self::hasColumn($table, $column)) {
+                continue;
+            }
+            $columns[] = '`' . $column . '`';
+            $params[] = $value;
+        }
+        if ($columns === []) {
+            return null;
+        }
+
+        return [
+            'INSERT INTO `' . $table . '` (' . implode(', ', $columns) . ') VALUES ('
+                . implode(', ', array_fill(0, count($columns), '?')) . ')',
+            $params,
+        ];
+    }
+
+    /**
      * First existing column from $candidates, optionally aliased for SELECT lists.
      */
     public static function columnExpr(string $table, array $candidates, string $alias = '', string $as = ''): string

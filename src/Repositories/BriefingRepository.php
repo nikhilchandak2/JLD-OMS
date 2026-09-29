@@ -38,11 +38,15 @@ class BriefingRepository
             return [];
         }
 
+        $order = TableSchema::hasColumn('crm_contacts', 'is_primary')
+            ? 'c.is_primary DESC, c.name ASC'
+            : 'c.name ASC';
+
         return $this->database->fetchAll(
             "SELECT c.*
              FROM crm_contacts c
              WHERE c.party_id = ?
-             ORDER BY c.is_primary DESC, c.name ASC",
+             ORDER BY {$order}",
             [$partyId]
         );
     }
@@ -55,10 +59,15 @@ class BriefingRepository
         }
 
         return $this->database->fetchAll(
-            "SELECT competitor_name, grade_code, estimated_share_pct, reason_code,
-                    reason_note, intelligence_type
+            "SELECT competitor_name, "
+            . TableSchema::columnExpr('crm_competitor_positions', ['grade_code'], '', 'grade_code') . ", "
+            . TableSchema::columnExpr('crm_competitor_positions', ['estimated_share_pct'], '', 'estimated_share_pct') . ", "
+            . TableSchema::columnExpr('crm_competitor_positions', ['reason_code'], '', 'reason_code') . ", "
+            . TableSchema::columnExpr('crm_competitor_positions', ['reason_note'], '', 'reason_note') . ", "
+            . TableSchema::columnExpr('crm_competitor_positions', ['intelligence_type'], '', 'intelligence_type') . "
              FROM crm_competitor_positions
-             WHERE party_id = ? AND is_current = 1
+             WHERE party_id = ?"
+            . (TableSchema::hasColumn('crm_competitor_positions', 'is_current') ? ' AND is_current = 1' : '') . "
              ORDER BY competitor_name, grade_code",
             [$partyId]
         );
@@ -75,9 +84,15 @@ class BriefingRepository
             return [];
         }
         $cap = max(30, (int)$resolvedLimit);
-        $order = TableSchema::hasColumn('crm_account_issues', 'status')
-            ? "FIELD(status, 'open', 'escalated', 'resolved'), raised_on DESC, id DESC"
-            : 'raised_on DESC, id DESC';
+        $orderBits = [];
+        if (TableSchema::hasColumn('crm_account_issues', 'status')) {
+            $orderBits[] = "FIELD(status, 'open', 'escalated', 'resolved')";
+        }
+        $orderBits[] = TableSchema::hasColumn('crm_account_issues', 'raised_on')
+            ? 'raised_on DESC'
+            : 'id DESC';
+        $orderBits[] = 'id DESC';
+        $order = implode(', ', $orderBits);
 
         return $this->database->fetchAll(
             "SELECT *
@@ -95,13 +110,33 @@ class BriefingRepository
             return null;
         }
 
+        $ownerJoin = TableSchema::leftJoinIfColumn(
+            'crm_visits',
+            'visited_by_user_id',
+            'users',
+            'u',
+            'u.id = v.visited_by_user_id'
+        );
+        $cols = [
+            'v.id',
+            TableSchema::columnExpr('crm_visits', ['visit_date'], 'v', 'visit_date'),
+            TableSchema::columnExpr('crm_visits', ['purpose'], 'v', 'purpose'),
+            TableSchema::columnExpr('crm_visits', ['outcome'], 'v', 'outcome'),
+            TableSchema::columnExpr('crm_visits', ['next_planned_touchpoint'], 'v', 'next_planned_touchpoint'),
+            TableSchema::columnExpr('crm_visits', ['next_action'], 'v', 'next_action'),
+            TableSchema::columnExpr('crm_visits', ['no_followup_needed'], 'v', 'no_followup_needed'),
+            'u.name AS visited_by_name',
+        ];
+        $order = TableSchema::hasColumn('crm_visits', 'visit_date')
+            ? 'v.visit_date DESC, v.id DESC'
+            : 'v.id DESC';
+
         return $this->database->fetch(
-            "SELECT v.id, v.visit_date, v.purpose, v.outcome, v.next_planned_touchpoint,
-                    v.next_action, v.no_followup_needed, u.name AS visited_by_name
+            "SELECT " . implode(', ', $cols) . "
              FROM crm_visits v
-             LEFT JOIN users u ON u.id = v.visited_by_user_id
+             {$ownerJoin}
              WHERE v.party_id = ?
-             ORDER BY v.visit_date DESC, v.id DESC
+             ORDER BY {$order}
              LIMIT 1",
             [$partyId]
         );

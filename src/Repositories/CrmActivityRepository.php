@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Core\Database;
 use App\Models\CrmActivity;
+use App\Support\TableSchema;
 
 class CrmActivityRepository
 {
@@ -16,11 +17,18 @@ class CrmActivityRepository
 
     public function findAll(array $filters = []): array
     {
-        if (!\App\Support\TableSchema::hasTable('crm_activities')) {
+        if (!TableSchema::hasTable('crm_activities')) {
             return [];
         }
+        $createdJoin = TableSchema::leftJoinIfColumn(
+            'crm_activities',
+            'created_by',
+            'users',
+            'u',
+            'a.created_by = u.id'
+        );
         $sql = "SELECT a.*, u.name AS created_by_name, p.name AS party_name FROM crm_activities a
-                LEFT JOIN users u ON a.created_by = u.id
+                {$createdJoin}
                 LEFT JOIN parties p ON a.party_id = p.id
                 WHERE 1=1";
         $params = [];
@@ -28,27 +36,29 @@ class CrmActivityRepository
             $sql .= " AND a.party_id = ?";
             $params[] = $filters['party_id'];
         }
-        if (!empty($filters['deal_id'])) {
+        if (!empty($filters['deal_id']) && TableSchema::hasColumn('crm_activities', 'deal_id')) {
             $sql .= " AND a.deal_id = ?";
             $params[] = $filters['deal_id'];
         }
-        if (!empty($filters['type'])) {
+        if (!empty($filters['type']) && TableSchema::hasColumn('crm_activities', 'type')) {
             $sql .= " AND a.type = ?";
             $params[] = $filters['type'];
         }
-        if (!empty($filters['created_by'])) {
+        if (!empty($filters['created_by']) && TableSchema::hasColumn('crm_activities', 'created_by')) {
             $sql .= " AND a.created_by = ?";
             $params[] = $filters['created_by'];
         }
-        if (!empty($filters['from_date'])) {
+        if (!empty($filters['from_date']) && TableSchema::hasColumn('crm_activities', 'activity_date')) {
             $sql .= " AND DATE(a.activity_date) >= ?";
             $params[] = $filters['from_date'];
         }
-        if (!empty($filters['to_date'])) {
+        if (!empty($filters['to_date']) && TableSchema::hasColumn('crm_activities', 'activity_date')) {
             $sql .= " AND DATE(a.activity_date) <= ?";
             $params[] = $filters['to_date'];
         }
-        $sql .= " ORDER BY a.activity_date DESC";
+        $sql .= TableSchema::hasColumn('crm_activities', 'activity_date')
+            ? ' ORDER BY a.activity_date DESC'
+            : ' ORDER BY a.id DESC';
         if (isset($filters['limit']) && (int)$filters['limit'] > 0) {
             $sql .= " LIMIT " . (int)$filters['limit'];
         }
@@ -63,11 +73,18 @@ class CrmActivityRepository
 
     public function findById(int $id): ?CrmActivity
     {
-        if (!\App\Support\TableSchema::hasTable('crm_activities')) {
+        if (!TableSchema::hasTable('crm_activities')) {
             return null;
         }
+        $createdJoin = TableSchema::leftJoinIfColumn(
+            'crm_activities',
+            'created_by',
+            'users',
+            'u',
+            'a.created_by = u.id'
+        );
         $sql = "SELECT a.*, u.name AS created_by_name, p.name AS party_name FROM crm_activities a
-                LEFT JOIN users u ON a.created_by = u.id
+                {$createdJoin}
                 LEFT JOIN parties p ON a.party_id = p.id
                 WHERE a.id = ?";
         $stmt = $this->database->getConnection()->prepare($sql);
@@ -78,19 +95,21 @@ class CrmActivityRepository
 
     public function create(CrmActivity $activity): CrmActivity
     {
-        $sql = "INSERT INTO crm_activities (party_id, deal_id, contact_id, type, subject, description, activity_date, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt = $this->database->getConnection()->prepare($sql);
-        $stmt->execute([
-            $activity->partyId,
-            $activity->dealId,
-            $activity->contactId,
-            $activity->type,
-            $activity->subject,
-            $activity->description,
-            $activity->activityDate,
-            $activity->createdBy,
+        $built = TableSchema::insertSql('crm_activities', [
+            'party_id' => $activity->partyId,
+            'deal_id' => $activity->dealId,
+            'contact_id' => $activity->contactId,
+            'type' => $activity->type,
+            'subject' => $activity->subject,
+            'description' => $activity->description,
+            'activity_date' => $activity->activityDate,
+            'created_by' => $activity->createdBy,
         ]);
+        if ($built === null) {
+            throw new \RuntimeException('crm_activities is not available.');
+        }
+        $stmt = $this->database->getConnection()->prepare($built[0]);
+        $stmt->execute($built[1]);
         $activity->id = (int)$this->database->getConnection()->lastInsertId();
         return $this->findById($activity->id);
     }
@@ -101,7 +120,7 @@ class CrmActivityRepository
         $fields = [];
         $values = [];
         foreach ($allowed as $f) {
-            if (array_key_exists($f, $data)) {
+            if (array_key_exists($f, $data) && TableSchema::hasColumn('crm_activities', $f)) {
                 $fields[] = "$f = ?";
                 $values[] = $data[$f];
             }
@@ -110,7 +129,8 @@ class CrmActivityRepository
             return $this->findById($id);
         }
         $values[] = $id;
-        $sql = "UPDATE crm_activities SET " . implode(', ', $fields) . ", updated_at = NOW() WHERE id = ?";
+        $updated = TableSchema::hasColumn('crm_activities', 'updated_at') ? ', updated_at = NOW()' : '';
+        $sql = "UPDATE crm_activities SET " . implode(', ', $fields) . "{$updated} WHERE id = ?";
         $stmt = $this->database->getConnection()->prepare($sql);
         $stmt->execute($values);
         return $this->findById($id);

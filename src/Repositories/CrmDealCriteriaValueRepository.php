@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 /**
  * Values captured against exit criteria that are not derivable from an existing record
@@ -21,11 +22,13 @@ class CrmDealCriteriaValueRepository
     /** @return array<string,string> field_key => value_text */
     public function findByDeal(int $dealId): array
     {
-        if (!\App\Support\TableSchema::hasTable('crm_deal_criteria_values')) {
+        if (!TableSchema::hasTable('crm_deal_criteria_values')) {
             return [];
         }
+        $value = TableSchema::columnExpr('crm_deal_criteria_values', ['value_text'], '', 'value_text');
+        $key = TableSchema::columnExpr('crm_deal_criteria_values', ['field_key'], '', 'field_key');
         $rows = $this->database->fetchAll(
-            "SELECT field_key, value_text FROM crm_deal_criteria_values WHERE deal_id = ?",
+            "SELECT {$key}, {$value} FROM crm_deal_criteria_values WHERE deal_id = ?",
             [$dealId]
         );
 
@@ -39,13 +42,31 @@ class CrmDealCriteriaValueRepository
 
     public function upsert(int $dealId, string $fieldKey, ?string $value, ?int $userId): void
     {
-        $this->database->query(
-            "INSERT INTO crm_deal_criteria_values (deal_id, field_key, value_text, updated_by_user_id)
-             VALUES (?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE value_text = VALUES(value_text),
-                                     updated_by_user_id = VALUES(updated_by_user_id),
-                                     updated_at = NOW()",
-            [$dealId, $fieldKey, $value, $userId]
-        );
+        if (!TableSchema::hasTable('crm_deal_criteria_values')) {
+            return;
+        }
+        if (TableSchema::hasColumn('crm_deal_criteria_values', 'value_text')
+            && TableSchema::hasColumn('crm_deal_criteria_values', 'updated_by_user_id')) {
+            $updatedAt = TableSchema::hasColumn('crm_deal_criteria_values', 'updated_at')
+                ? ', updated_at = NOW()'
+                : '';
+            $this->database->query(
+                "INSERT INTO crm_deal_criteria_values (deal_id, field_key, value_text, updated_by_user_id)
+                 VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE value_text = VALUES(value_text),
+                                         updated_by_user_id = VALUES(updated_by_user_id){$updatedAt}",
+                [$dealId, $fieldKey, $value, $userId]
+            );
+            return;
+        }
+        $built = TableSchema::insertSql('crm_deal_criteria_values', [
+            'deal_id' => $dealId,
+            'field_key' => $fieldKey,
+            'value_text' => $value,
+            'updated_by_user_id' => $userId,
+        ]);
+        if ($built !== null) {
+            $this->database->query($built[0], $built[1]);
+        }
     }
 }

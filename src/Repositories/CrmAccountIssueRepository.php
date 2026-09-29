@@ -19,12 +19,19 @@ class CrmAccountIssueRepository
         if (!TableSchema::hasTable('crm_account_issues')) {
             return null;
         }
+        $raisedJoin = TableSchema::leftJoinIfColumn(
+            'crm_account_issues',
+            'raised_by_user_id',
+            'users',
+            'u',
+            'u.id = i.raised_by_user_id'
+        );
         $dealJoin = TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = i.deal_id', ['id', 'title']);
         return $this->database->fetch(
             "SELECT i.*, p.name AS party_name, u.name AS raised_by_name, d.title AS deal_title
              FROM crm_account_issues i
              JOIN parties p ON p.id = i.party_id
-             LEFT JOIN users u ON u.id = i.raised_by_user_id
+             {$raisedJoin}
              {$dealJoin}
              WHERE i.id = ?",
             [$id]
@@ -38,14 +45,23 @@ class CrmAccountIssueRepository
             return [];
         }
         $order = TableSchema::hasColumn('crm_account_issues', 'status')
-            ? "FIELD(i.status, 'open', 'escalated', 'resolved'), i.raised_on DESC, i.id DESC"
-            : 'i.raised_on DESC, i.id DESC';
+            ? "FIELD(i.status, 'open', 'escalated', 'resolved'), " . (
+                TableSchema::hasColumn('crm_account_issues', 'raised_on') ? 'i.raised_on DESC, i.id DESC' : 'i.id DESC'
+            )
+            : (TableSchema::hasColumn('crm_account_issues', 'raised_on') ? 'i.raised_on DESC, i.id DESC' : 'i.id DESC');
 
+        $raisedJoin = TableSchema::leftJoinIfColumn(
+            'crm_account_issues',
+            'raised_by_user_id',
+            'users',
+            'u',
+            'u.id = i.raised_by_user_id'
+        );
         $dealJoin = TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = i.deal_id', ['id', 'title']);
         return $this->database->fetchAll(
             "SELECT i.*, u.name AS raised_by_name, d.title AS deal_title
              FROM crm_account_issues i
-             LEFT JOIN users u ON u.id = i.raised_by_user_id
+             {$raisedJoin}
              {$dealJoin}
              WHERE i.party_id = ?
              ORDER BY {$order}",
@@ -72,21 +88,20 @@ class CrmAccountIssueRepository
 
     public function create(array $data): int
     {
-        $this->database->execute(
-            "INSERT INTO crm_account_issues (
-                party_id, deal_id, issue_type, raised_on, description,
-                resolution_window_days, status, raised_by_user_id
-             ) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)",
-            [
-                $data['party_id'],
-                $data['deal_id'],
-                $data['issue_type'],
-                $data['raised_on'],
-                $data['description'],
-                $data['resolution_window_days'],
-                $data['raised_by_user_id'],
-            ]
-        );
+        $built = TableSchema::insertSql('crm_account_issues', [
+            'party_id' => $data['party_id'],
+            'deal_id' => $data['deal_id'] ?? null,
+            'issue_type' => $data['issue_type'] ?? 'other',
+            'raised_on' => $data['raised_on'] ?? null,
+            'description' => $data['description'] ?? null,
+            'resolution_window_days' => $data['resolution_window_days'] ?? 7,
+            'status' => 'open',
+            'raised_by_user_id' => $data['raised_by_user_id'] ?? null,
+        ]);
+        if ($built === null) {
+            throw new \RuntimeException('crm_account_issues is not available.');
+        }
+        $this->database->execute($built[0], $built[1]);
 
         return (int)$this->database->lastInsertId();
     }
@@ -97,7 +112,7 @@ class CrmAccountIssueRepository
         $sets = [];
         $params = [];
         foreach ($allowed as $key) {
-            if (array_key_exists($key, $data)) {
+            if (array_key_exists($key, $data) && TableSchema::hasColumn('crm_account_issues', $key)) {
                 $sets[] = "{$key} = ?";
                 $params[] = $data[$key];
             }
@@ -114,11 +129,26 @@ class CrmAccountIssueRepository
 
     public function resolve(int $id, string $resolvedOn, string $resolutionNote): void
     {
+        $sets = [];
+        $params = [];
+        if (TableSchema::hasColumn('crm_account_issues', 'status')) {
+            $sets[] = "status = 'resolved'";
+        }
+        if (TableSchema::hasColumn('crm_account_issues', 'resolved_on')) {
+            $sets[] = 'resolved_on = ?';
+            $params[] = $resolvedOn;
+        }
+        if (TableSchema::hasColumn('crm_account_issues', 'resolution_note')) {
+            $sets[] = 'resolution_note = ?';
+            $params[] = $resolutionNote;
+        }
+        if ($sets === []) {
+            return;
+        }
+        $params[] = $id;
         $this->database->execute(
-            "UPDATE crm_account_issues
-             SET status = 'resolved', resolved_on = ?, resolution_note = ?
-             WHERE id = ?",
-            [$resolvedOn, $resolutionNote, $id]
+            'UPDATE crm_account_issues SET ' . implode(', ', $sets) . ' WHERE id = ?',
+            $params
         );
     }
 }

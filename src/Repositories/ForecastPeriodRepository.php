@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Core\Database;
+use App\Support\TableSchema;
 
 class ForecastPeriodRepository
 {
@@ -15,7 +16,7 @@ class ForecastPeriodRepository
 
     public function findById(int $id): ?array
     {
-        if (!\App\Support\TableSchema::hasTable('forecast_periods')) {
+        if (!TableSchema::hasTable('forecast_periods')) {
             return null;
         }
         return $this->database->fetch("SELECT * FROM forecast_periods WHERE id = ?", [$id]);
@@ -23,7 +24,7 @@ class ForecastPeriodRepository
 
     public function findByYearMonth(string $yearMonth): ?array
     {
-        if (!\App\Support\TableSchema::hasTable('forecast_periods')) {
+        if (!TableSchema::hasTable('forecast_periods')) {
             return null;
         }
         return $this->database->fetch(
@@ -35,7 +36,7 @@ class ForecastPeriodRepository
     /** @return array<int,array<string,mixed>> */
     public function listRecent(int $limit = 12): array
     {
-        if (!\App\Support\TableSchema::hasTable('forecast_periods')) {
+        if (!TableSchema::hasTable('forecast_periods')) {
             return [];
         }
         return $this->database->fetchAll(
@@ -45,29 +46,68 @@ class ForecastPeriodRepository
 
     public function create(string $yearMonth, ?int $openedByUserId, ?int $companyId = null): int
     {
-        $this->database->execute(
-            "INSERT INTO forecast_periods (company_id, period_month, status, opened_at, opened_by_user_id)
-             VALUES (?, ?, 'open', NOW(), ?)",
-            [$companyId, $yearMonth, $openedByUserId]
-        );
+        $built = TableSchema::insertSql('forecast_periods', [
+            'company_id' => $companyId,
+            'period_month' => $yearMonth,
+            'status' => 'open',
+            'opened_at' => date('Y-m-d H:i:s'),
+            'opened_by_user_id' => $openedByUserId,
+        ]);
+        if ($built === null) {
+            throw new \RuntimeException('forecast_periods is not available.');
+        }
+        $this->database->execute($built[0], $built[1]);
 
         return (int)$this->database->lastInsertId();
     }
 
     public function lock(int $id, int $userId): void
     {
+        $sets = [];
+        $params = [];
+        if (TableSchema::hasColumn('forecast_periods', 'status')) {
+            $sets[] = "status = 'locked'";
+        }
+        if (TableSchema::hasColumn('forecast_periods', 'locked_at')) {
+            $sets[] = 'locked_at = NOW()';
+        }
+        if (TableSchema::hasColumn('forecast_periods', 'locked_by_user_id')) {
+            $sets[] = 'locked_by_user_id = ?';
+            $params[] = $userId;
+        }
+        if ($sets === []) {
+            return;
+        }
+        $where = TableSchema::hasColumn('forecast_periods', 'status')
+            ? "id = ? AND status = 'open'"
+            : 'id = ?';
+        $params[] = $id;
         $this->database->execute(
-            "UPDATE forecast_periods SET status = 'locked', locked_at = NOW(), locked_by_user_id = ?
-             WHERE id = ? AND status = 'open'",
-            [$userId, $id]
+            'UPDATE forecast_periods SET ' . implode(', ', $sets) . ' WHERE ' . $where,
+            $params
         );
     }
 
     public function reopen(int $id): void
     {
+        $sets = [];
+        if (TableSchema::hasColumn('forecast_periods', 'status')) {
+            $sets[] = "status = 'open'";
+        }
+        if (TableSchema::hasColumn('forecast_periods', 'locked_at')) {
+            $sets[] = 'locked_at = NULL';
+        }
+        if (TableSchema::hasColumn('forecast_periods', 'locked_by_user_id')) {
+            $sets[] = 'locked_by_user_id = NULL';
+        }
+        if ($sets === []) {
+            return;
+        }
+        $where = TableSchema::hasColumn('forecast_periods', 'status')
+            ? "id = ? AND status = 'locked'"
+            : 'id = ?';
         $this->database->execute(
-            "UPDATE forecast_periods SET status = 'open', locked_at = NULL, locked_by_user_id = NULL
-             WHERE id = ? AND status = 'locked'",
+            'UPDATE forecast_periods SET ' . implode(', ', $sets) . ' WHERE ' . $where,
             [$id]
         );
     }
@@ -75,11 +115,15 @@ class ForecastPeriodRepository
     /** @return array<int,array<string,mixed>> */
     public function findOpenOrLocked(): array
     {
-        if (!\App\Support\TableSchema::hasTable('forecast_periods')) {
+        if (!TableSchema::hasTable('forecast_periods')) {
             return [];
         }
         return $this->database->fetchAll(
-            "SELECT * FROM forecast_periods WHERE status IN ('open', 'locked') ORDER BY period_month DESC"
+            "SELECT * FROM forecast_periods"
+            . (TableSchema::hasColumn('forecast_periods', 'status')
+                ? " WHERE status IN ('open', 'locked')"
+                : '') . "
+             ORDER BY period_month DESC"
         );
     }
 }

@@ -16,21 +16,20 @@ class CrmTechnicalFlagRepository
 
     public function create(array $data): int
     {
-        $this->database->query(
-            "INSERT INTO crm_technical_flags
-                (deal_id, party_id, raised_from_stage, raised_by_user_id, nature_of_query,
-                 routed_to_queue_id, expected_turnaround_at, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'open')",
-            [
-                $data['deal_id'] ?? null,
-                $data['party_id'],
-                $data['raised_from_stage'] ?? null,
-                $data['raised_by_user_id'] ?? null,
-                $data['nature_of_query'],
-                $data['routed_to_queue_id'],
-                $data['expected_turnaround_at'] ?? null,
-            ]
-        );
+        $built = TableSchema::insertSql('crm_technical_flags', [
+            'deal_id' => $data['deal_id'] ?? null,
+            'party_id' => $data['party_id'],
+            'raised_from_stage' => $data['raised_from_stage'] ?? null,
+            'raised_by_user_id' => $data['raised_by_user_id'] ?? null,
+            'nature_of_query' => $data['nature_of_query'],
+            'routed_to_queue_id' => $data['routed_to_queue_id'],
+            'expected_turnaround_at' => $data['expected_turnaround_at'] ?? null,
+            'status' => 'open',
+        ]);
+        if ($built === null) {
+            throw new \RuntimeException('crm_technical_flags is not available.');
+        }
+        $this->database->query($built[0], $built[1]);
 
         return (int)$this->database->lastInsertId();
     }
@@ -53,14 +52,30 @@ class CrmTechnicalFlagRepository
         }
 
         $overdue = TableSchema::hasColumn('crm_technical_flags', 'status')
+            && TableSchema::hasColumn('crm_technical_flags', 'expected_turnaround_at')
             ? "(f.status IN ('open', 'claimed')
                         AND f.expected_turnaround_at IS NOT NULL
                         AND f.expected_turnaround_at < NOW()) AS is_overdue"
             : '0 AS is_overdue';
         $queueJoin = TableSchema::hasTable('crm_technical_queues')
+            && TableSchema::hasColumn('crm_technical_flags', 'routed_to_queue_id')
             ? 'JOIN crm_technical_queues q ON q.id = f.routed_to_queue_id'
             : 'LEFT JOIN (SELECT NULL AS id, NULL AS name) q ON 1=0';
         $dealJoin = TableSchema::leftJoinOrStub('crm_deals', 'd', 'd.id = f.deal_id', ['id', 'title']);
+        $raisedJoin = TableSchema::leftJoinIfColumn(
+            'crm_technical_flags',
+            'raised_by_user_id',
+            'users',
+            'ru',
+            'ru.id = f.raised_by_user_id'
+        );
+        $claimedJoin = TableSchema::leftJoinIfColumn(
+            'crm_technical_flags',
+            'claimed_by_user_id',
+            'users',
+            'cu',
+            'cu.id = f.claimed_by_user_id'
+        );
         $sql = "SELECT f.*,
                        q.name AS queue_name,
                        p.name AS party_name,
@@ -72,12 +87,12 @@ class CrmTechnicalFlagRepository
                 {$queueJoin}
                 JOIN parties p ON p.id = f.party_id
                 {$dealJoin}
-                LEFT JOIN users ru ON ru.id = f.raised_by_user_id
-                LEFT JOIN users cu ON cu.id = f.claimed_by_user_id
+                {$raisedJoin}
+                {$claimedJoin}
                 WHERE 1 = 1";
         $params = [];
 
-        if (!empty($filters['queue_id'])) {
+        if (!empty($filters['queue_id']) && TableSchema::hasColumn('crm_technical_flags', 'routed_to_queue_id')) {
             $sql .= " AND f.routed_to_queue_id = ?";
             $params[] = (int)$filters['queue_id'];
         }
@@ -88,7 +103,7 @@ class CrmTechnicalFlagRepository
         if (!empty($filters['open_only']) && TableSchema::hasColumn('crm_technical_flags', 'status')) {
             $sql .= " AND f.status IN ('open', 'claimed')";
         }
-        if (!empty($filters['deal_id'])) {
+        if (!empty($filters['deal_id']) && TableSchema::hasColumn('crm_technical_flags', 'deal_id')) {
             $sql .= " AND f.deal_id = ?";
             $params[] = (int)$filters['deal_id'];
         }
@@ -129,22 +144,69 @@ class CrmTechnicalFlagRepository
 
     public function claim(int $id, int $userId): void
     {
+        $sets = [];
+        $params = [];
+        if (TableSchema::hasColumn('crm_technical_flags', 'status')) {
+            $sets[] = "status = 'claimed'";
+        }
+        if (TableSchema::hasColumn('crm_technical_flags', 'claimed_by_user_id')) {
+            $sets[] = 'claimed_by_user_id = ?';
+            $params[] = $userId;
+        }
+        if (TableSchema::hasColumn('crm_technical_flags', 'claimed_at')) {
+            $sets[] = 'claimed_at = NOW()';
+        }
+        if (TableSchema::hasColumn('crm_technical_flags', 'updated_at')) {
+            $sets[] = 'updated_at = NOW()';
+        }
+        if ($sets === []) {
+            return;
+        }
+        $where = TableSchema::hasColumn('crm_technical_flags', 'status')
+            ? "id = ? AND status = 'open'"
+            : 'id = ?';
+        $params[] = $id;
         $this->database->query(
-            "UPDATE crm_technical_flags
-             SET status = 'claimed', claimed_by_user_id = ?, claimed_at = NOW(), updated_at = NOW()
-             WHERE id = ? AND status = 'open'",
-            [$userId, $id]
+            'UPDATE crm_technical_flags SET ' . implode(', ', $sets) . ' WHERE ' . $where,
+            $params
         );
     }
 
     public function resolve(int $id, int $userId, string $resolutionType, string $note): void
     {
+        $sets = [];
+        $params = [];
+        if (TableSchema::hasColumn('crm_technical_flags', 'status')) {
+            $sets[] = "status = 'resolved'";
+        }
+        if (TableSchema::hasColumn('crm_technical_flags', 'resolution_type')) {
+            $sets[] = 'resolution_type = ?';
+            $params[] = $resolutionType;
+        }
+        if (TableSchema::hasColumn('crm_technical_flags', 'resolution_note')) {
+            $sets[] = 'resolution_note = ?';
+            $params[] = $note;
+        }
+        if (TableSchema::hasColumn('crm_technical_flags', 'resolved_by_user_id')) {
+            $sets[] = 'resolved_by_user_id = ?';
+            $params[] = $userId;
+        }
+        if (TableSchema::hasColumn('crm_technical_flags', 'resolved_at')) {
+            $sets[] = 'resolved_at = NOW()';
+        }
+        if (TableSchema::hasColumn('crm_technical_flags', 'updated_at')) {
+            $sets[] = 'updated_at = NOW()';
+        }
+        if ($sets === []) {
+            return;
+        }
+        $where = TableSchema::hasColumn('crm_technical_flags', 'status')
+            ? "id = ? AND status IN ('open', 'claimed')"
+            : 'id = ?';
+        $params[] = $id;
         $this->database->query(
-            "UPDATE crm_technical_flags
-             SET status = 'resolved', resolution_type = ?, resolution_note = ?,
-                 resolved_by_user_id = ?, resolved_at = NOW(), updated_at = NOW()
-             WHERE id = ? AND status IN ('open', 'claimed')",
-            [$resolutionType, $note, $userId, $id]
+            'UPDATE crm_technical_flags SET ' . implode(', ', $sets) . ' WHERE ' . $where,
+            $params
         );
     }
 
@@ -169,20 +231,33 @@ class CrmTechnicalFlagRepository
         }
         $statusOpen = TableSchema::hasColumn('crm_technical_flags', 'status')
             ? "SUM(f.status IN ('open', 'claimed')) AS still_open,
-                       SUM(f.status = 'resolved') AS resolved,
-                       SUM(f.status IN ('open', 'claimed')
+                       SUM(f.status = 'resolved') AS resolved"
+            : 'COUNT(*) AS still_open, 0 AS resolved';
+        $overdue = TableSchema::hasColumn('crm_technical_flags', 'status')
+            && TableSchema::hasColumn('crm_technical_flags', 'expected_turnaround_at')
+            ? "SUM(f.status IN ('open', 'claimed')
                            AND f.expected_turnaround_at IS NOT NULL
                            AND f.expected_turnaround_at < NOW()) AS overdue"
-            : 'COUNT(*) AS still_open, 0 AS resolved, 0 AS overdue';
+            : '0 AS overdue';
+        $siteVisits = TableSchema::hasColumn('crm_technical_flags', 'resolution_type')
+            ? "SUM(f.resolution_type = 'site_visit') AS site_visits"
+            : '0 AS site_visits';
+        $avgHours = TableSchema::hasColumn('crm_technical_flags', 'resolved_at')
+            ? "ROUND(AVG(CASE WHEN f.resolved_at IS NOT NULL
+                                 THEN TIMESTAMPDIFF(HOUR, f.created_at, f.resolved_at) END), 1)
+                         AS avg_resolution_hours"
+            : 'NULL AS avg_resolution_hours';
+        $queueJoin = TableSchema::hasColumn('crm_technical_flags', 'routed_to_queue_id')
+            ? 'JOIN crm_technical_queues q ON q.id = f.routed_to_queue_id'
+            : 'LEFT JOIN (SELECT NULL AS id, NULL AS name) q ON 1=0';
         $sql = "SELECT q.name AS queue_name,
                        COUNT(*) AS flags_raised,
                        {$statusOpen},
-                       SUM(f.resolution_type = 'site_visit') AS site_visits,
-                       ROUND(AVG(CASE WHEN f.resolved_at IS NOT NULL
-                                 THEN TIMESTAMPDIFF(HOUR, f.created_at, f.resolved_at) END), 1)
-                         AS avg_resolution_hours
+                       {$overdue},
+                       {$siteVisits},
+                       {$avgHours}
                 FROM crm_technical_flags f
-                JOIN crm_technical_queues q ON q.id = f.routed_to_queue_id
+                {$queueJoin}
                 WHERE 1 = 1";
         $params = [];
         if ($fromDate !== null) {

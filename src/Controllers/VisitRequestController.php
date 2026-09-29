@@ -6,6 +6,7 @@ use App\Core\Database;
 use App\Services\AuthService;
 use App\Repositories\VisitRequestRepository;
 use App\Support\IndianDate;
+use App\Support\TableSchema;
 
 /**
  * Client visit requests: marketing raises a request, technical team
@@ -295,22 +296,26 @@ class VisitRequestController
 
             $today = date('Y-m-d');
 
-            $this->database->execute(
-                "INSERT INTO crm_activities (party_id, type, subject, description, activity_date, created_by)
-                 VALUES (?, 'visit', ?, ?, ?, ?)",
-                [
-                    (int)$request['party_id'],
-                    'Technical visit: ' . mb_substr((string)$request['purpose'], 0, 200),
-                    $outcome,
-                    $today,
-                    $userId
-                ]
-            );
+            if (TableSchema::hasTable('crm_activities')) {
+                $built = TableSchema::insertSql('crm_activities', [
+                    'party_id' => (int)$request['party_id'],
+                    'type' => 'visit',
+                    'subject' => 'Technical visit: ' . mb_substr((string)$request['purpose'], 0, 200),
+                    'description' => $outcome,
+                    'activity_date' => $today,
+                    'created_by' => $userId,
+                ]);
+                if ($built !== null) {
+                    $this->database->execute($built[0], $built[1]);
+                }
+            }
 
-            $this->database->execute(
-                "UPDATE parties SET last_visit_date = ? WHERE id = ?",
-                [$today, (int)$request['party_id']]
-            );
+            if (TableSchema::hasColumn('parties', 'last_visit_date')) {
+                $this->database->execute(
+                    "UPDATE parties SET last_visit_date = ? WHERE id = ?",
+                    [$today, (int)$request['party_id']]
+                );
+            }
 
             $this->database->commit();
         } catch (\Exception $e) {
