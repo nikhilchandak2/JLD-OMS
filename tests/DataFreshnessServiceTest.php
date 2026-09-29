@@ -57,6 +57,19 @@ class DataFreshnessServiceTest extends DataFeedTestCase
         $this->assertSame([], $group['missing_entities']);
     }
 
+    public function testGroupWithNoUploadsIsEmptyNotIncomplete(): void
+    {
+        $this->activateOnlyLedgerFeeds($this->companyId);
+
+        $now = new DateTimeImmutable('2026-08-21 10:00:00', new DateTimeZone('Asia/Kolkata'));
+        $payload = $this->freshness->bannerPayload('ledger', null, true, $now);
+
+        $this->assertSame(DataFreshnessService::STATE_MISSING, $payload['state']);
+        $this->assertStringContainsString('not been uploaded yet', strtolower($payload['message']));
+        $this->assertStringNotContainsString('incomplete', strtolower($payload['message']));
+        $this->assertStringNotContainsString('no contributing feed', strtolower($payload['message']));
+    }
+
     public function testGroupAsOfReportsMissingEntityInsteadOfOmittingIt(): void
     {
         $companyA = $this->companyId;
@@ -82,6 +95,9 @@ class DataFreshnessServiceTest extends DataFeedTestCase
         $this->assertContains($companyB, $missingIds);
         $this->assertSame(DataFreshnessService::STATE_MISSING_ENTITY, $group['state']);
         $this->assertNotNull($group['lagging_entity']);
+        $payload = $this->freshness->bannerPayload('ledger', null, true, $now);
+        $this->assertStringContainsString('incomplete', strtolower($payload['message']));
+        $this->assertStringContainsString('has no uploaded file', strtolower($payload['message']));
     }
 
     public function testBannerTonesMatchTheThreeVisibleStates(): void

@@ -164,7 +164,10 @@ class DataFreshnessService
             }
         }
 
-        if ($missing !== []) {
+        if ($contributing === []) {
+            // No file exists anywhere — this is an empty state, not a partial group.
+            $state = self::STATE_MISSING;
+        } elseif ($missing !== []) {
             $state = self::STATE_MISSING_ENTITY;
         } else {
             $rank = [self::STATE_FRESH => 0, self::STATE_LATE => 1, self::STATE_STALE => 2];
@@ -210,13 +213,17 @@ class DataFreshnessService
         if ($state === self::STATE_MISSING_ENTITY) {
             $names = array_map(static fn($e) => $e['company_name'] ?: ('#' . $e['company_id']), $freshness['missing_entities'] ?? []);
             $named = implode(', ', $names);
+            $verb = count($names) === 1 ? 'has' : 'have';
             $asOf = $freshness['as_of'] ? $this->formatStamp($freshness['as_of']) : 'no contributing feed';
 
-            return "{$label} is incomplete — {$named} has no uploaded file. "
+            return "{$label} is incomplete — {$named} {$verb} no uploaded file. "
                 . "The group figure is as of {$asOf} and must not be treated as live.";
         }
 
         if ($state === self::STATE_MISSING) {
+            if (array_key_exists('missing_entities', $freshness)) {
+                return "{$label} has not been uploaded yet. Figures are not live.";
+            }
             $name = $freshness['company_name'] ?? 'this entity';
 
             return "{$label} has not been uploaded for {$name}. Figures are not live.";
